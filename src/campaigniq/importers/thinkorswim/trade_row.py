@@ -28,7 +28,7 @@ class ThinkorswimTradeRow:
     strike: Decimal | None
     option_type: str
     price: Decimal
-    net_price: Decimal
+    net_price: str
     order_type: str
 
     @classmethod
@@ -49,6 +49,6 @@ class ThinkorswimTradeRow:
             strike=parse_decimal(row[columns["Strike"]]),
             option_type=row[columns["Type"]],
             price=parse_decimal(row[columns["Price"]]),
-            net_price=parse_decimal(row[columns["Net Price"]]),
+            net_price=row[columns["Net Price"]],
             order_type=row[columns["Order Type"]],
         )

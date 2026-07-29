@@ -18,10 +18,25 @@ class CsvReader:
             return list(csv.reader(csv_file))
 
     def trade_history_rows(self, rows: list[list[str]]) -> list[list[str]]:
-        """Return the Account Trade History table."""
+        """Return only the Account Trade History table."""
+
+        start = None
 
         for index, row in enumerate(rows):
             if len(row) > 1 and row[1] == "Exec Time":
-                return rows[index:]
+                start = index
+                break
 
-        raise ValueError("Account Trade History section not found.")
+        if start is None:
+            raise ValueError("Account Trade History section not found.")
+
+        table: list[list[str]] = []
+
+        for row in rows[start:]:
+            # A completely blank row marks the end of the table.
+            if not row:
+                break
+
+            table.append(row)
+
+        return table

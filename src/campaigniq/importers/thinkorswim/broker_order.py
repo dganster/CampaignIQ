@@ -10,7 +10,7 @@ from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
 
 @dataclass(slots=True)
 class ThinkorswimBrokerOrder:
-    """One brokerage order consisting of one or more trade rows."""
+    """A brokerage order consisting of one or more trade rows."""
 
     exec_time: datetime
     spread: str
@@ -18,5 +18,5 @@ class ThinkorswimBrokerOrder:
 
     @property
     def quantity(self) -> int:
-        """Number of option legs in the order."""
+        """Return the number of legs in the order."""
         return len(self.legs)
