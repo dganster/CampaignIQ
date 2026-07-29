@@ -3,6 +3,8 @@
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.importers.thinkorswim.parsers import parse_option_type
 from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
+from campaigniq.domain.leg import Leg
+from campaigniq.importers.thinkorswim.parsers import parse_side
 
 
 def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
@@ -24,4 +26,18 @@ def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
         expiration=row.exp,
         strike=row.strike,
         option_type=parse_option_type(row.option_type),
+    )
+
+def to_leg(row: ThinkorswimTradeRow) -> Leg:
+    """Translate a Thinkorswim trade row into a domain Leg."""
+
+    if row.exec_time is None:
+        raise ValueError("Trade row is missing an execution time.")
+
+    return Leg(
+        contract=to_option_contract(row),
+        side=parse_side(row.side),
+        quantity=row.qty,
+        execution_price=row.price,
+        executed_at=row.exec_time,
     )
