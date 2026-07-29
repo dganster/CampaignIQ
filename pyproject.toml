@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "campaigniq"
+version = "0.1.0"
+description = "CampaignIQ - Event-sourced options trading analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+authors = [
+    { name = "Dennis Ganster" }
+]
+
+dependencies = []
+
+[project.scripts]
+campaigniq = "campaigniq.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+]

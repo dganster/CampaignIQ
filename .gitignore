@@ -1,0 +1,24 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Test cache
+.pytest_cache/
+
+# Ruff cache
+.ruff_cache/
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# IDE settings
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
