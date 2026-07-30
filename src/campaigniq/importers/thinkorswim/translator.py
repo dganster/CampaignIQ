@@ -40,4 +40,5 @@ def to_leg(row: ThinkorswimTradeRow) -> Leg:
         quantity=row.qty,
         execution_price=row.price,
         executed_at=row.exec_time,
+        broker_spread=row.spread,
     )
