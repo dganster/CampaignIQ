@@ -1,3 +1,5 @@
+> **Note:** This Constitution defines the enduring principles of CampaignIQ. It is expected to evolve as our understanding of the problem domain matures, but any changes should preserve the spirit and intent of these principles.
+
 CampaignIQ Constitution
 Preamble
 
@@ -118,6 +120,8 @@ By faithfully reconstructing investment campaigns and applying disciplined Decis
 
 Experience is not the best teacher.
 
-Understood experience is.
-
 CampaignIQ will never replace the investor's judgment. It exists to strengthen it.
+
+
+
+Understood experience is.
