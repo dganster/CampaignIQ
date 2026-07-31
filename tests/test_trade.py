@@ -21,7 +21,7 @@ def test_trade_contains_legs() -> None:
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_spread="SINGLE",
+        broker_strategy="SINGLE",
     )
 
     trade = Trade(legs=(leg,))

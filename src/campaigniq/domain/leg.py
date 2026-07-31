@@ -19,4 +19,4 @@ class Leg:
     quantity: Decimal
     execution_price: Decimal
     executed_at: datetime
-    broker_spread: str
+    broker_strategy: str

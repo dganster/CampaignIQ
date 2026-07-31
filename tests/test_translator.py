@@ -65,7 +65,7 @@ def test_to_leg() -> None:
     assert leg.quantity == Decimal("1")
     assert leg.execution_price == Decimal("3.25")
     assert leg.executed_at == executed_at
-    assert leg.broker_spread == ""
+    assert leg.broker_strategy == ""
 
 def test_to_option_contract() -> None:
     row = make_option_row()

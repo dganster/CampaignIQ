@@ -23,7 +23,7 @@ def test_leg_fields() -> None:
         quantity=Decimal("5"),
         execution_price=Decimal("6.35"),
         executed_at=executed_at,
-        broker_spread="SINGLE",
+        broker_strategy="SINGLE",
     )
 
     assert leg.contract is contract
