@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from campaigniq.domain.side import Side
-from campaigniq.domain.value_objects.equity import Equity
+from campaigniq.domain.value_objects.instrument import Instrument
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,7 +1,7 @@
 import pytest
 
 from campaigniq.domain.account import Account
-from campaigniq.domain.value_objects.equity import Equity
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.domain.position import Position
 from campaigniq.domain.trade import Trade
 
@@ -10,7 +10,7 @@ def test_position_requires_at_least_one_trade():
     with pytest.raises(ValueError):
         Position(
             account=Account("Dennis Brokerage"),
-            underlying=Equity("IBM"),
+            underlying=Instrument("IBM"),
             trades=(),
         )
 
@@ -25,7 +25,7 @@ from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.position import Position
-from campaigniq.domain.value_objects.equity import Equity
+from campaigniq.domain.value_objects.instrument import Instrument
 
 
 def test_position_accepts_trade() -> None:
@@ -49,7 +49,7 @@ def test_position_accepts_trade() -> None:
 
     position = Position(
         account=Account("Dennis Brokerage"),
-        underlying=Equity("IBM"),
+        underlying=Instrument("IBM"),
         trades=(trade,),
     )
 

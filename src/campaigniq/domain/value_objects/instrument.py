@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
-class Equity:
+class Instrument:
     """
     A publicly traded equity security.
 
@@ -20,6 +20,4 @@ class Equity:
 
     symbol: str
 
-def test_different_symbols_are_not_equal():
-    assert Equity("IBM") != Equity("AAPL")
 

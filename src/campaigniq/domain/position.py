@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from campaigniq.domain.account import Account
-from campaigniq.domain.value_objects.equity import Equity
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.domain.trade import Trade
 
 
@@ -10,7 +10,7 @@ class Position:
     """An open position in one underlying within one account."""
 
     account: Account
-    underlying: Equity
+    underlying: Instrument
     trades: tuple[Trade, ...]
 
     def __post_init__(self) -> None:
