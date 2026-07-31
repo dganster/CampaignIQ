@@ -11,7 +11,7 @@ from campaigniq.domain.side import Side
 
 
 @dataclass(frozen=True, slots=True)
-class Leg:
+class OptionLeg:
     """One executed option leg."""
 
     contract: OptionContract

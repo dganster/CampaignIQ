@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from campaigniq.domain.leg import Leg
+from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.side import Side
@@ -17,7 +17,7 @@ def test_single_leg_creates_single_trade() -> None:
         option_type=OptionType.CALL,
     )
 
-    leg = Leg(
+    leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
         quantity=Decimal("1"),
