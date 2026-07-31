@@ -120,8 +120,10 @@ By faithfully reconstructing investment campaigns and applying disciplined Decis
 
 Experience is not the best teacher.
 
+Understood experience is.
+
 CampaignIQ will never replace the investor's judgment. It exists to strengthen it.
 
 
 
-Understood experience is.
+
