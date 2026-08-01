@@ -2,12 +2,12 @@ from datetime import datetime
 from decimal import Decimal
 
 from campaigniq.domain.side import Side
-from campaigniq.domain.stock_leg import StockLeg
+from campaigniq.domain.instrument_leg import InstrumentLeg
 from campaigniq.domain.value_objects.instrument import Instrument
 
 
-def test_stock_leg() -> None:
-    leg = StockLeg(
+def test_instrument_leg() -> None:
+    leg = InstrumentLeg(
         equity=Instrument("IBM"),
         side=Side.BUY,
         quantity=Decimal("100"),
@@ -17,3 +17,4 @@ def test_stock_leg() -> None:
 
     assert leg.equity == Instrument("IBM")
     assert leg.quantity == Decimal("100")
+

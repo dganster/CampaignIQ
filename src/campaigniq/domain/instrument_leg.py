@@ -11,7 +11,7 @@ from campaigniq.domain.value_objects.instrument import Instrument
 
 
 @dataclass(frozen=True, slots=True)
-class StockLeg:
+class InstrumentLeg:
     """One executed stock leg."""
 
     equity: Equity
