@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass
 
 from campaigniq.domain.account import Account
@@ -16,3 +17,7 @@ class Position:
     def __post_init__(self) -> None:
         if not self.trades:
             raise ValueError("Position must contain at least one trade.")
+
+    def trade_count(self) -> int:
+        """Return the number of trades in this position."""
+        return len(self.trades)

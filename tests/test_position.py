@@ -53,4 +53,31 @@ def test_position_accepts_trade() -> None:
         trades=(trade,),
     )
 
+def test_position_trade_count() -> None:
+    contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
+
+    leg = OptionLeg(
+        contract=contract,
+        side=Side.BUY,
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    trade = Trade(legs=(leg,))
+
+    position = Position(
+        account=Account("Dennis Brokerage"),
+        underlying=Instrument("IBM"),
+        trades=(trade,),
+    )
+
+    assert position.trade_count() == 1
+
     assert position.trades == (trade,)
