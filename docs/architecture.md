@@ -2,7 +2,7 @@
 
 ## Design Philosophy
 
-CampaignIQ stores trading facts rather than trading terminology.
+CampaignIQ stores trading facts rather than trading interpretations.
 
 Named strategies such as Iron Condor, Calendar, Vertical, Butterfly, or Backratio are interpretations of combinations of option legs. They are not fundamental data structures.
 
@@ -10,7 +10,7 @@ Named strategies such as Iron Condor, Calendar, Vertical, Butterfly, or Backrati
 
 1. Store facts, not trading terminology.
 2. Broker-specific code ends at the importer boundary.
-3. An order is a collection of option legs.
+3. A Trade is a collection of one or more instrument legs.
 4. Position structures are derived from option legs and their relationships.
 5. Domain objects answer questions of fact.
 6. Evaluations interpret facts to support trading decisions.
@@ -27,16 +27,17 @@ CampaignIQ concepts and is independent of any broker platform.
 
 ## Translation Boundary
 
-CampaignIQ separates broker-specific operational records from the
-CampaignIQ domain model.
+The translation boundary separates broker-specific source models from
+CampaignIQ's core domain model.
 
-Broker platforms record orders, fills, and account activity.
+On the source side are broker concepts such as orders, fills, account
+activity, and statement sections.
 
-CampaignIQ translates those operational records into broker-independent
-domain concepts such as Trades, Positions, and Campaigns.
+On the domain side are CampaignIQ concepts such as Trades, Positions,
+and Campaigns.
 
-This separation isolates broker-specific behavior from the core
-Trading Intelligence model.
+Crossing the translation boundary removes broker-specific terminology
+from the core domain model.
 
 ## Modeling Principle
 
