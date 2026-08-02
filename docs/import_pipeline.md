@@ -12,16 +12,27 @@ the underlying trading facts.
 ## Pipeline
 
 Broker Statement
-    ↓
-Trading Events
-    ↓
+        │
+        ▼
+Source Reader
+        │
+        ▼
 Trades
-    ↓
+        │
+        ▼
 Positions
-    ↓
+        │
+        ▼
 Campaigns
-    ↓
+        │
+        ▼
 Trading Intelligence
+
+The Source Reader translates broker-specific records into CampaignIQ
+Trades.
+
+Trades are broker-independent and become the foundation for all
+subsequent analysis.
 
 Each stage adds meaning without altering the facts established by the
 previous stage.
