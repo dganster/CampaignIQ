@@ -8,7 +8,7 @@ from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
 def test_parse_first_trade_row() -> None:
     reader = CsvReader()
 
-    rows = reader.read("tests/data/Account Trading History.csv")
+    rows = reader.read("tests/data/thinkorswim/Account Trading History.csv")
     trade_rows = reader.trade_history_rows(rows)
 
     columns = CsvColumns(trade_rows[0])

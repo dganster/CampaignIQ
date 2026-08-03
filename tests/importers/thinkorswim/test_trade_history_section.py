@@ -6,7 +6,7 @@ from campaigniq.importers.thinkorswim.csv_reader import CsvReader
 def test_finds_trade_history_header() -> None:
     reader = CsvReader()
 
-    rows = reader.read("tests/data/Account Trading History.csv")
+    rows = reader.read("tests/data/thinkorswim/Account Trading History.csv")
     trade_rows = reader.trade_history_rows(rows)
 
     assert trade_rows

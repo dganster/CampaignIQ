@@ -22,3 +22,11 @@ def test_read_missing_file_raises_error() -> None:
 
     with pytest.raises(FileNotFoundError):
         reader.read("does_not_exist.csv")
+
+def test_read_returns_statement() -> None:
+    reader = ThinkorswimSourceReader()
+
+    statement = reader.read("tests/data/thinkorswim/Account Trading History.csv")
+
+    assert statement is not None
+

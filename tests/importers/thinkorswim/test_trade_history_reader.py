@@ -9,7 +9,7 @@ def test_reads_trade_history() -> None:
     reader = ThinkorswimTradeHistoryReader()
 
     orders = reader.read(
-        Path("tests/data/Account Trading History.csv")
+        Path("tests/data/thinkorswim/Account Trading History.csv")
     )
 
     assert len(orders) > 0
