@@ -55,3 +55,15 @@ Multiple Positions may contribute to a Campaign.
 
 Each layer adds meaning while preserving the facts established by the
 previous layer.
+
+## Source Modeling Principle
+
+CampaignIQ source models preserve the structure of broker data
+without interpreting its meaning.
+
+Source models represent broker concepts such as statements,
+sections, and rows.
+
+Interpretation begins in the importer layer, where broker data is
+translated into CampaignIQ domain concepts.
+

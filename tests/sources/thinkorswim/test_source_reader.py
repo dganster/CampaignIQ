@@ -30,3 +30,21 @@ def test_read_returns_statement() -> None:
 
     assert statement is not None
 
+def test_statement_has_sections() -> None:
+    reader = ThinkorswimSourceReader()
+
+    statement = reader.read(
+        "tests/data/thinkorswim/Account Trading History.csv"
+    )
+
+    assert len(statement.sections) == 11
+
+def test_first_section_is_cash_balance() -> None:
+    reader = ThinkorswimSourceReader()
+
+    statement = reader.read(
+        "tests/data/thinkorswim/Account Trading History.csv"
+    )
+
+    assert statement.sections[0].name == "Cash Balance"
+
