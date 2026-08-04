@@ -48,3 +48,14 @@ def test_first_section_is_cash_balance() -> None:
 
     assert statement.sections[0].name == "Cash Balance"
 
+def test_cash_balance_section_contains_lines() -> None:
+    reader = ThinkorswimSourceReader()
+
+    statement = reader.read(
+        "tests/data/thinkorswim/Account Trading History.csv"
+    )
+
+    cash = statement.sections[0]
+
+    assert len(cash.lines) > 0
+

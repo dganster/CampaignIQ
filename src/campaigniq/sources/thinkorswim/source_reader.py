@@ -1,9 +1,7 @@
 """Read Thinkorswim source data."""
 
 from campaigniq.sources.thinkorswim.section import Section
-from campaigniq.sources.thinkorswim.statement import (
-    ThinkorswimStatement,
-)
+from campaigniq.sources.thinkorswim.statement import ThinkorswimStatement
 
 
 class ThinkorswimSourceReader:
@@ -22,6 +20,7 @@ class ThinkorswimSourceReader:
 
     def read(self, filename: str) -> ThinkorswimStatement:
         statement = ThinkorswimStatement()
+        current_section = None
 
         with open(filename, encoding="utf-8-sig") as file:
             lines = [line.strip() for line in file]
@@ -44,6 +43,10 @@ class ThinkorswimSourceReader:
                 previous == ""
                 and next_line.startswith(self.HEADER_PREFIXES)
             ):
-                statement.sections.append(Section(current))
+                current_section = Section(current)
+                statement.sections.append(current_section)
+
+            elif current_section is not None:
+                current_section.lines.append(current)
 
         return statement
