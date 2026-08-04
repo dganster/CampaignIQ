@@ -12,11 +12,11 @@ class ThinkorswimTradeRowReader:
     def read(self, section: Section) -> list[ThinkorswimTradeRow]:
         """Read trade rows from a section."""
 
-        header = section.lines[0].split(",")
+        header = section.header()
 
         data_rows = [
             row.split(",")
-            for row in section.lines[1:]
+            for row in section.data_lines()
         ]
 
         columns = CsvColumns(header)

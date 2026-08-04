@@ -10,6 +10,6 @@ class ThinkorswimCashBalanceReader:
     def read(self, section: Section) -> CsvColumns:
         """Read a Cash Balance section."""
 
-        header = section.lines[0].split(",")
+        header = section.header()
 
         return CsvColumns(header)
