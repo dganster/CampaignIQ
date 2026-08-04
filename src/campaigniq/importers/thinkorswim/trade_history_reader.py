@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 from .broker_order import ThinkorswimBrokerOrder
-from .csv_columns import CsvColumns
 from .order_builder import ThinkorswimOrderBuilder
-from .trade_row import ThinkorswimTradeRow
+from .trade_row_reader import ThinkorswimTradeRowReader
 from campaigniq.sources.thinkorswim.section import Section
 
 class ThinkorswimTradeHistoryReader:
@@ -12,21 +11,11 @@ class ThinkorswimTradeHistoryReader:
 
     def __init__(self) -> None:
         self._order_builder = ThinkorswimOrderBuilder()
+        self._trade_row_reader = ThinkorswimTradeRowReader()
 
     def read(self, section: Section) -> list[ThinkorswimBrokerOrder]:
         """Read an Account Trade History section."""
 
-        header = section.lines[0].split(",")
-        data_rows = [
-            row.split(",")
-            for row in section.lines[1:]
-        ]
-
-        columns = CsvColumns(header)
-
-        trades = [
-            ThinkorswimTradeRow.from_csv(columns, row)
-            for row in data_rows
-        ]
+        trades = self._trade_row_reader.read(section)
 
         return self._order_builder.build(trades)
