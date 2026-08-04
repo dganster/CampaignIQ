@@ -1,14 +1,19 @@
+"""A Thinkorswim account statement."""
+
+from campaigniq.sources.thinkorswim.section import Section
+
+
 class ThinkorswimStatement:
     """A Thinkorswim account statement."""
 
     def __init__(self) -> None:
-        self.sections = []
+        self.sections: list[Section] = []
 
-def test_statement_contains_sections() -> None:
-    reader = ThinkorswimSourceReader()
+    def section(self, name: str) -> Section:
+        """Return the section with the given name."""
 
-    statement = reader.read(
-        "tests/data/thinkorswim/Account Trading History.csv"
-    )
+        for section in self.sections:
+            if section.name == name:
+                return section
 
-    assert len(statement.sections) > 0
+        raise KeyError(name)

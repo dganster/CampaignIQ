@@ -1,31 +1,26 @@
 """Read Thinkorswim trade history exports."""
 
 from __future__ import annotations
-
-from pathlib import Path
-
 from .broker_order import ThinkorswimBrokerOrder
 from .csv_columns import CsvColumns
-from .csv_reader import CsvReader
 from .order_builder import ThinkorswimOrderBuilder
 from .trade_row import ThinkorswimTradeRow
-
+from campaigniq.sources.thinkorswim.section import Section
 
 class ThinkorswimTradeHistoryReader:
     """Reads a Thinkorswim trade history CSV into broker orders."""
 
     def __init__(self) -> None:
-        self._csv_reader = CsvReader()
         self._order_builder = ThinkorswimOrderBuilder()
 
-    def read(self, filename: str | Path) -> list[ThinkorswimBrokerOrder]:
-        """Read a Thinkorswim CSV file."""
+    def read(self, section: Section) -> list[ThinkorswimBrokerOrder]:
+        """Read an Account Trade History section."""
 
-        rows = self._csv_reader.read(filename)
-        table = self._csv_reader.trade_history_rows(rows)
-
-        header = table[0]
-        data_rows = table[1:]
+        header = section.lines[0].split(",")
+        data_rows = [
+            row.split(",")
+            for row in section.lines[1:]
+        ]
 
         columns = CsvColumns(header)
 
