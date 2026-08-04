@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 
 _DATETIME_FORMAT = "%m/%d/%y %H:%M:%S"
 _DATE_FORMAT = "%d %b %y"
+_CSV_DATE_FORMAT = "%m/%d/%y"
+_TIME_FORMAT = "%H:%M:%S"
 
 
 def parse_datetime(value: str) -> datetime | None:
@@ -30,6 +32,27 @@ def parse_date(value: str) -> date | None:
         return None
 
     return datetime.strptime(value, _DATE_FORMAT).date()
+
+def parse_csv_date(value: str) -> date | None:
+    """Parse a Thinkorswim CSV date."""
+
+    value = value.strip()
+
+    if not value:
+        return None
+
+    return datetime.strptime(value, _CSV_DATE_FORMAT).date()
+
+
+def parse_time(value: str) -> time | None:
+    """Parse a Thinkorswim CSV time."""
+
+    value = value.strip()
+
+    if not value:
+        return None
+
+    return datetime.strptime(value, _TIME_FORMAT).time()
 
 
 def parse_decimal(value: str) -> Decimal | None:
