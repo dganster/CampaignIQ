@@ -17,8 +17,6 @@ def test_reads_cash_balance_section() -> None:
 
     reader = ThinkorswimCashBalanceReader()
 
-    columns = reader.read(section)
+    rows = reader.read(section)
 
-    assert columns["DATE"] == 0
-    assert columns["TIME"] == 1
-    assert columns["BALANCE"] == 8
+    assert len(rows) == 4
