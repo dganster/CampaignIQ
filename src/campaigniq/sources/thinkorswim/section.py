@@ -1,5 +1,6 @@
 """A section of a Thinkorswim statement."""
 
+from campaigniq.importers.thinkorswim.csv_columns import CsvColumns
 
 class Section:
     """A section of a Thinkorswim statement."""
@@ -23,4 +24,9 @@ class Section:
         return [
             line.split(",")
             for line in self.data_lines()
-        ]    
+        ] 
+
+    def columns(self) -> CsvColumns:
+        """Return the CSV columns."""
+
+        return CsvColumns(self.header())  

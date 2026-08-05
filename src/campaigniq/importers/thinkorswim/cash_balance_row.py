@@ -24,6 +24,7 @@ class ThinkorswimCashBalanceRow:
         columns: CsvColumns,
         row: list[str],
     ) -> "ThinkorswimCashBalanceRow":
+
         return cls(
             transaction_date=parse_csv_date(row[columns["DATE"]]),
             transaction_time=parse_time(row[columns["TIME"]]),
