@@ -18,4 +18,9 @@ class Section:
 
         return self.lines[1:]
 
-        
+    def rows(self) -> list[list[str]]:
+        """Return the CSV data rows split into fields."""
+        return [
+            line.split(",")
+            for line in self.data_lines()
+        ]    

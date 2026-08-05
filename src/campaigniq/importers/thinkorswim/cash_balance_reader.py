@@ -20,8 +20,9 @@ class ThinkorswimCashBalanceReader:
         return [
             ThinkorswimCashBalanceRow.from_csv(
                 columns,
-                line.split(","),
+                row,
             )
-            for line in section.data_lines()
-            if not line.startswith(",,,,TOTAL")
-    ]
+            for row in section.rows()
+            if row[4] != "TOTAL"
+        ]
+    
