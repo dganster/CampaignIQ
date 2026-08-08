@@ -9,4 +9,12 @@ class CampaignReconstructor:
 
     def reconstruct(self, trades: list[Trade]) -> list[Campaign]:
         """Return reconstructed campaigns."""
-        return [Campaign(trades=tuple(trades))] if trades else []
+
+        campaigns: dict[object, list[Trade]] = {}
+
+        for trade in trades:
+            contract = trade.legs[0].contract
+            campaigns.setdefault(contract, []).append(trade)
+
+        return [Campaign(trades=tuple(trades)) for trades in campaigns.values()]
+    
