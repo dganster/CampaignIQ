@@ -117,4 +117,90 @@ def test_trade_with_multiple_legs_is_rejected():
     with raises(ValueError):
         reconstructor.reconstruct([trade])
 
-        
+def test_same_underlying_different_contracts_can_be_one_campaign():
+    contract1 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
+
+    leg1 = OptionLeg(
+        contract=contract1,
+        side=Side.BUY,
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    trade1 = Trade(legs=(leg1,))
+
+    contract2 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("260"),
+        option_type=OptionType.CALL,
+    )
+    leg2 = OptionLeg(
+        contract=contract2,
+        side=Side.BUY,
+        quantity=Decimal("1"),
+        execution_price=Decimal("2.75"),
+        executed_at=datetime(2026, 7, 30, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    trade2 = Trade(legs=(leg2,))
+
+    reconstructor = CampaignReconstructor()
+
+    campaigns = reconstructor.reconstruct([trade1, trade2])
+
+    assert len(campaigns) == 1
+
+    assert campaigns[0].trades == (trade1, trade2)
+
+def test_same_underlying_more_than_seven_days_apart_creates_two_campaigns():
+
+    contract1 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
+
+    leg1 = OptionLeg(
+        contract=contract1,
+        side=Side.BUY,
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    trade1 = Trade(legs=(leg1,))
+
+    contract2 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 28),
+        strike=Decimal("260"),
+        option_type=OptionType.CALL,
+    )
+
+    leg2 = OptionLeg(
+        contract=contract2,
+        side=Side.BUY,
+        quantity=Decimal("1"),
+        execution_price=Decimal("2.75"),
+        executed_at=datetime(2026, 8, 7, 10, 30),
+        broker_strategy="SINGLE",
+    ) 
+
+    trade2 = Trade(legs=(leg2,))
+
+    reconstructor = CampaignReconstructor()
+
+    campaigns = reconstructor.reconstruct([trade1, trade2])
+
+    assert len(campaigns) == 2

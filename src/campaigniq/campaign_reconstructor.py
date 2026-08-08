@@ -1,5 +1,7 @@
 """Reconstruct investment campaigns from brokerage trades."""
 
+from datetime import timedelta
+
 from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.trade import Trade
 
@@ -10,14 +12,29 @@ class CampaignReconstructor:
     def reconstruct(self, trades: list[Trade]) -> list[Campaign]:
         """Return reconstructed campaigns."""
 
-        campaigns: dict[object, list[Trade]] = {}
+        campaigns: list[list[Trade]] = []
 
         for trade in trades:
-            contract = trade.legs[0].contract
-            
             if len(trade.legs) != 1:
-                raise ValueError("Campaign reconstruction currently requires single-leg trades.")
-            campaigns.setdefault(contract, []).append(trade)
+                raise ValueError(
+                    "Campaign reconstruction currently requires single-leg trades."
+                )
 
-        return [Campaign(trades=tuple(trades)) for trades in campaigns.values()]
-    
+            underlying = trade.legs[0].contract.underlying
+            executed_at = trade.legs[0].executed_at
+
+            for campaign_trades in campaigns:
+                last_trade = campaign_trades[-1]
+                last_executed_at = last_trade.legs[0].executed_at
+                last_underlying = last_trade.legs[0].contract.underlying
+
+                if (
+                    underlying == last_underlying
+                    and executed_at - last_executed_at <= timedelta(days=7)
+                ):
+                    campaign_trades.append(trade)
+                    break
+            else:
+                campaigns.append([trade])
+
+        return [Campaign(trades=tuple(trades)) for trades in campaigns]
