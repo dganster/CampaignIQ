@@ -5,7 +5,9 @@ from campaigniq.importers.thinkorswim.parsers import parse_option_type
 from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.importers.thinkorswim.parsers import parse_side
-
+from campaigniq.domain.trade import Trade
+from campaigniq.importers.thinkorswim.broker_order import ThinkorswimBrokerOrder
+from datetime import datetime
 
 def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
     """Translate a Thinkorswim trade row into a domain OptionContract."""
@@ -28,10 +30,15 @@ def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
         option_type=parse_option_type(row.option_type),
     )
 
-def to_leg(row: ThinkorswimTradeRow) -> OptionLeg:
+def to_leg(
+    row: ThinkorswimTradeRow,
+    execution_time: datetime | None = None,
+) -> OptionLeg:
     """Translate a Thinkorswim trade row into a domain Leg."""
 
-    if row.exec_time is None:
+    executed_at = row.exec_time or execution_time
+
+    if executed_at is None:
         raise ValueError("Trade row is missing an execution time.")
 
     return OptionLeg(
@@ -39,6 +46,16 @@ def to_leg(row: ThinkorswimTradeRow) -> OptionLeg:
         side=parse_side(row.side),
         quantity=row.qty,
         execution_price=row.price,
-        executed_at=row.exec_time,
+        executed_at=executed_at,
         broker_strategy=row.spread,
+    )
+
+def to_trade(order: ThinkorswimBrokerOrder) -> Trade:
+    """Translate a Thinkorswim brokerage order into one domain Trade."""
+
+    return Trade(
+        legs=tuple(
+            to_leg(row, execution_time=order.exec_time)
+            for row in order.legs
+        )
     )
