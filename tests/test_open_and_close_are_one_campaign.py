@@ -45,3 +45,5 @@ def test_open_and_close_are_one_campaign() -> None:
     assert campaigns[0].trades == (opening_trade, closing_trade)
     assert campaigns[0].trades[0] == opening_trade
     assert campaigns[0].trades[1] == closing_trade
+    assert campaigns[0].trades == (opening_trade, closing_trade)
+    
