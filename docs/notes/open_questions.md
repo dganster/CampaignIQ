@@ -25,3 +25,10 @@ Examples:
 Status:
 
 Needs additional exploration.
+
+
+## Investigate replacing OptionLeg with a more general Execution concept.
+
+Status:
+
+Open
