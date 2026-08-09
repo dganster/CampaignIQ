@@ -32,3 +32,19 @@ Needs additional exploration.
 Status:
 
 Open
+
+## How should CampaignIQ represent investment intent?
+
+Brokerage transactions provide observable execution facts, but those facts do not
+necessarily reveal the investor's complete Investment Thesis.
+
+Directional character such as bullish or bearish may sometimes be inferred from
+a Trade, particularly for options, but directional character is not equivalent
+to Investment Thesis.
+
+CampaignIQ should distinguish observable transaction facts, inferred directional
+character, and the investor's stated or inferred Investment Thesis.
+
+Status:
+
+Open
