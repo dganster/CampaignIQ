@@ -1,8 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-import pytest
-
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
@@ -92,8 +90,8 @@ def test_two_unrelated_trades_create_two_campaigns():
     assert campaigns[1].trades == (trade2,)
 
 
-def test_multi_leg_trade_is_rejected():
-    contract = OptionContract(
+def test_multi_leg_trade_creates_single_campaign():
+    contract1 = OptionContract(
         underlying="IBM",
         expiration=date(2026, 8, 21),
         strike=Decimal("250"),
@@ -101,32 +99,38 @@ def test_multi_leg_trade_is_rejected():
     )
 
     leg1 = OptionLeg(
-        contract=contract,
-        side=Side.BUY,
+        contract=contract1,
+        side=Side.SELL,
         quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        execution_price=Decimal("5.00"),
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
+        broker_strategy="VERTICAL",
+    )
+
+    contract2 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("260"),
+        option_type=OptionType.CALL,
     )
 
     leg2 = OptionLeg(
-        contract=contract,
-        side=Side.SELL,
+        contract=contract2,
+        side=Side.BUY,
         quantity=Decimal("1"),
-        execution_price=Decimal("4.50"),
+        execution_price=Decimal("2.50"),
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
+        broker_strategy="VERTICAL",
     )
 
     trade = Trade(legs=(leg1, leg2))
 
     reconstructor = CampaignReconstructor()
 
-    with pytest.raises(
-        ValueError,
-        match="single-leg trades",
-    ):
-        reconstructor.reconstruct([trade])
+    campaigns = reconstructor.reconstruct([trade])
+
+    assert len(campaigns) == 1
+    assert campaigns[0].trades == (trade,)
 
 
 def test_same_underlying_different_contracts_can_be_one_campaign():
@@ -218,5 +222,4 @@ def test_same_underlying_more_than_thirty_days_apart_creates_two_campaigns():
     assert len(campaigns) == 2
     assert campaigns[0].trades == (trade1,)
     assert campaigns[1].trades == (trade2,)
-
     
