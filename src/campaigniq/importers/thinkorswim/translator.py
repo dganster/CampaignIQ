@@ -1,13 +1,36 @@
 """Translate Thinkorswim objects into CampaignIQ domain objects."""
 
-from campaigniq.domain.option_contract import OptionContract
-from campaigniq.importers.thinkorswim.parsers import parse_option_type
-from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
-from campaigniq.domain.option_leg import OptionLeg
-from campaigniq.importers.thinkorswim.parsers import parse_side
-from campaigniq.domain.trade import Trade
-from campaigniq.importers.thinkorswim.broker_order import ThinkorswimBrokerOrder
 from datetime import datetime
+
+from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.option_leg import OptionLeg
+from campaigniq.domain.position_effect import PositionEffect
+from campaigniq.domain.trade import Trade
+from campaigniq.importers.thinkorswim.broker_order import (
+    ThinkorswimBrokerOrder,
+)
+from campaigniq.importers.thinkorswim.parsers import (
+    parse_option_type,
+    parse_side,
+)
+from campaigniq.importers.thinkorswim.trade_row import ThinkorswimTradeRow
+
+
+def parse_position_effect(value: str) -> PositionEffect:
+    """Translate a Thinkorswim position effect into the domain enum."""
+
+    normalized = value.strip().upper()
+
+    if normalized == "TO OPEN":
+        return PositionEffect.OPEN
+
+    if normalized == "TO CLOSE":
+        return PositionEffect.CLOSE
+
+    raise ValueError(
+        f"Unsupported position effect: {value!r}"
+    )
+
 
 def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
     """Translate a Thinkorswim trade row into a domain OptionContract."""
@@ -30,11 +53,12 @@ def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
         option_type=parse_option_type(row.option_type),
     )
 
+
 def to_leg(
     row: ThinkorswimTradeRow,
     execution_time: datetime | None = None,
 ) -> OptionLeg:
-    """Translate a Thinkorswim trade row into a domain Leg."""
+    """Translate a Thinkorswim trade row into a domain OptionLeg."""
 
     executed_at = row.exec_time or execution_time
 
@@ -44,11 +68,13 @@ def to_leg(
     return OptionLeg(
         contract=to_option_contract(row),
         side=parse_side(row.side),
+        position_effect=parse_position_effect(row.pos_effect),
         quantity=row.qty,
         execution_price=row.price,
         executed_at=executed_at,
         broker_strategy=row.spread,
     )
+
 
 def to_trade(order: ThinkorswimBrokerOrder) -> Trade:
     """Translate a Thinkorswim brokerage order into one domain Trade."""

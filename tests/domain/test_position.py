@@ -17,11 +17,11 @@ def test_position_requires_at_least_one_trade():
 
 from datetime import date, datetime
 from decimal import Decimal
-
 from campaigniq.domain.account import Account
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.position import Position
@@ -39,6 +39,7 @@ def test_position_accepts_trade() -> None:
     leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -64,6 +65,7 @@ def test_position_trade_count() -> None:
     leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),

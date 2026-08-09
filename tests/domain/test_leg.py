@@ -4,6 +4,7 @@ from decimal import Decimal
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 
 
@@ -20,6 +21,7 @@ def test_leg_fields() -> None:
     leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("5"),
         execution_price=Decimal("6.35"),
         executed_at=executed_at,
@@ -28,6 +30,7 @@ def test_leg_fields() -> None:
 
     assert leg.contract is contract
     assert leg.side is Side.BUY
+    assert leg.position_effect is PositionEffect.OPEN
     assert leg.quantity == Decimal("5")
     assert leg.execution_price == Decimal("6.35")
     assert leg.executed_at == executed_at

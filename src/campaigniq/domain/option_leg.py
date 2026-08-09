@@ -7,6 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 
 
@@ -16,7 +17,10 @@ class OptionLeg:
 
     contract: OptionContract
     side: Side
+    position_effect: PositionEffect
     quantity: Decimal
     execution_price: Decimal
     executed_at: datetime
     broker_strategy: str
+
+    

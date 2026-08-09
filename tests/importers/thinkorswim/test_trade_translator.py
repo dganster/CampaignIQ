@@ -1,9 +1,9 @@
 from datetime import date, datetime
 from decimal import Decimal
-
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 from campaigniq.importers.thinkorswim.broker_order import ThinkorswimBrokerOrder
@@ -60,6 +60,7 @@ def test_to_trade_preserves_multiple_legs() -> None:
                     option_type=OptionType.CALL,
                 ),
                 side=Side.SELL,
+                position_effect=PositionEffect.OPEN,
                 quantity=Decimal("1"),
                 execution_price=Decimal("5.00"),
                 executed_at=datetime(2026, 7, 29, 10, 30),
@@ -73,6 +74,7 @@ def test_to_trade_preserves_multiple_legs() -> None:
                     option_type=OptionType.CALL,
                 ),
                 side=Side.BUY,
+                position_effect=PositionEffect.OPEN,
                 quantity=Decimal("1"),
                 execution_price=Decimal("2.50"),
                 executed_at=datetime(2026, 7, 29, 10, 30),

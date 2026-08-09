@@ -1,10 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
-
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 
@@ -28,6 +28,7 @@ def test_single_trade_creates_single_campaign():
     leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -55,6 +56,7 @@ def test_two_unrelated_trades_create_two_campaigns():
     leg1 = OptionLeg(
         contract=contract1,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -73,6 +75,7 @@ def test_two_unrelated_trades_create_two_campaigns():
     leg2 = OptionLeg(
         contract=contract2,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("5.00"),
         executed_at=datetime(2026, 7, 29, 11, 30),
@@ -101,6 +104,7 @@ def test_multi_leg_trade_creates_single_campaign():
     leg1 = OptionLeg(
         contract=contract1,
         side=Side.SELL,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("5.00"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -117,6 +121,7 @@ def test_multi_leg_trade_creates_single_campaign():
     leg2 = OptionLeg(
         contract=contract2,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("2.50"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -144,6 +149,7 @@ def test_same_underlying_different_contracts_can_be_one_campaign():
     leg1 = OptionLeg(
         contract=contract1,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -162,6 +168,7 @@ def test_same_underlying_different_contracts_can_be_one_campaign():
     leg2 = OptionLeg(
         contract=contract2,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("2.75"),
         executed_at=datetime(2026, 7, 30, 10, 30),
@@ -189,6 +196,7 @@ def test_same_underlying_more_than_thirty_days_apart_creates_two_campaigns():
     leg1 = OptionLeg(
         contract=contract1,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("3.25"),
         executed_at=datetime(2026, 7, 29, 10, 30),
@@ -207,6 +215,7 @@ def test_same_underlying_more_than_thirty_days_apart_creates_two_campaigns():
     leg2 = OptionLeg(
         contract=contract2,
         side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
         quantity=Decimal("1"),
         execution_price=Decimal("2.75"),
         executed_at=datetime(2026, 8, 29, 10, 30),
