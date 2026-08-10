@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from campaigniq.domain.execution import Execution
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.position_effect import PositionEffect
@@ -65,13 +66,17 @@ def to_leg(
     if executed_at is None:
         raise ValueError("Trade row is missing an execution time.")
 
+    execution = Execution(
+        quantity=row.qty,
+        execution_price=row.price,
+        executed_at=executed_at,
+    )
+
     return OptionLeg(
         contract=to_option_contract(row),
         side=parse_side(row.side),
         position_effect=parse_position_effect(row.pos_effect),
-        quantity=row.qty,
-        execution_price=row.price,
-        executed_at=executed_at,
+        executions=(execution,),
         broker_strategy=row.spread,
     )
 

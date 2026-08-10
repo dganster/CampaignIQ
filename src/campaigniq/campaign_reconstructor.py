@@ -31,12 +31,18 @@ class CampaignReconstructor:
 
         for trade in trades:
             underlying = trade.legs[0].contract.underlying
-            executed_at = min(leg.executed_at for leg in trade.legs)
+            executed_at = min(
+                execution.executed_at
+                for leg in trade.legs
+                for execution in leg.executions
+            )
 
             for campaign_trades in campaigns:
                 last_trade = campaign_trades[-1]
                 last_executed_at = min(
-                    leg.executed_at for leg in last_trade.legs
+                    execution.executed_at
+                    for leg in last_trade.legs
+                    for execution in leg.executions
                 )
                 last_underlying = (
                     last_trade.legs[0].contract.underlying

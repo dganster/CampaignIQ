@@ -1,7 +1,9 @@
 from datetime import date, datetime
 from decimal import Decimal
-from campaigniq.domain.option_leg import OptionLeg
+
+from campaigniq.domain.execution import Execution
 from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
@@ -17,13 +19,17 @@ def test_single_leg_creates_single_trade() -> None:
         option_type=OptionType.CALL,
     )
 
+    execution = Execution(
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+    )
+
     leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
-        executed_at=datetime(2026, 7, 29, 10, 30),
+        executions=(execution,),
         broker_strategy="SINGLE",
     )
 
@@ -34,3 +40,4 @@ def test_single_leg_creates_single_trade() -> None:
     assert trades == [
         Trade(legs=(leg,))
     ]
+    

@@ -1,6 +1,9 @@
 from datetime import date, datetime
 from decimal import Decimal
+
 from campaigniq.campaign_reconstructor import CampaignReconstructor
+from campaigniq.domain.directional_bias import DirectionalBias
+from campaigniq.domain.execution import Execution
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
@@ -9,12 +12,40 @@ from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 
 
-def test_empty_trade_list_returns_no_campaigns():
-    reconstructor = CampaignReconstructor()
+def make_execution(
+    quantity: str,
+    price: str,
+    executed_at: datetime,
+) -> Execution:
+    return Execution(
+        quantity=Decimal(quantity),
+        execution_price=Decimal(price),
+        executed_at=executed_at,
+    )
 
-    campaigns = reconstructor.reconstruct([])
 
-    assert campaigns == []
+def make_leg(
+    contract: OptionContract,
+    side: Side,
+    position_effect: PositionEffect,
+    quantity: str,
+    price: str,
+    executed_at: datetime,
+    broker_strategy: str = "SINGLE",
+) -> OptionLeg:
+    execution = make_execution(
+        quantity=quantity,
+        price=price,
+        executed_at=executed_at,
+    )
+
+    return OptionLeg(
+        contract=contract,
+        side=side,
+        position_effect=position_effect,
+        executions=(execution,),
+        broker_strategy=broker_strategy,
+    )
 
 
 def test_single_trade_creates_single_campaign():
@@ -25,14 +56,13 @@ def test_single_trade_creates_single_campaign():
         option_type=OptionType.CALL,
     )
 
-    leg = OptionLeg(
+    leg = make_leg(
         contract=contract,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        quantity="1",
+        price="3.25",
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     trade = Trade(legs=(leg,))
@@ -53,33 +83,31 @@ def test_two_unrelated_trades_create_two_campaigns():
         option_type=OptionType.CALL,
     )
 
-    leg1 = OptionLeg(
+    leg1 = make_leg(
         contract=contract1,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        quantity="1",
+        price="3.25",
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     trade1 = Trade(legs=(leg1,))
 
     contract2 = OptionContract(
-        underlying="MSFT",
+        underlying="AAPL",
         expiration=date(2026, 8, 21),
-        strike=Decimal("500"),
+        strike=Decimal("250"),
         option_type=OptionType.CALL,
     )
 
-    leg2 = OptionLeg(
+    leg2 = make_leg(
         contract=contract2,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("5.00"),
-        executed_at=datetime(2026, 7, 29, 11, 30),
-        broker_strategy="SINGLE",
+        quantity="1",
+        price="3.25",
+        executed_at=datetime(2026, 7, 29, 10, 30),
     )
 
     trade2 = Trade(legs=(leg2,))
@@ -101,16 +129,6 @@ def test_multi_leg_trade_creates_single_campaign():
         option_type=OptionType.CALL,
     )
 
-    leg1 = OptionLeg(
-        contract=contract1,
-        side=Side.SELL,
-        position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("5.00"),
-        executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="VERTICAL",
-    )
-
     contract2 = OptionContract(
         underlying="IBM",
         expiration=date(2026, 8, 21),
@@ -118,12 +136,22 @@ def test_multi_leg_trade_creates_single_campaign():
         option_type=OptionType.CALL,
     )
 
-    leg2 = OptionLeg(
+    leg1 = make_leg(
+        contract=contract1,
+        side=Side.SELL,
+        position_effect=PositionEffect.OPEN,
+        quantity="1",
+        price="5.00",
+        executed_at=datetime(2026, 7, 29, 10, 30),
+        broker_strategy="VERTICAL",
+    )
+
+    leg2 = make_leg(
         contract=contract2,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("2.50"),
+        quantity="1",
+        price="2.50",
         executed_at=datetime(2026, 7, 29, 10, 30),
         broker_strategy="VERTICAL",
     )
@@ -146,14 +174,13 @@ def test_same_underlying_different_contracts_can_be_one_campaign():
         option_type=OptionType.CALL,
     )
 
-    leg1 = OptionLeg(
+    leg1 = make_leg(
         contract=contract1,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        quantity="1",
+        price="3.25",
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     trade1 = Trade(legs=(leg1,))
@@ -165,14 +192,13 @@ def test_same_underlying_different_contracts_can_be_one_campaign():
         option_type=OptionType.CALL,
     )
 
-    leg2 = OptionLeg(
+    leg2 = make_leg(
         contract=contract2,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("2.75"),
-        executed_at=datetime(2026, 7, 30, 10, 30),
-        broker_strategy="SINGLE",
+        quantity="1",
+        price="2.75",
+        executed_at=datetime(2026, 8, 10, 10, 30),
     )
 
     trade2 = Trade(legs=(leg2,))
@@ -193,33 +219,31 @@ def test_same_underlying_more_than_thirty_days_apart_creates_two_campaigns():
         option_type=OptionType.CALL,
     )
 
-    leg1 = OptionLeg(
+    leg1 = make_leg(
         contract=contract1,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        quantity="1",
+        price="3.25",
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     trade1 = Trade(legs=(leg1,))
 
     contract2 = OptionContract(
         underlying="IBM",
-        expiration=date(2026, 8, 28),
-        strike=Decimal("260"),
+        expiration=date(2026, 9, 18),
+        strike=Decimal("250"),
         option_type=OptionType.CALL,
     )
 
-    leg2 = OptionLeg(
+    leg2 = make_leg(
         contract=contract2,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("2.75"),
-        executed_at=datetime(2026, 8, 29, 10, 30),
-        broker_strategy="SINGLE",
+        quantity="1",
+        price="3.25",
+        executed_at=datetime(2026, 9, 1, 10, 30),
     )
 
     trade2 = Trade(legs=(leg2,))
@@ -232,69 +256,69 @@ def test_same_underlying_more_than_thirty_days_apart_creates_two_campaigns():
     assert campaigns[0].trades == (trade1,)
     assert campaigns[1].trades == (trade2,)
 
+
 def test_close_and_reopen_without_sentiment_change_are_one_campaign():
-        contract1 = OptionContract(
-            underlying="IBM",
-            expiration=date(2026, 8, 21),
-            strike=Decimal("250"),
-            option_type=OptionType.CALL,
-        )
+    contract1 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
 
-        opening_leg = OptionLeg(
-            contract=contract1,
-            side=Side.BUY,
-            position_effect=PositionEffect.OPEN,
-            quantity=Decimal("1"),
-            execution_price=Decimal("3.25"),
-            executed_at=datetime(2026, 7, 29, 10, 30),
-            broker_strategy="SINGLE",
-        )
+    opening_leg = make_leg(
+        contract=contract1,
+        side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
+        quantity="1",
+        price="3.25",
+        executed_at=datetime(2026, 7, 29, 10, 30),
+    )
 
-        opening_trade = Trade(legs=(opening_leg,))
+    opening_trade = Trade(legs=(opening_leg,))
 
-        closing_leg = OptionLeg(
-            contract=contract1,
-            side=Side.SELL,
-            position_effect=PositionEffect.CLOSE,
-            quantity=Decimal("1"),
-            execution_price=Decimal("4.50"),
-            executed_at=datetime(2026, 8, 3, 11, 15),
-            broker_strategy="SINGLE",
-        )
+    closing_leg = make_leg(
+        contract=contract1,
+        side=Side.SELL,
+        position_effect=PositionEffect.CLOSE,
+        quantity="1",
+        price="4.50",
+        executed_at=datetime(2026, 8, 3, 11, 15),
+    )
 
-        closing_trade = Trade(legs=(closing_leg,))
+    closing_trade = Trade(legs=(closing_leg,))
 
-        contract2 = OptionContract(
-            underlying="IBM",
-            expiration=date(2026, 8, 21),
-            strike=Decimal("260"),
-            option_type=OptionType.CALL,
-        )
+    contract2 = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("260"),
+        option_type=OptionType.CALL,
+    )
 
-        reopening_leg = OptionLeg(
-            contract=contract2,
-            side=Side.BUY,
-            position_effect=PositionEffect.OPEN,
-            quantity=Decimal("1"),
-            execution_price=Decimal("2.75"),
-            executed_at=datetime(2026, 8, 10, 10, 30),
-            broker_strategy="SINGLE",
-        )
+    reopening_leg = make_leg(
+        contract=contract2,
+        side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
+        quantity="1",
+        price="2.75",
+        executed_at=datetime(2026, 8, 10, 10, 30),
+    )
 
-        reopening_trade = Trade(legs=(reopening_leg,))
+    reopening_trade = Trade(legs=(reopening_leg,))
 
-        reconstructor = CampaignReconstructor()
+    reconstructor = CampaignReconstructor()
 
-        campaigns = reconstructor.reconstruct(
-            [opening_trade, closing_trade, reopening_trade]
-        )
+    campaigns = reconstructor.reconstruct(
+        [opening_trade, closing_trade, reopening_trade]
+    )
 
-        assert len(campaigns) == 1
-        assert campaigns[0].trades == (
-            opening_trade,
-            closing_trade,
-            reopening_trade,
-        )
+    assert len(campaigns) == 1
+    assert campaigns[0].trades == (
+        opening_trade,
+        closing_trade,
+        reopening_trade,
+    )
+
+
 def test_bullish_to_bearish_change_creates_new_campaign():
     call_contract = OptionContract(
         underlying="IBM",
@@ -303,26 +327,24 @@ def test_bullish_to_bearish_change_creates_new_campaign():
         option_type=OptionType.CALL,
     )
 
-    opening_call_leg = OptionLeg(
+    opening_call_leg = make_leg(
         contract=call_contract,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
+        quantity="1",
+        price="3.25",
         executed_at=datetime(2026, 7, 29, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     opening_call_trade = Trade(legs=(opening_call_leg,))
 
-    closing_call_leg = OptionLeg(
+    closing_call_leg = make_leg(
         contract=call_contract,
         side=Side.SELL,
         position_effect=PositionEffect.CLOSE,
-        quantity=Decimal("1"),
-        execution_price=Decimal("4.50"),
+        quantity="1",
+        price="4.50",
         executed_at=datetime(2026, 8, 3, 11, 15),
-        broker_strategy="SINGLE",
     )
 
     closing_call_trade = Trade(legs=(closing_call_leg,))
@@ -334,14 +356,13 @@ def test_bullish_to_bearish_change_creates_new_campaign():
         option_type=OptionType.PUT,
     )
 
-    opening_put_leg = OptionLeg(
+    opening_put_leg = make_leg(
         contract=put_contract,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.00"),
+        quantity="1",
+        price="3.00",
         executed_at=datetime(2026, 8, 10, 10, 30),
-        broker_strategy="SINGLE",
     )
 
     opening_put_trade = Trade(legs=(opening_put_leg,))
@@ -361,4 +382,5 @@ def test_bullish_to_bearish_change_creates_new_campaign():
         opening_call_trade,
         closing_call_trade,
     )
-    assert campaigns[1].trades == (opening_put_trade,)   
+    assert campaigns[1].trades == (opening_put_trade,)
+    

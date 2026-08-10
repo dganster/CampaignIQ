@@ -1,13 +1,15 @@
-
 from datetime import date, datetime
 from decimal import Decimal
-from campaigniq.domain.position_effect import PositionEffect
+
 from campaigniq.campaign_reconstructor import CampaignReconstructor
+from campaigniq.domain.execution import Execution
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
+
 
 def test_open_and_close_are_one_campaign() -> None:
     contract = OptionContract(
@@ -16,24 +18,34 @@ def test_open_and_close_are_one_campaign() -> None:
         strike=Decimal("250"),
         option_type=OptionType.CALL,
     )
+
+    opening_execution = Execution(
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+    )
+
     opening_leg = OptionLeg(
         contract=contract,
         side=Side.BUY,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
-        executed_at=datetime(2026, 7, 29, 10, 30),
+        executions=(opening_execution,),
         broker_strategy="SINGLE",
     )
+
     opening_trade = Trade(legs=(opening_leg,))
+
+    closing_execution = Execution(
+        quantity=Decimal("1"),
+        execution_price=Decimal("4.50"),
+        executed_at=datetime(2026, 8, 3, 11, 15),
+    )
 
     closing_leg = OptionLeg(
         contract=contract,
         side=Side.SELL,
         position_effect=PositionEffect.CLOSE,
-        quantity=Decimal("1"),
-        execution_price=Decimal("4.50"),
-        executed_at=datetime(2026, 8, 3, 11, 15),
+        executions=(closing_execution,),
         broker_strategy="SINGLE",
     )
 
@@ -41,7 +53,9 @@ def test_open_and_close_are_one_campaign() -> None:
 
     reconstructor = CampaignReconstructor()
 
-    campaigns = reconstructor.reconstruct([opening_trade, closing_trade])
+    campaigns = reconstructor.reconstruct(
+        [opening_trade, closing_trade]
+    )
 
     assert len(campaigns) == 1
     assert campaigns[0].trades == (opening_trade, closing_trade)

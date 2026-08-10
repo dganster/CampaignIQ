@@ -1,3 +1,9 @@
+# TODO:
+# Revisit Position.
+#
+# Position should represent current derived state rather than
+# owning the historical trades from which that state is computed.
+
 
 from dataclasses import dataclass
 

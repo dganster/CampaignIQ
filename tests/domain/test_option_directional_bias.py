@@ -1,13 +1,15 @@
 from datetime import date, datetime
 from decimal import Decimal
 
+import pytest
+
 from campaigniq.domain.directional_bias import DirectionalBias
+from campaigniq.domain.execution import Execution
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
-import pytest
 
 
 @pytest.mark.parametrize(
@@ -33,9 +35,13 @@ def test_opening_option_leg_directional_bias(
         ),
         side=side,
         position_effect=PositionEffect.OPEN,
-        quantity=Decimal("1"),
-        execution_price=Decimal("3.25"),
-        executed_at=datetime(2026, 7, 29, 10, 30),
+        executions=(
+            Execution(
+                quantity=Decimal("1"),
+                execution_price=Decimal("3.25"),
+                executed_at=datetime(2026, 7, 29, 10, 30),
+            ),
+        ),
         broker_strategy="SINGLE",
     )
 
