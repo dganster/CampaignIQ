@@ -295,4 +295,70 @@ def test_close_and_reopen_without_sentiment_change_are_one_campaign():
             closing_trade,
             reopening_trade,
         )
-        
+def test_bullish_to_bearish_change_creates_new_campaign():
+    call_contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
+
+    opening_call_leg = OptionLeg(
+        contract=call_contract,
+        side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.25"),
+        executed_at=datetime(2026, 7, 29, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    opening_call_trade = Trade(legs=(opening_call_leg,))
+
+    closing_call_leg = OptionLeg(
+        contract=call_contract,
+        side=Side.SELL,
+        position_effect=PositionEffect.CLOSE,
+        quantity=Decimal("1"),
+        execution_price=Decimal("4.50"),
+        executed_at=datetime(2026, 8, 3, 11, 15),
+        broker_strategy="SINGLE",
+    )
+
+    closing_call_trade = Trade(legs=(closing_call_leg,))
+
+    put_contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.PUT,
+    )
+
+    opening_put_leg = OptionLeg(
+        contract=put_contract,
+        side=Side.BUY,
+        position_effect=PositionEffect.OPEN,
+        quantity=Decimal("1"),
+        execution_price=Decimal("3.00"),
+        executed_at=datetime(2026, 8, 10, 10, 30),
+        broker_strategy="SINGLE",
+    )
+
+    opening_put_trade = Trade(legs=(opening_put_leg,))
+
+    reconstructor = CampaignReconstructor()
+
+    campaigns = reconstructor.reconstruct(
+        [
+            opening_call_trade,
+            closing_call_trade,
+            opening_put_trade,
+        ]
+    )
+
+    assert len(campaigns) == 2
+    assert campaigns[0].trades == (
+        opening_call_trade,
+        closing_call_trade,
+    )
+    assert campaigns[1].trades == (opening_put_trade,)   
