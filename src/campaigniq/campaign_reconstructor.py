@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.directional_bias import DirectionalBias
+from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.trade import Trade
 
 
@@ -23,6 +24,19 @@ class CampaignReconstructor:
                 return bias
 
         return DirectionalBias.NEUTRAL
+
+    def _started_before_data(
+        self,
+        campaign_trades: list[Trade],
+    ) -> bool:
+        """Return whether the campaign was already open in the data."""
+
+        first_trade = campaign_trades[0]
+
+        return not any(
+            leg.position_effect == PositionEffect.OPEN
+            for leg in first_trade.legs
+        )
 
     def reconstruct(self, trades: list[Trade]) -> list[Campaign]:
         """Return reconstructed campaigns."""
@@ -70,7 +84,12 @@ class CampaignReconstructor:
                 campaigns.append([trade])
 
         return [
-            Campaign(trades=tuple(campaign_trades))
+            Campaign(
+                trades=tuple(campaign_trades),
+                started_before_data=self._started_before_data(
+                    campaign_trades
+                ),
+            )
             for campaign_trades in campaigns
         ]
     

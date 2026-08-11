@@ -383,4 +383,28 @@ def test_bullish_to_bearish_change_creates_new_campaign():
         closing_call_trade,
     )
     assert campaigns[1].trades == (opening_put_trade,)
-    
+
+def test_closing_first_trade_marks_campaign_as_started_before_data():
+    contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 8, 21),
+        strike=Decimal("250"),
+        option_type=OptionType.CALL,
+    )
+
+    closing_leg = make_leg(
+        contract=contract,
+        side=Side.SELL,
+        position_effect=PositionEffect.CLOSE,
+        quantity="1",
+        price="4.50",
+        executed_at=datetime(2026, 7, 29, 10, 30),
+    )
+
+    closing_trade = Trade(legs=(closing_leg,))
+
+    campaigns = CampaignReconstructor().reconstruct([closing_trade])
+
+    assert len(campaigns) == 1
+    assert campaigns[0].started_before_data is True
+        
