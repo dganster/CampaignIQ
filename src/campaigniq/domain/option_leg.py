@@ -25,6 +25,12 @@ class OptionLeg:
     broker_strategy: str
 
     @property
+    def instrument(self) -> OptionContract:
+        """Return the option contract as the generic instrument."""
+
+        return self.contract
+
+    @property
     def quantity(self) -> Decimal:
         """Return the total quantity represented by the executions."""
 
@@ -57,7 +63,9 @@ class OptionLeg:
         """Return the time of the earliest execution."""
 
         if not self.executions:
-            raise ValueError("Option leg must contain at least one execution.")
+            raise ValueError(
+                "Option leg must contain at least one execution."
+            )
 
         return min(
             execution.executed_at
@@ -69,8 +77,8 @@ class OptionLeg:
 
         if self.position_effect == PositionEffect.CLOSE:
             raise ValueError(
-                "Directional bias of a closing leg depends on the position "
-                "being closed."
+                "Directional bias of a closing leg depends on the "
+                "position being closed."
             )
 
         if self.contract.option_type == OptionType.CALL:

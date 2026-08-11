@@ -13,7 +13,8 @@ from campaigniq.domain.option_type import OptionType
 class OptionContract:
     """A uniquely identifiable option contract."""
 
-    underlying: Equity
+    underlying: str
     expiration: date
     strike: Decimal
     option_type: OptionType
+    

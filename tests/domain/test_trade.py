@@ -3,8 +3,8 @@ from decimal import Decimal
 
 from campaigniq.domain.directional_bias import DirectionalBias
 from campaigniq.domain.execution import Execution
+from campaigniq.domain.leg import Leg
 from campaigniq.domain.option_contract import OptionContract
-from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
@@ -31,9 +31,9 @@ def make_leg(
     price: str,
     executed_at: datetime,
     broker_strategy: str,
-) -> OptionLeg:
-    return OptionLeg(
-        contract=contract,
+) -> Leg:
+    return Leg(
+        instrument=contract,
         side=side,
         position_effect=position_effect,
         executions=(
@@ -43,7 +43,6 @@ def make_leg(
                 executed_at=executed_at,
             ),
         ),
-        broker_strategy=broker_strategy,
     )
 
 
