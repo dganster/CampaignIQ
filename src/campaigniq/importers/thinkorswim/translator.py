@@ -3,10 +3,12 @@
 from datetime import datetime
 
 from campaigniq.domain.execution import Execution
+from campaigniq.domain.instrument_leg import InstrumentLeg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.trade import Trade
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.importers.thinkorswim.broker_order import (
     ThinkorswimBrokerOrder,
 )
@@ -58,8 +60,8 @@ def to_option_contract(row: ThinkorswimTradeRow) -> OptionContract:
 def to_leg(
     row: ThinkorswimTradeRow,
     execution_time: datetime | None = None,
-) -> OptionLeg:
-    """Translate a Thinkorswim trade row into a domain OptionLeg."""
+) -> OptionLeg | InstrumentLeg:
+    """Translate a Thinkorswim trade row into a domain leg."""
 
     executed_at = row.exec_time or execution_time
 
@@ -72,10 +74,21 @@ def to_leg(
         executed_at=executed_at,
     )
 
+    side = parse_side(row.side)
+    position_effect = parse_position_effect(row.pos_effect)
+
+    if row.option_type.upper() == "STOCK":
+        return InstrumentLeg(
+            instrument=Instrument(row.symbol),
+            side=side,
+            position_effect=position_effect,
+            executions=(execution,),
+        )
+
     return OptionLeg(
         contract=to_option_contract(row),
-        side=parse_side(row.side),
-        position_effect=parse_position_effect(row.pos_effect),
+        side=side,
+        position_effect=position_effect,
         executions=(execution,),
         broker_strategy=row.spread,
     )

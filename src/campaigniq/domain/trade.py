@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from campaigniq.domain.directional_bias import DirectionalBias
-from campaigniq.domain.execution import Execution
 from campaigniq.domain.leg import Leg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_directional_bias import (
@@ -35,9 +34,18 @@ class Trade:
         if not opening_legs:
             return DirectionalBias.NEUTRAL
 
+        option_opening_legs = [
+            leg
+            for leg in opening_legs
+            if isinstance(leg.instrument, OptionContract)
+        ]
+
+        if not option_opening_legs:
+            return DirectionalBias.NEUTRAL
+
         biases = {
             option_leg_directional_bias(leg)
-            for leg in opening_legs
+            for leg in option_opening_legs
         }
 
         if len(biases) == 1:
