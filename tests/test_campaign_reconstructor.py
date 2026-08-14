@@ -4,13 +4,14 @@ from decimal import Decimal
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.directional_bias import DirectionalBias
 from campaigniq.domain.execution import Execution
+from campaigniq.domain.leg import Leg
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
-
+from campaigniq.domain.value_objects.instrument import Instrument
 
 def make_execution(
     quantity: str,
@@ -407,4 +408,26 @@ def test_closing_first_trade_marks_campaign_as_started_before_data():
 
     assert len(campaigns) == 1
     assert campaigns[0].started_before_data is True
-        
+
+def test_stock_trade_can_be_reconstructed_into_campaign() -> None:
+    trade = Trade(
+        legs=(
+            Leg(
+                instrument=Instrument("SPY"),
+                side=Side.BUY,
+                position_effect=PositionEffect.OPEN,
+                executions=(
+                    Execution(
+                        quantity=Decimal("100"),
+                        execution_price=Decimal("742.35"),
+                        executed_at=datetime(2026, 7, 20, 13, 51, 42),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    campaigns = CampaignReconstructor().reconstruct([trade])
+
+    assert len(campaigns) == 1
+    assert campaigns[0].trades == (trade,)

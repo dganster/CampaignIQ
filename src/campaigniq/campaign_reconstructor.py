@@ -4,12 +4,23 @@ from datetime import timedelta
 
 from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.directional_bias import DirectionalBias
+from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.trade import Trade
 
 
 class CampaignReconstructor:
     """Reconstruct investment campaigns."""
+
+    def _underlying(self, trade: Trade) -> str:
+        """Return the underlying symbol for a trade."""
+
+        instrument = trade.legs[0].instrument
+
+        if isinstance(instrument, OptionContract):
+            return instrument.underlying
+
+        return instrument.symbol
 
     def _campaign_directional_bias(
         self,
@@ -44,7 +55,7 @@ class CampaignReconstructor:
         campaigns: list[list[Trade]] = []
 
         for trade in trades:
-            underlying = trade.legs[0].contract.underlying
+            underlying = self._underlying(trade)
             executed_at = min(
                 execution.executed_at
                 for leg in trade.legs
@@ -58,9 +69,7 @@ class CampaignReconstructor:
                     for leg in last_trade.legs
                     for execution in leg.executions
                 )
-                last_underlying = (
-                    last_trade.legs[0].contract.underlying
-                )
+                last_underlying = self._underlying(last_trade)
 
                 campaign_bias = self._campaign_directional_bias(
                     campaign_trades

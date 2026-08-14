@@ -19,8 +19,6 @@ from campaigniq.importers.thinkorswim.translator import (
     to_trade,
 )
 
-
-
 def make_option_row(**overrides) -> ThinkorswimTradeRow:
     """Create a Thinkorswim option trade row for tests."""
 
@@ -164,3 +162,71 @@ def test_to_trade_preserves_coins_covered_call_closing_legs() -> None:
     assert stock_leg.side is Side.SELL
     assert stock_leg.position_effect is PositionEffect.CLOSE
     assert stock_leg.quantity == Decimal("-500")
+
+def test_to_leg_translates_etf_trade() -> None:
+    executed_at = datetime(2026, 7, 20, 13, 51, 42)
+
+    row = ThinkorswimTradeRow(
+        exec_time=executed_at,
+        spread="COVERED",
+        side="BUY",
+        qty=Decimal("100"),
+        pos_effect="TO OPEN",
+        symbol="SPY",
+        exp=None,
+        strike=None,
+        option_type="ETF",
+        price=Decimal("742.35"),
+        net_price="DEBIT",
+        order_type="",
+    )
+
+    leg = to_leg(row)
+
+    assert isinstance(leg, InstrumentLeg)
+    assert leg.instrument == Instrument("SPY")
+    assert leg.side is Side.BUY
+    assert leg.position_effect is PositionEffect.OPEN
+    assert leg.quantity == Decimal("100")
+    assert leg.execution_price == Decimal("742.35")
+    assert leg.executed_at == executed_at
+
+def test_to_leg_rejects_forex_trade() -> None:
+    executed_at = datetime(2026, 1, 5, 11, 50, 41)
+
+    row = ThinkorswimTradeRow(
+        exec_time=executed_at,
+        spread="FOREX",
+        side="BUY",
+        qty=Decimal("50000"),
+        pos_effect="TO OPEN",
+        symbol="EUR/USD",
+        exp=None,
+        strike=None,
+        option_type="FOREX",
+        price=Decimal("1.17232"),
+        net_price="1.17232",
+        order_type="",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported instrument type"):
+        to_leg(row)
+
+def test_to_leg_rejects_unsupported_instrument_type() -> None:
+    row = ThinkorswimTradeRow(
+        exec_time=datetime(2026, 8, 14, 10, 0, 0),
+        spread="",
+        side="BUY",
+        qty=Decimal("100000"),
+        pos_effect="TO OPEN",
+        symbol="EUR/USD",
+        exp=None,
+        strike=None,
+        option_type="FOREX",
+        price=Decimal("1.1700"),
+        net_price="DEBIT",
+        order_type="",
+    )
+
+    with pytest.raises(ValueError, match="Unsupported instrument type"):
+        to_leg(row)

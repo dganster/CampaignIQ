@@ -77,22 +77,28 @@ def to_leg(
     side = parse_side(row.side)
     position_effect = parse_position_effect(row.pos_effect)
 
-    if row.option_type.upper() == "STOCK":
+    instrument_type = row.option_type.upper()
+
+    if instrument_type in {"STOCK", "ETF"}:
         return InstrumentLeg(
             instrument=Instrument(row.symbol),
             side=side,
             position_effect=position_effect,
             executions=(execution,),
+         )
+
+    if instrument_type in {"CALL", "PUT"}:
+        return OptionLeg(
+            contract=to_option_contract(row),
+            side=side,
+            position_effect=position_effect,
+            executions=(execution,),
+            broker_strategy=row.spread,
         )
 
-    return OptionLeg(
-        contract=to_option_contract(row),
-        side=side,
-        position_effect=position_effect,
-        executions=(execution,),
-        broker_strategy=row.spread,
+    raise ValueError(
+        f"Unsupported instrument type: {row.option_type!r}"
     )
-
 
 def to_trade(order: ThinkorswimBrokerOrder) -> Trade:
     """Translate a Thinkorswim brokerage order into one domain Trade."""

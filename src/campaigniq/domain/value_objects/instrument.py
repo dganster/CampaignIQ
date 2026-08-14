@@ -1,23 +1,15 @@
-"""
-Represents an equity security.
-"""
-
-from __future__ import annotations
+"""Instrument value object."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
 class Instrument:
-    """
-    A publicly traded equity security.
-
-    Examples:
-        IBM
-        AAPL
-        SPY
-    """
+    """A tradeable non-option instrument."""
 
     symbol: str
 
-
+    @property
+    def underlying(self) -> str:
+        """Return the underlying symbol for this instrument."""
+        return self.symbol
