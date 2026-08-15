@@ -94,11 +94,11 @@ class CampaignReconstructor:
 
         return [
             Campaign(
+                campaign_id=f"CAMP-{index:06d}",
                 trades=tuple(campaign_trades),
                 started_before_data=self._started_before_data(
                     campaign_trades
                 ),
             )
-            for campaign_trades in campaigns
+            for index, campaign_trades in enumerate(campaigns, start=1)
         ]
-    

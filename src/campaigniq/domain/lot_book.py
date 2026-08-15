@@ -36,12 +36,13 @@ class LotBook:
         """Return currently open lots for an instrument."""
         return tuple(self._lots.get(instrument, ()))
 
-    def apply_event(self, event: PositionEvent) -> tuple[LotAllocation, ...]:
-        """Apply a signed economic position event and return closed-lot allocations.
-
-        Events such as option assignment can close an existing option lot and
-        simultaneously close or open the underlying stock position.
-        """
+    def apply_event(
+        self,
+        event: PositionEvent,
+        *,
+        campaign_id: str | None = None,
+    ) -> tuple[LotAllocation, ...]:
+        """Apply a signed economic position event and return closed-lot allocations."""
         allocations: list[LotAllocation] = []
         for change in event.changes:
             allocations.extend(
@@ -49,6 +50,7 @@ class LotBook:
                     instrument=change.instrument,
                     quantity=change.quantity,
                     occurred_at=event.occurred_at,
+                    campaign_id=campaign_id,
                 )
             )
         return tuple(allocations)
@@ -59,6 +61,7 @@ class LotBook:
         instrument: Instrument,
         quantity: Decimal,
         occurred_at: datetime,
+        campaign_id: str | None = None,
     ) -> tuple[LotAllocation, ...]:
         """Apply a signed position change, closing opposite lots first."""
         if quantity == 0:
@@ -76,9 +79,15 @@ class LotBook:
                         closing_side=Side.BUY,
                     )
                 )
+
             remaining = quantity - take
             if remaining:
-                self._append_lot(instrument, remaining, occurred_at)
+                self._append_lot(
+                    instrument,
+                    remaining,
+                    occurred_at,
+                    campaign_id=campaign_id,
+                )
         else:
             quantity_abs = abs(quantity)
             closing_quantity = self._available_opposite_quantity(instrument, 1)
@@ -91,13 +100,24 @@ class LotBook:
                         closing_side=Side.SELL,
                     )
                 )
+
             remaining = quantity_abs - take
             if remaining:
-                self._append_lot(instrument, -remaining, occurred_at)
+                self._append_lot(
+                    instrument,
+                    -remaining,
+                    occurred_at,
+                    campaign_id=campaign_id,
+                )
         return tuple(allocations)
 
     def _append_lot(
-        self, instrument: Instrument, quantity: Decimal, opened_at: datetime
+        self,
+        instrument: Instrument,
+        quantity: Decimal,
+        opened_at: datetime,
+        *,
+        campaign_id: str | None = None,
     ) -> None:
         self._lots[instrument].append(
             Lot(
@@ -106,17 +126,26 @@ class LotBook:
                 quantity=quantity,
                 opened_at=opened_at,
                 basis_total=None,
+                campaign_id=campaign_id,
             )
         )
 
     def _available_opposite_quantity(self, instrument: Instrument, sign: int) -> Decimal:
         return sum(
-            (abs(lot.quantity) for lot in self._lots.get(instrument, [])
-             if (lot.quantity > 0) == (sign > 0)),
+            (
+                abs(lot.quantity)
+                for lot in self._lots.get(instrument, [])
+                if (lot.quantity > 0) == (sign > 0)
+            ),
             Decimal("0"),
         )
 
-    def apply_trade(self, trade: Trade) -> tuple[LotAllocation, ...]:
+    def apply_trade(
+        self,
+        trade: Trade,
+        *,
+        campaign_id: str | None = None,
+    ) -> tuple[LotAllocation, ...]:
         """Apply a trade and return allocations created by closing legs."""
         allocations: list[LotAllocation] = []
         for leg in trade.legs:
@@ -136,6 +165,7 @@ class LotBook:
                         quantity=signed,
                         opened_at=self._leg_time(leg),
                         basis_total=None,
+                        campaign_id=campaign_id,
                     )
                 )
                 continue
@@ -172,9 +202,9 @@ class LotBook:
             if index == len(allocations) - 1:
                 basis = remaining
             else:
-                basis = (record.cost_basis * allocation.quantity / total_quantity).quantize(
-                    Decimal("0.01")
-                )
+                basis = (
+                    record.cost_basis * allocation.quantity / total_quantity
+                ).quantize(Decimal("0.01"))
                 remaining -= basis
             result.append(
                 LotAllocation(
@@ -212,11 +242,13 @@ class LotBook:
                     broker_basis=None,
                 )
             )
+
             new_quantity = (
                 lot.quantity - consumed
                 if lot.quantity > 0
                 else lot.quantity + consumed
             )
+
             if new_quantity == 0:
                 lots.remove(lot)
             else:
@@ -227,6 +259,7 @@ class LotBook:
                     opened_at=lot.opened_at,
                     basis_total=lot.basis_total,
                     basis_source=lot.basis_source,
+                    campaign_id=lot.campaign_id,
                 )
                 position = lots.index(lot)
                 lots[position] = replacement

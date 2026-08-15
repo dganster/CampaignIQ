@@ -19,6 +19,7 @@ class Lot:
     opened_at: datetime
     basis_total: Decimal | None
     basis_source: str | None = None
+    campaign_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.quantity == 0:

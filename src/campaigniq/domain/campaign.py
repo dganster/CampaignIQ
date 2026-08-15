@@ -9,6 +9,6 @@ from campaigniq.domain.trade import Trade
 class Campaign:
     """A reconstructed investment campaign."""
 
+    campaign_id: str
     trades: tuple[Trade, ...]
     started_before_data: bool = False
-    
