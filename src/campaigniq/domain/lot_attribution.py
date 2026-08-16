@@ -21,6 +21,22 @@ class RealizedAttribution:
         return sum((a.quantity for a in self.allocations), Decimal("0"))
 
     @property
+    def campaign_ids(self) -> tuple[str, ...]:
+        """Return distinct known campaign IDs represented by allocations."""
+        return tuple(
+            dict.fromkeys(
+                a.campaign_id
+                for a in self.allocations
+                if a.campaign_id is not None
+            )
+        )
+
+    @property
+    def has_unassigned_campaign_allocation(self) -> bool:
+        """Return whether any allocation lacks campaign provenance."""
+        return any(a.campaign_id is None for a in self.allocations)
+
+    @property
     def basis_reconciled(self) -> bool:
         if any(a.broker_basis is None for a in self.allocations):
             return False

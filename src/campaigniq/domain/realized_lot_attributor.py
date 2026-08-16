@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
+from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.leg import Leg
 from campaigniq.domain.lot_allocation import LotAllocation
 from campaigniq.domain.lot_attribution import RealizedAttribution
@@ -43,16 +44,59 @@ class RealizedLotAttributor:
         records: list[RealizedGainLossRecord],
         events: list[PositionEvent] | None = None,
     ) -> tuple[RealizedAttribution, ...]:
+        """Attribute records using the original trade/event API."""
+        return self._attribute(
+            trades=trades,
+            records=records,
+            events=events,
+            campaign_ids=None,
+        )
+
+    def attribute_campaigns(
+        self,
+        campaigns: list[Campaign],
+        records: list[RealizedGainLossRecord],
+        events: list[PositionEvent] | None = None,
+    ) -> tuple[RealizedAttribution, ...]:
+        """Attribute records while preserving each campaign's provenance."""
+        trades: list[Trade] = []
+        campaign_ids: dict[int, str] = {}
+
+        for campaign in campaigns:
+            for trade in campaign.trades:
+                trades.append(trade)
+                campaign_ids[id(trade)] = campaign.campaign_id
+
+        return self._attribute(
+            trades=trades,
+            records=records,
+            events=events,
+            campaign_ids=campaign_ids,
+        )
+
+    def _attribute(
+        self,
+        *,
+        trades: list[Trade],
+        records: list[RealizedGainLossRecord],
+        events: list[PositionEvent] | None,
+        campaign_ids: dict[int, str] | None,
+    ) -> tuple[RealizedAttribution, ...]:
         activities: list[_ClosingActivity] = []
         assignment_dates = self._assignment_dates(events or [])
 
-        # Trades remain the source of actual lot consumption. Assignment
-        # events provide the economic closure date when Schwab's realized
-        # record is dated on the assignment but the corresponding stock
-        # transaction appears later in Account Trade History.
         for trade in sorted(trades, key=self._trade_time):
+            campaign_id = (
+                campaign_ids.get(id(trade))
+                if campaign_ids is not None
+                else None
+            )
+
             for leg in trade.legs:
-                allocations = self.lot_book.apply_trade(Trade(legs=(leg,)))
+                allocations = self.lot_book.apply_trade(
+                    Trade(legs=(leg,)),
+                    campaign_id=campaign_id,
+                )
                 if leg.position_effect != PositionEffect.CLOSE:
                     continue
                 activities.append(
@@ -66,16 +110,8 @@ class RealizedLotAttributor:
                     )
                 )
 
-        # Assignment events also close the option lot. We need that closure
-        # in the lot book, but the underlying stock change is represented by
-        # Schwab's later stock transaction and must not be counted twice here.
         for event in sorted(events or [], key=lambda item: item.occurred_at):
             for change in event.changes:
-                # If the broker also reports an explicit closing trade for
-                # this instrument, that trade is the source of lot
-                # consumption. The event supplies the economic date through
-                # assignment_dates above, so applying the event again would
-                # double-consume the lot.
                 if self._has_trade_closure(trades, change.instrument):
                     continue
 
@@ -85,11 +121,6 @@ class RealizedLotAttributor:
                     occurred_at=event.occurred_at,
                 )
 
-                # Some broker economic events (notably option assignment)
-                # are the only source of the underlying stock disposition.
-                # Preserve those allocations as closing activity so a broker
-                # realized record can be matched even when no stock sale
-                # exists in Account Trade History.
                 if allocations and change.quantity < 0:
                     activities.append(
                         _ClosingActivity(
@@ -112,29 +143,43 @@ class RealizedLotAttributor:
                 record,
             )
             results.append(
-                RealizedAttribution(record=record, allocations=attributed)
+                RealizedAttribution(
+                    record=record,
+                    allocations=attributed,
+                )
             )
+
         return tuple(results)
 
     @staticmethod
-    def _assignment_dates(events: list[PositionEvent]) -> dict[Instrument, list[date]]:
+    def _assignment_dates(
+        events: list[PositionEvent],
+    ) -> dict[Instrument, list[date]]:
         result: dict[Instrument, list[date]] = {}
         for event in events:
             for change in event.changes:
-                result.setdefault(change.instrument, []).append(event.occurred_at.date())
+                result.setdefault(change.instrument, []).append(
+                    event.occurred_at.date()
+                )
         return result
 
     @staticmethod
-    def _has_trade_closure(trades: list[Trade], instrument: Instrument) -> bool:
+    def _has_trade_closure(
+        trades: list[Trade],
+        instrument: Instrument,
+    ) -> bool:
         return any(
-            leg.instrument == instrument and leg.position_effect == PositionEffect.CLOSE
+            leg.instrument == instrument
+            and leg.position_effect == PositionEffect.CLOSE
             for trade in trades
             for leg in trade.legs
         )
 
     @classmethod
     def _economic_closed_date(
-        cls, leg: Leg, assignment_dates: dict[Instrument, list[date]]
+        cls,
+        leg: Leg,
+        assignment_dates: dict[Instrument, list[date]],
     ) -> date:
         trade_date = cls._leg_date(leg)
         dates = assignment_dates.get(leg.instrument, [])
@@ -142,11 +187,6 @@ class RealizedLotAttributor:
         if prior:
             return max(prior)
 
-        # Schwab's Realized Gain/Loss closed date for ordinary option
-        # transactions is the next business day (settlement), not the
-        # Thinkorswim execution date. Stock dispositions remain same-day
-        # for this report, while pending transactions are handled by the
-        # settlement-aware importer before attribution.
         if isinstance(leg.instrument, OptionContract):
             return cls._next_business_day(trade_date)
 
@@ -161,27 +201,23 @@ class RealizedLotAttributor:
 
     @staticmethod
     def _is_us_market_holiday(value: date) -> bool:
-        # NYSE-style full-day holidays relevant to settlement dates.
-        # Kept local to the attribution boundary so the domain does not
-        # acquire a dependency on a calendar package.
         if value.month == 1 and value.day == 1:
             return True
         if value.month == 1 and value.weekday() == 0 and 15 <= value.day <= 21:
-            return True  # Martin Luther King Jr. Day
+            return True
         if value.month == 2 and value.weekday() == 0 and 15 <= value.day <= 21:
-            return True  # Presidents' Day
+            return True
         if value.month == 6 and value.day == 19:
-            return True  # Juneteenth
+            return True
         if value.month == 7 and value.day == 4:
-            return True  # Independence Day (observed handling below)
+            return True
         if value.month == 9 and value.weekday() == 0 and 1 <= value.day <= 7:
-            return True  # Labor Day
+            return True
         if value.month == 11 and value.weekday() == 3 and 22 <= value.day <= 28:
-            return True  # Thanksgiving
+            return True
         if value.month == 12 and value.day == 25:
-            return True  # Christmas
+            return True
 
-        # Good Friday: two days before Easter Sunday.
         a = value.year % 19
         b = value.year // 100
         c = value.year % 100
@@ -197,10 +233,10 @@ class RealizedLotAttributor:
         month = (h + l - 7 * m + 114) // 31
         day = ((h + l - 7 * m + 114) % 31) + 1
         easter = date(value.year, month, day)
+
         if value == easter - timedelta(days=2):
             return True
 
-        # Saturday holidays are observed Friday; Sunday holidays Monday.
         if value.weekday() == 4:
             prior = value + timedelta(days=1)
             if prior.month == 7 and prior.day == 4:
@@ -225,15 +261,7 @@ class RealizedLotAttributor:
         activities: list[_ClosingActivity],
         record: RealizedGainLossRecord,
     ) -> tuple[LotAllocation, ...]:
-        """Consume closing activity matching one broker realized record.
-
-        A broker may aggregate several executions into one realized record.
-        For example, Schwab reports one five-contract NVDA close while the
-        trading history may contain separate four- and one-contract fills.
-        Conversely, one execution may need to be split across multiple broker
-        records.  Matching therefore operates on quantities rather than
-        requiring one-to-one trade records.
-        """
+        """Consume closing activity matching one broker realized record."""
         remaining = record.quantity
         matched: list[LotAllocation] = []
 
@@ -260,7 +288,8 @@ class RealizedLotAttributor:
                     instrument=activity.instrument,
                     quantity=activity.quantity - take,
                     allocations=cls._remaining_allocations(
-                        activity.allocations, take
+                        activity.allocations,
+                        take,
                     ),
                 )
                 index += 1
@@ -292,6 +321,7 @@ class RealizedLotAttributor:
                     lot_id=allocation.lot_id,
                     quantity=take,
                     broker_basis=None,
+                    campaign_id=allocation.campaign_id,
                 )
             )
             remaining -= take
@@ -319,6 +349,7 @@ class RealizedLotAttributor:
                         lot_id=allocation.lot_id,
                         quantity=left,
                         broker_basis=None,
+                        campaign_id=allocation.campaign_id,
                     )
                 )
         if remaining:
@@ -335,7 +366,9 @@ class RealizedLotAttributor:
 
     @staticmethod
     def _leg_date(leg: Leg) -> date:
-        return min(execution.executed_at for execution in leg.executions).date()
+        return min(
+            execution.executed_at for execution in leg.executions
+        ).date()
 
     @staticmethod
     def _leg_quantity(leg: Leg) -> Decimal:

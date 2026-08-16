@@ -130,7 +130,11 @@ class LotBook:
             )
         )
 
-    def _available_opposite_quantity(self, instrument: Instrument, sign: int) -> Decimal:
+    def _available_opposite_quantity(
+        self,
+        instrument: Instrument,
+        sign: int,
+    ) -> Decimal:
         return sum(
             (
                 abs(lot.quantity)
@@ -212,6 +216,7 @@ class LotBook:
                     quantity=allocation.quantity,
                     broker_basis=basis,
                     basis_source="SCHWAB_REALIZED_GAIN_LOSS",
+                    campaign_id=allocation.campaign_id,
                 )
             )
         return tuple(result)
@@ -240,6 +245,7 @@ class LotBook:
                     lot_id=lot.lot_id,
                     quantity=consumed,
                     broker_basis=None,
+                    campaign_id=lot.campaign_id,
                 )
             )
 

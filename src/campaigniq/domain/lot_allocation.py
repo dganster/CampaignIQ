@@ -1,4 +1,4 @@
-"""Attribution of a closed quantity to opening lots."""
+"""Attribution of a closed quantity to an opening lot."""
 
 from dataclasses import dataclass
 from decimal import Decimal
@@ -12,6 +12,7 @@ class LotAllocation:
     quantity: Decimal
     broker_basis: Decimal | None
     basis_source: str | None = None
+    campaign_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.quantity <= 0:
