@@ -132,8 +132,47 @@ def test_actual_january_campaign_realized_pnl() -> None:
     )
 
     assert broker_gain_loss == D("126642.32")
-    assert attributed_gain_loss == D("93533.60")
-    assert broker_gain_loss - attributed_gain_loss == D("33108.72")
+    assert attributed_gain_loss == D("97954.75")
+
+    unassigned_gain_loss = sum(
+        (
+            attribution.record.gain_loss
+            for attribution in attributions
+            if attribution.has_unassigned_campaign_allocation
+        ),
+        D("0"),
+    )
+
+    assert unassigned_gain_loss == D("28687.57")
+
+    unassigned_records = {
+        (
+            attribution.record.closed_date,
+            str(attribution.record.instrument),
+            attribution.record.gain_loss,
+        )
+        for attribution in attributions
+        if attribution.has_unassigned_campaign_allocation
+    }
+
+    assert unassigned_records == {
+        (
+            date(2026, 1, 22),
+            "OptionContract(underlying='ORCL', expiration=datetime.date(2026, 2, 20), strike=Decimal('175'), option_type=<OptionType.CALL: 'CALL'>)",
+            D("9079.39"),
+        ),
+        (
+            date(2026, 1, 23),
+            "Instrument(symbol='COIN')",
+            D("-19983.41"),
+        ),
+        (
+            date(2026, 1, 23),
+            "Instrument(symbol='COST')",
+            D("39591.59"),
+        ),
+    }
+    assert broker_gain_loss - attributed_gain_loss == D("28687.57")
 
     camp_000001 = next(
         result
@@ -141,5 +180,5 @@ def test_actual_january_campaign_realized_pnl() -> None:
         if result.campaign_id == "CAMP-000001"
     )
 
-    assert camp_000001.gain_loss == D("15531.77")
+    assert camp_000001.gain_loss == D("11640.16")
     assert camp_000001.fully_reconciled is True

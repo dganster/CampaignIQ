@@ -80,18 +80,31 @@ class LotBook:
         available trade data and its observed closing activity exactly
         consumes those lots. No partial or ambiguous provenance is assigned.
         """
-        if not campaign.started_before_data:
-            has_closing_activity = any(
-                leg.position_effect == PositionEffect.CLOSE
-            for trade in campaign.trades
-            for leg in trade.legs
+        if not campaign.trades:
+            return {}
+
+        if campaign.started_before_data:
+            trades_to_inspect = campaign.trades
+        else:
+            first_trade = campaign.trades[0]
+
+            has_open = any(
+                leg.position_effect == PositionEffect.OPEN
+                for leg in first_trade.legs
             )
-            if not has_closing_activity:
+            has_close = any(
+                leg.position_effect == PositionEffect.CLOSE
+                for leg in first_trade.legs
+            )
+
+            if not (has_open and has_close):
                 return {}
+
+            trades_to_inspect = (first_trade,)
 
         required: dict[Instrument, Decimal] = defaultdict(Decimal)
 
-        for trade in campaign.trades:
+        for trade in trades_to_inspect:
             for leg in trade.legs:
                 if leg.position_effect != PositionEffect.CLOSE:
                     continue
