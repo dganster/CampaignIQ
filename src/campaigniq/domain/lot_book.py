@@ -81,7 +81,13 @@ class LotBook:
         consumes those lots. No partial or ambiguous provenance is assigned.
         """
         if not campaign.started_before_data:
-            return {}
+            has_closing_activity = any(
+                leg.position_effect == PositionEffect.CLOSE
+            for trade in campaign.trades
+            for leg in trade.legs
+            )
+            if not has_closing_activity:
+                return {}
 
         required: dict[Instrument, Decimal] = defaultdict(Decimal)
 
