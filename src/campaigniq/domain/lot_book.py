@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 
+from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.leg import Leg
 from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_allocation import LotAllocation
@@ -35,6 +36,100 @@ class LotBook:
     def lots(self, instrument: Instrument) -> tuple[Lot, ...]:
         """Return currently open lots for an instrument."""
         return tuple(self._lots.get(instrument, ()))
+
+    def assign_campaign(
+        self,
+        lot_id: str,
+        campaign_id: str,
+    ) -> None:
+        """Assign campaign provenance to an existing lot."""
+        for lots in self._lots.values():
+            for lot in lots:
+                if lot.lot_id != lot_id:
+                    continue
+
+                if lot.campaign_id is not None:
+                    raise ValueError(
+                        f"Lot {lot_id} is already assigned to "
+                        f"campaign {lot.campaign_id}."
+                    )
+
+                replacement = Lot(
+                    lot_id=lot.lot_id,
+                    instrument=lot.instrument,
+                    quantity=lot.quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=lot.basis_total,
+                    basis_source=lot.basis_source,
+                    campaign_id=campaign_id,
+                )
+
+                position = lots.index(lot)
+                lots[position] = replacement
+                return
+
+        raise ValueError(f"Lot {lot_id} not found.")
+
+    def resolve_boundary_campaign(
+        self,
+        campaign: Campaign,
+    ) -> dict[str, str]:
+        """Assign exact pre-period lots to a boundary campaign.
+
+        A campaign may claim historical lots only when it started before the
+        available trade data and its observed closing activity exactly
+        consumes those lots. No partial or ambiguous provenance is assigned.
+        """
+        if not campaign.started_before_data:
+            return {}
+
+        required: dict[Instrument, Decimal] = defaultdict(Decimal)
+
+        for trade in campaign.trades:
+            for leg in trade.legs:
+                if leg.position_effect != PositionEffect.CLOSE:
+                    continue
+
+                quantity = sum(
+                    (abs(execution.quantity) for execution in leg.executions),
+                    Decimal("0"),
+                )
+
+                if quantity:
+                    required[leg.instrument] += quantity
+
+        if not required:
+            return {}
+
+        candidates: dict[str, Lot] = {}
+
+        for instrument, quantity in required.items():
+            matching_lots = [
+                lot
+                for lot in self._lots.get(instrument, [])
+                if lot.campaign_id is None
+            ]
+
+            if len(matching_lots) != 1:
+                return {}
+
+            lot = matching_lots[0]
+
+            if abs(lot.quantity) != quantity:
+                return {}
+
+            candidates[lot.lot_id] = lot
+
+        for lot in candidates.values():
+            self.assign_campaign(
+                lot.lot_id,
+                campaign.campaign_id,
+            )
+
+        return {
+            lot_id: campaign.campaign_id
+            for lot_id in candidates
+        }
 
     def apply_event(
         self,
@@ -199,17 +294,26 @@ class LotBook:
 
         if not allocations:
             raise ValueError("Cannot attach basis without allocations.")
-        total_quantity = sum((a.quantity for a in allocations), Decimal("0"))
+
+        total_quantity = sum(
+            (a.quantity for a in allocations),
+            Decimal("0"),
+        )
+
         result: list[LotAllocation] = []
         remaining = record.cost_basis
+
         for index, allocation in enumerate(allocations):
             if index == len(allocations) - 1:
                 basis = remaining
             else:
                 basis = (
-                    record.cost_basis * allocation.quantity / total_quantity
+                    record.cost_basis
+                    * allocation.quantity
+                    / total_quantity
                 ).quantize(Decimal("0.01"))
                 remaining -= basis
+
             result.append(
                 LotAllocation(
                     lot_id=allocation.lot_id,
@@ -219,6 +323,7 @@ class LotBook:
                     campaign_id=allocation.campaign_id,
                 )
             )
+
         return tuple(result)
 
     def _close(
@@ -236,10 +341,12 @@ class LotBook:
         for lot in list(lots):
             if remaining == 0:
                 break
+
             if (lot.quantity > 0) != (target_sign > 0):
                 continue
 
             consumed = min(abs(lot.quantity), remaining)
+
             allocations.append(
                 LotAllocation(
                     lot_id=lot.lot_id,
@@ -269,6 +376,7 @@ class LotBook:
                 )
                 position = lots.index(lot)
                 lots[position] = replacement
+
             remaining -= consumed
 
         if remaining:
@@ -276,6 +384,7 @@ class LotBook:
                 f"Insufficient {instrument} lots to close {quantity}; "
                 f"{remaining} remains unmatched."
             )
+
         return allocations
 
     def _new_lot_id(self) -> str:
@@ -287,4 +396,7 @@ class LotBook:
     def _leg_time(leg: Leg) -> datetime:
         if not leg.executions:
             raise ValueError("Trade leg must contain an execution.")
-        return min(execution.executed_at for execution in leg.executions)
+        return min(
+            execution.executed_at
+            for execution in leg.executions
+        )
