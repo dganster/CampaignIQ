@@ -86,21 +86,21 @@ class LotBook:
         if campaign.started_before_data:
             trades_to_inspect = campaign.trades
         else:
-            first_trade = campaign.trades[0]
-
             has_open = any(
                 leg.position_effect == PositionEffect.OPEN
-                for leg in first_trade.legs
+                for trade in campaign.trades
+                for leg in trade.legs
             )
             has_close = any(
                 leg.position_effect == PositionEffect.CLOSE
-                for leg in first_trade.legs
+                for trade in campaign.trades
+                for leg in trade.legs
             )
 
             if not (has_open and has_close):
                 return {}
 
-            trades_to_inspect = (first_trade,)
+            trades_to_inspect = campaign.trades
 
         required: dict[Instrument, Decimal] = defaultdict(Decimal)
 
@@ -129,11 +129,19 @@ class LotBook:
                 if lot.campaign_id is None
             ]
 
+            # No opening-snapshot lot exists for this instrument.
+            # This is normal for a position opened during the campaign.
+            if not matching_lots:
+                continue
+
+            # More than one unassigned opening lot is ambiguous.
             if len(matching_lots) != 1:
                 return {}
 
             lot = matching_lots[0]
 
+            # A historical lot may only be claimed when the campaign
+            # consumes the entire opening lot.
             if abs(lot.quantity) != quantity:
                 return {}
 

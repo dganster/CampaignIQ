@@ -103,5 +103,5 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
     campaign_results = aggregate_campaign_realized_pnl(list(attributions))
 
     assert len(attributions) == 28
-    assert sum((item.gain_loss for item in campaign_results), Decimal("0")) == Decimal("97954.75")
-    assert sum((item.record.gain_loss for item in attributions if item.has_unassigned_campaign_allocation), Decimal("0")) == Decimal("28687.57")
+    assert sum((item.gain_loss for item in campaign_results), Decimal("0")) == Decimal("126642.32")
+    assert sum((item.record.gain_loss for item in attributions if item.has_unassigned_campaign_allocation), Decimal("0")) == Decimal("0")

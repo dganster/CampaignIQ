@@ -1,6 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal as D
 
+from campaigniq.domain.position_event import PositionChange, PositionEvent
+from campaigniq.domain.position_event_kind import PositionEventKind
 from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.position_event_applier import PositionEventApplier
@@ -212,3 +214,50 @@ def test_actual_january_assignment_events_close_dxcm_and_el_positions() -> None:
     # The assigned option contracts were opened before the January TOS
     # trade-history boundary, so their option positions are intentionally
     # unresolved here. The January stock positions are fully resolved.
+
+def test_assignment_created_equity_lot_inherits_campaign_provenance():
+    opening = LotBook()
+    campaign_id = "CAMP-HISTORICAL-COIN"
+
+    opening._append_lot(
+        OptionContract(
+            underlying="COIN",
+            expiration=date(2026, 1, 16),
+            strike=D("360"),
+            option_type=OptionType.PUT,
+        ),
+        D("-5"),
+        datetime(2025, 12, 19),
+        campaign_id=campaign_id,
+    )
+
+    attributor = RealizedLotAttributor(opening)
+
+    events = [
+        PositionEvent(
+            kind=PositionEventKind.ASSIGNMENT,
+            occurred_at=datetime(2026, 1, 16),
+            changes=(
+                PositionChange(
+                    instrument=OptionContract(
+                        underlying="COIN",
+                        expiration=date(2026, 1, 16),
+                        strike=D("360"),
+                        option_type=OptionType.PUT,
+                    ),
+                    quantity=D("5"),
+                ),
+                PositionChange(
+                    instrument=Instrument("COIN"),
+                    quantity=D("-500"),
+                ),
+            ),
+        )
+    ]
+
+    attributor.attribute([], [], events)
+
+    equity_lots = opening.lots(Instrument("COIN"))
+
+    assert len(equity_lots) == 1
+    assert equity_lots[0].campaign_id == campaign_id

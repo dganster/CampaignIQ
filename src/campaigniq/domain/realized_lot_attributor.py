@@ -124,8 +124,31 @@ class RealizedLotAttributor:
             enumerate(events or []),
             key=lambda item: item[1].occurred_at,
         ):
+            assignment_campaign_id = None
+
             for change in event.changes:
                 quantity = change.quantity
+
+                if (
+                    event.kind == PositionEventKind.ASSIGNMENT
+                    and isinstance(change.instrument, OptionContract)
+                ):
+                    allocations = self.lot_book.apply_signed_change(
+                        instrument=change.instrument,
+                        quantity=quantity,
+                        occurred_at=event.occurred_at,
+                    )
+
+                    campaign_ids = {
+                        allocation.campaign_id
+                        for allocation in allocations
+                        if allocation.campaign_id is not None
+                    }
+
+                    if len(campaign_ids) == 1:
+                        assignment_campaign_id = next(iter(campaign_ids))
+
+                    continue
 
                 if (
                     event.kind == PositionEventKind.ASSIGNMENT
@@ -149,6 +172,7 @@ class RealizedLotAttributor:
                     instrument=change.instrument,
                     quantity=quantity,
                     occurred_at=event.occurred_at,
+                    campaign_id=assignment_campaign_id,
                 )
 
                 if allocations and change.quantity < 0:

@@ -266,3 +266,107 @@ def test_mixed_open_and_close_campaign_can_claim_historical_close_lot() -> None:
     }
 
     assert book.lots(Instrument("COIN-220C"))[0].campaign_id == "CAMP-000005"
+
+def test_mixed_campaign_can_claim_historical_lots_consumed_by_later_trade() -> None:
+    book = LotBook()
+
+    book.seed(
+        Lot(
+            lot_id="DEC-COIN-220C",
+            instrument=Instrument("COIN-220C"),
+            quantity=Decimal("-5"),
+            opened_at=datetime(2025, 12, 31, 16, 0),
+            basis_total=Decimal("20000"),
+            basis_source="DECEMBER_SNAPSHOT",
+        )
+    )
+
+    book.seed(
+        Lot(
+            lot_id="DEC-COIN",
+            instrument=Instrument("COIN"),
+            quantity=Decimal("500"),
+            opened_at=datetime(2025, 12, 31, 16, 0),
+            basis_total=Decimal("125000"),
+            basis_source="DECEMBER_SNAPSHOT",
+        )
+    )
+
+    campaign = Campaign(
+        campaign_id="CAMP-000006",
+        trades=(
+            Trade(
+                legs=(
+                    Leg(
+                        instrument=Instrument("COIN-220C"),
+                        side=Side.BUY,
+                        position_effect=PositionEffect.CLOSE,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("5"),
+                                execution_price=Decimal("20"),
+                                executed_at=datetime(2026, 1, 5, 10, 0),
+                            ),
+                        ),
+                    ),
+                    Leg(
+                        instrument=Instrument("COIN-200C"),
+                        side=Side.SELL,
+                        position_effect=PositionEffect.OPEN,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("5"),
+                                execution_price=Decimal("30"),
+                                executed_at=datetime(2026, 1, 5, 10, 0),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            Trade(
+                legs=(
+                    Leg(
+                        instrument=Instrument("COIN-200C"),
+                        side=Side.BUY,
+                        position_effect=PositionEffect.CLOSE,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("5"),
+                                execution_price=Decimal("24"),
+                                executed_at=datetime(2026, 1, 23, 13, 0),
+                            ),
+                        ),
+                    ),
+                    Leg(
+                        instrument=Instrument("COIN"),
+                        side=Side.SELL,
+                        position_effect=PositionEffect.CLOSE,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("500"),
+                                execution_price=Decimal("217"),
+                                executed_at=datetime(2026, 1, 23, 13, 0),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        started_before_data=False,
+    )
+
+    assignments = book.resolve_boundary_campaign(campaign)
+
+    assert assignments == {
+        "DEC-COIN-220C": "CAMP-000006",
+        "DEC-COIN": "CAMP-000006",
+    }
+
+    assert (
+        book.lots(Instrument("COIN-220C"))[0].campaign_id
+        == "CAMP-000006"
+    )
+    assert (
+        book.lots(Instrument("COIN"))[0].campaign_id
+        == "CAMP-000006"
+    )
