@@ -54,3 +54,19 @@ def test_section_becomes_position_events() -> None:
     )
 
     assert events[1].changes[0].quantity == Decimal("5")
+
+
+def test_december_assignment_uses_contract_year_for_transaction_date() -> None:
+    lines = [
+        "12/04",
+        "Other Activity",
+        "Option Assignment",
+        "LIN",
+        "12/19/2025 455.00 P",
+        "PUT LINDE PLC",
+        "4.0000",
+    ]
+
+    events = read_option_assignment_events(lines)
+
+    assert events[0].occurred_at == datetime(2025, 12, 4)

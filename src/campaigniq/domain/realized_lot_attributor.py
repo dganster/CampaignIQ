@@ -13,6 +13,7 @@ from campaigniq.domain.lot_attribution import RealizedAttribution
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.position_event import PositionEvent
+from campaigniq.domain.position_event_kind import PositionEventKind
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.option_contract import OptionContract
@@ -25,6 +26,15 @@ class _ClosingActivity:
     instrument: Instrument
     quantity: Decimal
     allocations: tuple[LotAllocation, ...]
+
+
+@dataclass(slots=True)
+class _AssignmentClosure:
+    event_index: int
+    underlying: Instrument
+    strike: Decimal
+    occurred_on: date
+    remaining_quantity: Decimal
 
 
 class RealizedLotAttributor:
@@ -83,7 +93,7 @@ class RealizedLotAttributor:
         campaign_ids: dict[int, str] | None,
     ) -> tuple[RealizedAttribution, ...]:
         activities: list[_ClosingActivity] = []
-        assignment_dates = self._assignment_dates(events or [])
+        assignment_closures = self._assignment_closures(events or [])
 
         for trade in sorted(trades, key=self._trade_time):
             campaign_id = (
@@ -102,7 +112,7 @@ class RealizedLotAttributor:
                 activities.append(
                     _ClosingActivity(
                         closed_date=self._economic_closed_date(
-                            leg, assignment_dates
+                            leg, assignment_closures
                         ),
                         instrument=leg.instrument,
                         quantity=self._leg_quantity(leg),
@@ -110,14 +120,34 @@ class RealizedLotAttributor:
                     )
                 )
 
-        for event in sorted(events or [], key=lambda item: item.occurred_at):
+        for event_index, event in sorted(
+            enumerate(events or []),
+            key=lambda item: item[1].occurred_at,
+        ):
             for change in event.changes:
-                if self._has_trade_closure(trades, change.instrument):
+                quantity = change.quantity
+
+                if (
+                    event.kind == PositionEventKind.ASSIGNMENT
+                    and not isinstance(change.instrument, OptionContract)
+                    and change.quantity < 0
+                ):
+                    unmatched = self._remaining_assignment_quantity(
+                        assignment_closures,
+                        event_index,
+                        change.instrument,
+                    )
+                    if unmatched is not None:
+                        quantity = -min(abs(change.quantity), unmatched)
+                elif self._has_trade_closure(trades, change.instrument):
+                    continue
+
+                if quantity == 0:
                     continue
 
                 allocations = self.lot_book.apply_signed_change(
                     instrument=change.instrument,
-                    quantity=change.quantity,
+                    quantity=quantity,
                     occurred_at=event.occurred_at,
                 )
 
@@ -126,7 +156,7 @@ class RealizedLotAttributor:
                         _ClosingActivity(
                             closed_date=event.occurred_at.date(),
                             instrument=change.instrument,
-                            quantity=abs(change.quantity),
+                            quantity=abs(quantity),
                             allocations=allocations,
                         )
                     )
@@ -152,16 +182,68 @@ class RealizedLotAttributor:
         return tuple(results)
 
     @staticmethod
+    def _assignment_closures(
+        events: list[PositionEvent],
+    ) -> list[_AssignmentClosure]:
+        closures: list[_AssignmentClosure] = []
+        for event_index, event in enumerate(events):
+            if event.kind != PositionEventKind.ASSIGNMENT:
+                continue
+            for change in event.changes:
+                if not isinstance(change.instrument, OptionContract):
+                    continue
+                closures.append(
+                    _AssignmentClosure(
+                        event_index=event_index,
+                        underlying=Instrument(change.instrument.underlying),
+                        strike=change.instrument.strike,
+                        occurred_on=event.occurred_at.date(),
+                        remaining_quantity=abs(change.quantity) * Decimal("100"),
+                    )
+                )
+        return closures
+
+    @staticmethod
     def _assignment_dates(
         events: list[PositionEvent],
     ) -> dict[Instrument, list[date]]:
+        """Return assignment dates for legacy callers.
+
+        New settlement matching uses the richer assignment-closure objects
+        above so that strike and quantity remain available.
+        """
         result: dict[Instrument, list[date]] = {}
+        for closure in RealizedLotAttributor._assignment_closures(events):
+            result.setdefault(closure.underlying, []).append(closure.occurred_on)
         for event in events:
+            if event.kind != PositionEventKind.ASSIGNMENT:
+                continue
             for change in event.changes:
+                if isinstance(change.instrument, OptionContract):
+                    continue
                 result.setdefault(change.instrument, []).append(
                     event.occurred_at.date()
                 )
         return result
+
+    @staticmethod
+    def _remaining_assignment_quantity(
+        closures: list[_AssignmentClosure],
+        event_index: int,
+        instrument: Instrument,
+    ) -> Decimal | None:
+        matching = [
+            closure
+            for closure in closures
+            if closure.event_index == event_index
+            and closure.underlying == instrument
+        ]
+        if not matching:
+            return None
+        return sum(
+            (closure.remaining_quantity for closure in matching),
+            Decimal("0"),
+        )
 
     @staticmethod
     def _has_trade_closure(
@@ -179,18 +261,44 @@ class RealizedLotAttributor:
     def _economic_closed_date(
         cls,
         leg: Leg,
-        assignment_dates: dict[Instrument, list[date]],
+        assignment_closures: list[_AssignmentClosure],
     ) -> date:
         trade_date = cls._leg_date(leg)
-        dates = assignment_dates.get(leg.instrument, [])
-        prior = [item for item in dates if item <= trade_date]
-        if prior:
-            return max(prior)
+
+        if leg.position_effect == PositionEffect.CLOSE:
+            quantity = cls._leg_quantity(leg)
+            execution_price = cls._leg_execution_price(leg)
+            if execution_price is None:
+                execution_price = Decimal("NaN")
+            candidates = [
+                closure
+                for closure in assignment_closures
+                if closure.underlying == leg.instrument
+                and closure.occurred_on <= trade_date
+                and trade_date <= cls._next_business_day(closure.occurred_on)
+                and closure.remaining_quantity > 0
+                and closure.strike == execution_price
+            ]
+            if candidates:
+                closure = max(candidates, key=lambda item: item.occurred_on)
+                consumed = min(quantity, closure.remaining_quantity)
+                closure.remaining_quantity -= consumed
+                return closure.occurred_on
 
         if isinstance(leg.instrument, OptionContract):
             return cls._next_business_day(trade_date)
 
         return trade_date
+
+    @staticmethod
+    def _leg_execution_price(leg: Leg) -> Decimal | None:
+        prices = [
+            execution.execution_price
+            for execution in leg.executions
+        ]
+        if not prices or any(price != prices[0] for price in prices):
+            return None
+        return prices[0]
 
     @classmethod
     def _next_business_day(cls, value: date) -> date:

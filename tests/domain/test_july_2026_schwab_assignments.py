@@ -8,6 +8,7 @@ from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_event_kind import PositionEventKind
 from campaigniq.importers.schwab.option_assignment import SchwabOptionAssignment
 from campaigniq.importers.schwab.translator import to_position_event
+from campaigniq.domain.value_objects.instrument import Instrument
 
 
 @pytest.mark.parametrize(
@@ -54,6 +55,8 @@ def test_july_2026_assignment_closes_only_assigned_option(
 
     assert event.kind == PositionEventKind.ASSIGNMENT
     assert event.occurred_at == datetime(2026, 7, 20, 0, 0)
-    assert len(event.changes) == 1
+    assert len(event.changes) == 2
     assert event.changes[0].instrument == expected_contract
     assert event.changes[0].quantity == Decimal(quantity)
+    assert event.changes[1].instrument == Instrument(symbol)
+    assert event.changes[1].quantity == -Decimal(quantity) * Decimal("100")

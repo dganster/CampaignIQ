@@ -24,8 +24,6 @@ def read_option_assignment_section(
             index += 1
             continue
 
-        transaction_date = _parse_transaction_date(lines, index)
-
         symbol = lines[index + 1].strip()
         contract_parts = lines[index + 2].strip().split()
 
@@ -38,6 +36,12 @@ def read_option_assignment_section(
         expiration = _parse_date(contract_parts[0])
         strike = Decimal(contract_parts[1])
         option_code = contract_parts[2].upper()
+
+        transaction_date = _parse_transaction_date(
+            lines,
+            index,
+            year=expiration.year,
+        )
 
         if option_code not in {"C", "P"}:
             raise ValueError(
@@ -74,6 +78,8 @@ def read_option_assignment_section(
 def _parse_transaction_date(
     lines: list[str],
     assignment_index: int,
+    *,
+    year: int,
 ) -> date:
     """Find the transaction date associated with an assignment."""
 
@@ -82,7 +88,7 @@ def _parse_transaction_date(
 
         try:
             month, day = value.split("/")
-            return date(2026, int(month), int(day))
+            return date(year, int(month), int(day))
         except (ValueError, TypeError):
             continue
 

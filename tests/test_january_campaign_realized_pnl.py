@@ -8,6 +8,9 @@ from campaigniq.domain.campaign_realized_pnl import (
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.position_event import PositionChange, PositionEvent
 from campaigniq.domain.position_event_kind import PositionEventKind
+from campaigniq.domain.position_event_applier import PositionEventApplier
+from campaigniq.domain.position_history import PositionHistory
+from campaigniq.importers.schwab.option_assignment_flow import read_option_assignment_events
 from campaigniq.domain.realized_lot_attributor import RealizedLotAttributor
 from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.importers.thinkorswim.trade_history_reader import (
@@ -96,18 +99,22 @@ def test_actual_january_campaign_realized_pnl() -> None:
     for campaign in campaigns:
         book.resolve_boundary_campaign(campaign)
 
-    events = [
-        PositionEvent(
-            kind=PositionEventKind.ASSIGNMENT,
-            changes=(PositionChange(Instrument("DXCM"), D("-500")),),
-            occurred_at=datetime(2026, 1, 9, 16),
-        ),
-        PositionEvent(
-            kind=PositionEventKind.ASSIGNMENT,
-            changes=(PositionChange(Instrument("EL"), D("-500")),),
-            occurred_at=datetime(2026, 1, 9, 16),
-        ),
-    ]
+    events = read_option_assignment_events([
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "DXCM",
+        "01/16/2026 70.00 C",
+        "DEXCOM INC",
+        "5.0000",
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "EL",
+        "01/16/2026 110.00 C",
+        "ESTEE LAUDER COS",
+        "5.0000",
+    ])
 
     records = january_records()
 
@@ -182,3 +189,49 @@ def test_actual_january_campaign_realized_pnl() -> None:
 
     assert camp_000001.gain_loss == D("11640.16")
     assert camp_000001.fully_reconciled is True
+
+
+def test_actual_january_reconstruction_derives_boundary_requirements() -> None:
+    from campaigniq.domain.boundary_reconstruction import (
+        BoundaryReconstructionAnalyzer,
+    )
+    from campaigniq.domain.boundary_validation import (
+        BoundaryStatus,
+        BoundaryValidator,
+    )
+
+    trades = _january_trades()
+    campaigns = CampaignReconstructor().reconstruct(trades)
+
+    boundary = BoundaryReconstructionAnalyzer().analyze(
+        period_start=date(2026, 1, 1),
+        campaigns=campaigns,
+        opening_lot_book=LotBook(),
+    )
+
+    validation = BoundaryValidator().validate(
+        period="2026-01",
+        opening_inventory=BoundaryStatus.PARTIAL,
+        opening_inventory_source=None,
+        trading_activity=BoundaryStatus.COMPLETE,
+        ending_inventory=BoundaryStatus.COMPLETE,
+        ending_inventory_source="January 2026 Brokerage Statement",
+        realized_pnl=BoundaryStatus.COMPLETE,
+        unresolved_positions=boundary.unresolved_positions,
+        unresolved_campaigns=boundary.unresolved_campaigns,
+        historical_requirements=boundary.historical_requirements,
+    )
+
+    assert boundary.unresolved_campaigns == (
+        "CAMP-000009",
+        "CAMP-000012",
+        "CAMP-000013",
+        "CAMP-000014",
+        "CAMP-000017",
+        "CAMP-000022",
+    )
+    assert len(boundary.historical_requirements) == 6
+    assert all(req.months == ("2025-12",) for req in boundary.historical_requirements)
+    assert validation.complete is False
+    assert validation.has_action_required is True
+    assert validation.unresolved_campaigns == boundary.unresolved_campaigns

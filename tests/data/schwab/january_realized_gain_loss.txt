@@ -1,0 +1,256 @@
+                                                                                            Schwab Private Client Services™
+
+
+
+
+Realized Gain / Loss                                                                                                                                     Updated: 11:53:36 AM ET, 08/15/2026
+
+
+
+  My Brokerage                     …368                                                                                                                                                                    View Positions
+
+
+
+        Historical gains and losses for your transitioned TD Ameritrade account are not shown on this page. Please visit GainsKeeper® to view historical transactions for your account.
+
+
+For today’s transactions, real time realized gain/loss information may be delayed.                                                      View Historical GainsKeeper Transactions               Cost Basis Calculator
+
+
+   Date range
+
+      Custom date range
+
+
+   Options
+
+      Include option contracts
+
+
+   From mm/dd/yyyy
+
+      01/01/2026
+
+
+   To mm/dd/yyyy
+
+      01/31/2026
+
+
+   Symbol (Optional)
+
+
+
+
+                                                                                                       Search
+
+
+
+
+  Gain/Loss Summary             Transaction Analyzer
+
+
+
+    Reporting Period                           Gain/Loss
+    01/01/2026 to 01/31/2026                   Long Term                   $0.00        (N/A)                Totals
+                                               Short Term        +$126,642.32       (+9.07%)
+    Total Proceeds $1,426,621.16                                                                             Total Gains           +$229,711.81
+    Total Cost Basis $1,299,978.84             Net Gain          +$126,642.32       (+9.07%)
+                                                                                                             Total Losses          -$103,069.49                      Gain/Loss Ratio
+                                                                                                             Net Gain              +$126,642.32
+                                                                                                                                                                       69.03%
+                                                                                                                                                                       ​
+
+
+
+
+   Realized Gain/Loss Details
+
+   Chart based on 28 records.                                                                                                                                                                      Show Chart
+
+
+     200%
+
+
+
+
+     100%
+
+
+
+
+       0%
+
+
+
+
+     -100%
+
+
+
+
+     -200%
+
+
+
+
+     -300%
+          Jan 4      Jan 6        Jan 8    Jan 10      Jan 12   Jan 14     Jan 16     Jan 18        Jan 20     Jan 22     Jan 24     Jan 26    Jan 28    Jan 30      Feb 1     Feb 3
+
+
+
+
+                                                                                                                                                                    Realized Gain/Loss         $     %
+
+       Symbol
+       Description                              Closed Date     Quantity    Closing Price      Cost Basis Method        Proceeds       Cost Basis (CB)                 Total   Long Term                 Short Term
+                                                                                                                               Realized Gain/Loss
+
+Symbol
+Description                 Closed Date   Quantity   Closing Price   Cost Basis Method       Proceeds   Cost Basis (CB)          Total   Long Term     Short Term
+
+
+COIN 01/16/2026 220.00 C   01/06/2026           5        $28.44                 FIFO      $14,221.69      $18,113.30       -$3,891.61                 -$3,891.61
+CALL COINBASE GLOBAL ...
+
+COST 01/16/2026 840.00 C   01/06/2026           5        $44.67                 FIFO      $22,336.69      $20,228.30       +$2,108.39                 +$2,108.39
+CALL COSTCO WHSL CORP...
+
+COST 02/20/2026 945.00 C   01/06/2026           1          $5.30                FIFO        $530.34          $531.66           -$1.32                     -$1.32
+CALL COSTCO WHSL CORP...
+
+HD 01/16/2026 335.00 C     01/06/2026           5        $23.99                 FIFO      $11,996.69       $6,138.30       +$5,858.39                 +$5,858.39
+CALL HOME DEPOT INC $...
+
+CRWD 01/16/2026 500.00 P   01/06/2026           5        $24.88                 FIFO      $12,441.69      $21,353.30       -$8,911.61                 -$8,911.61
+PUT CROWDSTRIKE HLDGS...
+
+META 01/16/2026 690.00 P   01/06/2026           5        $60.66                 FIFO      $30,331.69      $15,658.30      +$14,673.39                +$14,673.39
+PUT META PLATFORMS IN...
+
+MSFT 01/16/2026 495.00 P   01/06/2026           5        $18.06                 FIFO       $9,031.69      $10,288.30       -$1,256.61                 -$1,256.61
+PUT MICROSOFT CORP $4...
+
+DXCM                       01/09/2026        500         $69.96                 FIFO      $34,981.59      $34,835.00        +$146.59                   +$146.59
+DEXCOM INC
+
+EL                         01/09/2026        500        $110.61                 FIFO      $55,305.58      $54,746.00        +$559.58                   +$559.58
+LAUDER ESTEE COS INC ...
+
+AMZN 01/16/2026 240.00 P   01/12/2026           5        $14.14                 FIFO       $7,071.69         $578.30       +$6,493.39                 +$6,493.39
+PUT AMAZON.COM INC $2...
+
+NFLX 02/20/2026 86.00 C    01/13/2026          50        $10.46                 FIFO      $52,316.81      $37,033.05      +$15,283.76                +$15,283.76
+CALL NETFLIX INC $86 ...
+
+LMT 01/16/2026 480.00 P    01/16/2026           4        $31.39                 FIFO      $12,557.35           $20.04     +$12,537.31                +$12,537.31
+PUT LOCKHEED MARTIN C...
+
+LMT 01/16/2026 480.00 P    01/16/2026           1        $31.39                 FIFO       $3,139.34            $2.01      +$3,137.33                 +$3,137.33
+PUT LOCKHEED MARTIN C...
+
+NVDA 01/16/2026 184.00 P   01/16/2026           5        $10.78                 FIFO       $5,391.69          $113.30      +$5,278.39                 +$5,278.39
+PUT NVIDIA CORP $184 ...
+
+LLY 01/16/2026 1040.00 P   01/20/2026           5        $61.76                 FIFO      $30,881.69          $113.30     +$30,768.39                +$30,768.39
+PUT ELI LILLY AND CO ...
+
+COIN 02/20/2026 220.00 C   01/22/2026           5        $42.88                 FIFO      $21,441.69       $8,698.30      +$12,743.39                +$12,743.39
+CALL COINBASE GLOBAL ...
+
+NFLX 02/20/2026 82.00 C    01/22/2026          50        $10.06                 FIFO      $50,316.79      $19,883.05      +$30,433.74                +$30,433.74
+CALL NETFLIX INC $82 ...
+
+ORCL 02/20/2026 175.00 C   01/22/2026           5        $27.02                 FIFO      $13,511.69       $4,432.30       +$9,079.39                 +$9,079.39
+CALL ORACLE CORP $175...
+
+TMUS 02/20/2026 175.00 C   01/22/2026           5        $26.88                 FIFO      $13,441.69       $5,768.30       +$7,673.39                 +$7,673.39
+CALL T-MOBILE US INC ...
+
+COIN                       01/23/2026        500        $217.44                 FIFO     $108,719.90    $128,703.31       -$19,983.41                -$19,983.41
+COINBASE GLOBAL INC C...
+
+COST                       01/23/2026        500        $983.94                 FIFO     $491,969.90    $452,378.31       +$39,591.59                +$39,591.59
+COSTCO WHSL CORP NEW
+
+VRT                        01/23/2026        500        $181.77                 FIFO      $90,884.90      $93,810.00       -$2,925.10                 -$2,925.10
+VERTIV HLDGS CO CLASS A
+
+COIN 02/20/2026 200.00 C   01/26/2026           5        $29.88                 FIFO      $14,941.68      $12,153.30       +$2,788.38                 +$2,788.38
+CALL COINBASE GLOBAL ...
+
+COST 02/20/2026 840.00 C   01/26/2026           5        $50.09                 FIFO      $25,046.69      $73,243.30      -$48,196.61                -$48,196.61
+CALL COSTCO WHSL CORP...
+
+VRT 02/20/2026 145.00 C    01/26/2026           5        $28.71                 FIFO      $14,356.69      $19,578.30       -$5,221.61                 -$5,221.61
+CALL VERTIV HLDGS CO ...
+
+UNH 02/20/2026 300.00 C    01/28/2026           5        $41.92                 FIFO      $20,961.68       $2,928.30      +$18,033.38                +$18,033.38
+CALL UNITEDHEALTH GRO...
+
+LIN                        01/30/2026        500        $452.89                 FIFO     $226,444.95    $213,921.31       +$12,523.64                +$12,523.64
+LINDE PLC
+                                                                                                                                                                                                     Realized Gain/Loss
+
+         Symbol
+         Description                                       Closed Date           Quantity       Closing Price       Cost Basis Method            Proceeds          Cost Basis (CB)                     Total    Long Term                  Short Term
+
+
+         LIN 02/20/2026 365.00 C                          02/02/2026                    5            $64.09                     FIFO         $32,046.69              $44,728.30              -$12,681.61                              -$12,681.61
+         CALL LINDE PLC $365 E...
+
+         Account Total                                                                                                                $1,426,621.16             $1,299,978.84           +$126,642.32                  $0.00      +$126,642.32
+
+
+
+
+         The total Realized Gain/Loss for this account includes values for Short Positions held in the account. For more information on summary totals when there are Short Positions, please see the Help Section.
+
+
+
+
+(0423-3BXK, 0623-37YU, 1123-3XUW)
+
+The Realized Gain-Loss Analysis should not be considered a substitute for your trade confirmations, account statements or tax forms. Supplemental data is shown for informational purposes only, and should not be considered
+individualized recommendations or personalized investment advice.
+
+Values for fixed income securities have been adjusted for amortization/accretion; with the exception of variable rate and mortgage-backed securities or for accounts with this preference turned off.
+
+Total Cash represents income and expenses as they occur; it may be inconsistent with values shown elsewhere on Schwab.com and on your monthly account statement.
+
+The Realized Gain/Loss page provides summary information of closed transactions. Not all closed transactions appear on this page.
+
+Please view the Cost Basis Disclosure Statement for additional information on cost basis methods choices and how Schwab reports adjusted cost basis information to the IRS.
+
+Please note that gains and losses realized in retirement accounts are not recognized for tax purposes. Rather, income may be recognized when you receive a cash distribution from these accounts. Please contact your tax advisor for
+further information.
+
+The total Realized Gain/Loss for this account includes values for Short Positions held in the account. For more information on summary totals when there are Short Positions, please see the Help Section.
+
+
+
+
+      Investment and Insurance Products Are: Not FDIC Insured • Not Insured by Any Federal Government Agency • Not a Deposit or Other Obligation of, or Guaranteed by, the Bank or any of its Affiliates • Subject to Investment Risks,
+                                                                                                     Including Possible Loss of Principal Amount Invested
+
+
+
+
+Today's Date: 11:53 AM ET, 08/15/2026
+
+
+
+Check the background of Charles Schwab or one of its investment professionals on FINRA's BrokerCheck            .                                                                                                                                    Back to Top
+
+
+
+
+The Charles Schwab Corporation provides a full range of brokerage, banking and financial advisory services through its operating subsidiaries. Its broker-dealer subsidiary, Charles Schwab & Co. Inc. (Member SIPC    ), and its affiliates offer investment
+services and products. Its banking subsidiary, Charles Schwab Bank, SSB (member FDIC and an Equal Housing Lender), provides deposit and lending services and products.
+
+
+This site is designed for U.S. residents. Non-U.S. residents are subject to country-specific restrictions. Learn more about our services for non-US Residents   , Charles Schwab Hong Kong clients   , Charles Schwab UK clients       .
+
+
+© 2026 Charles Schwab & Co., Inc. All rights reserved. Member SIPC        . Unauthorized access is prohibited. Usage will be monitored.
+

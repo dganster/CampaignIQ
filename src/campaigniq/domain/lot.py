@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
+from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.value_objects.instrument import Instrument
+
+InstrumentLike = Instrument | OptionContract
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,7 +17,7 @@ class Lot:
     """One signed position lot and its known broker/source basis."""
 
     lot_id: str
-    instrument: Instrument
+    instrument: InstrumentLike
     quantity: Decimal
     opened_at: datetime
     basis_total: Decimal | None

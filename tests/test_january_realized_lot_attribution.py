@@ -3,13 +3,14 @@ from decimal import Decimal as D
 
 from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_book import LotBook
-from campaigniq.domain.position_event import PositionChange, PositionEvent
-from campaigniq.domain.position_event_kind import PositionEventKind
+from campaigniq.domain.position_event_applier import PositionEventApplier
+from campaigniq.domain.position_history import PositionHistory
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.domain.realized_lot_attributor import RealizedLotAttributor
 from campaigniq.domain.value_objects.instrument import Instrument
+from campaigniq.importers.schwab.option_assignment_flow import read_option_assignment_events
 from campaigniq.importers.thinkorswim.trade_history_reader import ThinkorswimTradeHistoryReader
 from campaigniq.importers.thinkorswim.translator import to_trade
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
@@ -140,18 +141,22 @@ def test_actual_january_realized_report_all_28_records_reconcile():
             trades.append(trade)
 
     records = january_records()
-    events = [
-        PositionEvent(
-            kind=PositionEventKind.ASSIGNMENT,
-            changes=(PositionChange(Instrument("DXCM"), D("-500")),),
-            occurred_at=datetime(2026, 1, 9, 16),
-        ),
-        PositionEvent(
-            kind=PositionEventKind.ASSIGNMENT,
-            changes=(PositionChange(Instrument("EL"), D("-500")),),
-            occurred_at=datetime(2026, 1, 9, 16),
-        ),
-    ]
+    events = read_option_assignment_events([
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "DXCM",
+        "01/16/2026 70.00 C",
+        "DEXCOM INC",
+        "5.0000",
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "EL",
+        "01/16/2026 110.00 C",
+        "ESTEE LAUDER COS",
+        "5.0000",
+    ])
     results = RealizedLotAttributor(book).attribute(trades, records, events)
 
     assert len(results) == 28
@@ -159,3 +164,51 @@ def test_actual_january_realized_report_all_28_records_reconcile():
     assert all(result.basis_reconciled for result in results)
     assert all(result.gain_loss_reconciled for result in results)
     assert sum((result.record.gain_loss for result in results), D("0")) == D("126642.32")
+
+
+def test_actual_january_assignment_events_close_dxcm_and_el_positions() -> None:
+    statement = ThinkorswimSourceReader().read(DATA_FILE)
+    orders = ThinkorswimTradeHistoryReader().read(
+        statement.section("Account Trade History")
+    )
+    history = PositionHistory()
+    events = read_option_assignment_events([
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "DXCM",
+        "01/16/2026 70.00 C",
+        "DEXCOM INC",
+        "5.0000",
+        "01/09",
+        "Other Activity",
+        "Option Assignment",
+        "EL",
+        "01/16/2026 110.00 C",
+        "ESTEE LAUDER COS",
+        "5.0000",
+    ])
+
+    for order in orders:
+        if any(row.option_type.upper() == "FOREX" for row in order.legs):
+            continue
+        trade = to_trade(order)
+        if not any(
+            getattr(leg.instrument, "symbol", None) in {"DXCM", "EL"}
+            or getattr(leg.instrument, "underlying", None) in {"DXCM", "EL"}
+            for leg in trade.legs
+        ):
+            continue
+        history.add_trade(trade)
+
+    for event in events:
+        history.add_event(event)
+
+    applier = PositionEventApplier()
+    history.apply(applier)
+
+    assert applier.quantity(Instrument("DXCM")) == D("0")
+    assert applier.quantity(Instrument("EL")) == D("0")
+    # The assigned option contracts were opened before the January TOS
+    # trade-history boundary, so their option positions are intentionally
+    # unresolved here. The January stock positions are fully resolved.

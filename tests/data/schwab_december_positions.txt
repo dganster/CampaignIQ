@@ -1,0 +1,134 @@
+Positions - Equities
+                                                                                                                                                                                 Unrealized                   Est. Annual
+Symbol      Description                                                                        Quantity           Price($)       Market Value($)         Cost Basis($)        Gain/(Loss)($) Est. Yield        Income($)
+
+COIN        COINBASE GLOBAL INC (M)                                                         500.0000          226.14000              113,070.00          128,703.31            (15,633.31)        N/A                   N/A
+                                                     (M)
+COST        COSTCO WHSL CORP NEW                                                            500.0000          862.34000              431,170.00          452,378.31            (21,208.31)       0.6%           2,600.00
+                                        (M)
+HD          HOME DEPOT INC                                                                  500.0000          344.10000              172,050.00          175,299.07             (3,249.07)     2.67%            4,600.00
+                                              (M)
+LIN         LINDE PLC                   F                                                   500.0000          426.39000              213,195.00          213,921.31                (726.31)      1.4%           3,000.00
+                            (M)
+NFLX        NETFLIX INC                                                                   5,000.0000           93.76000              468,800.00          534,533.19            (65,733.19)        N/A                   N/A
+ORCL        ORACLE CORP (M)                                                                 500.0000          194.91000               97,455.00          101,558.31             (4,103.31)     1.02%            1,000.00
+                                       (M)
+TMUS        T-MOBILE US INC                                                                 500.0000          203.04000              101,520.00          105,494.31             (3,974.31)       2.0%           2,040.00
+VRT         VERTIV HLDGS CO (M)                                                             500.0000          162.01000               81,005.00            93,810.00           (12,805.00)     0.15%              125.00
+
+Total Equities                                                                                                                   $1,678,265.00        $1,805,697.81         ($127,432.81)                    $13,365.00
+
+
+
+
+                                                                                                                                                                                                                   3 of 16
+             Schwab One® Account of                   Account Nickname
+                                                      My Brokerage
+             DENNIS G GANSTER &
+                                                      Statement Period
+             BEVERLY JANE GANSTER
+             DESIGNATED BENE PLAN/TOD                 December 1-31, 2025
+
+
+Positions - Options
+                                                                                                          Unrealized               Est. Annual
+Symbol   Description                      Quantity      Price($)    Market Value($)    Cost Basis($)   Gain/(Loss)($) Est. Yield    Income($)
+
+COIN     CALL COINBASE GLOBAL INC ,      (5.0000) S   12.50760            (6,253.80)   (14,221.69)        7,967.89
+01/16/20 $220  EXP 01/16/26
+26
+220.00 C
+COST     CALL COSTCO WHSL CORP NE ,      (5.0000) S   28.38320           (14,191.60)   (22,336.69)        8,145.09
+01/16/20 $840  EXP 01/16/26
+26
+840.00 C
+HD       CALL HOME DEPOT INC ,           (5.0000) S   12.42280            (6,211.40)   (11,996.69)        5,785.29
+01/16/20 $335  EXP 01/16/26
+26
+335.00 C
+LIN      CALL LINDE PLC ,                (5.0000) S   65.42800           (32,714.00)   (32,046.69)         (667.31)
+02/20/20 $365   EXP 02/20/26
+26
+365.00 C
+NFLX     CALL NETFLIX INC ,             (50.0000) S   10.31580           (51,579.00)   (52,316.81)           737.81
+02/20/20 $86   EXP 02/20/26
+26 86.00
+C
+ORCL     CALL ORACLE CORP ,              (5.0000) S   24.86900           (12,434.50)   (13,511.69)        1,077.19
+02/20/20 $175  EXP 02/20/26
+26
+175.00 C
+TMUS     CALL T-MOBILE US INC ,          (5.0000) S   30.14450           (15,072.25)   (13,441.69)       (1,630.56)
+02/20/20 $175   EXP 02/20/26
+26
+175.00 C
+VRT      CALL VERTIV HLDGS CO ,          (5.0000) S   24.53250           (12,266.25)   (14,356.69)        2,090.44
+02/20/20 $145   EXP 02/20/26
+26
+145.00 C
+
+
+
+
+                                                                                                                                       4 of 16
+             Schwab One® Account of                  Account Nickname
+                                                     My Brokerage
+             DENNIS G GANSTER &
+                                                     Statement Period
+             BEVERLY JANE GANSTER
+             DESIGNATED BENE PLAN/TOD                December 1-31, 2025
+
+Positions - Options (continued)
+                                                                                                         Unrealized               Est. Annual
+Symbol   Description                     Quantity      Price($)    Market Value($)    Cost Basis($)   Gain/(Loss)($) Est. Yield    Income($)
+
+AMZN     PUT AMAZON.COM INC ,           (5.0000) S   10.30630            (5,153.15)    (7,071.69)        1,918.54
+01/16/20 $240  EXP 01/16/26
+26
+240.00 P
+CRWD     PUT CROWDSTRIKE HLDGS IN ,     (5.0000) S   33.07430           (16,537.15)   (12,441.69)       (4,095.46)
+01/16/20 $500  EXP 01/16/26
+26
+500.00 P
+LLY      PUT ELI LILLY AND CO ,         (5.0000) S   10.54540            (5,272.70)   (30,881.69)       25,608.99
+01/16/20 $1040   EXP 01/16/26
+26
+1040.00
+P
+LMT      PUT LOCKHEED MARTIN CORP ,     (5.0000) S    5.15490            (2,577.45)   (15,696.69)       13,119.24
+01/16/20 $480  EXP 01/16/26
+26
+480.00 P
+META     PUT META PLATFORMS INC ,       (5.0000) S   32.38240           (16,191.20)   (30,331.69)       14,140.49
+01/16/20 $690  EXP 01/16/26
+26
+690.00 P
+MSFT     PUT MICROSOFT CORP ,           (5.0000) S   13.95820            (6,979.10)    (9,031.69)        2,052.59
+01/16/20 $495   EXP 01/16/26
+26
+495.00 P
+NVDA     PUT NVIDIA CORP ,              (5.0000) S    4.10000            (2,050.00)    (5,391.69)        3,341.69
+01/16/20 $184   EXP 01/16/26
+26
+184.00 P
+
+
+
+
+                                                                                                                                      5 of 16
+                    Schwab One® Account of                                                                           Account Nickname
+                                                                                                                     My Brokerage
+                    DENNIS G GANSTER &
+                                                                                                                     Statement Period
+                    BEVERLY JANE GANSTER
+                    DESIGNATED BENE PLAN/TOD                                                                         December 1-31, 2025
+
+Positions - Options (continued)
+                                                                                                                                                                                          Unrealized                  Est. Annual
+Symbol       Description                                                                             Quantity          Price($)       Market Value($)            Cost Basis($)         Gain/(Loss)($) Est. Yield       Income($)
+
+SPOT     PUT SPOTIFY TECHNOLOGY S ,                                                                (5.0000) S       52.07710             (26,038.55)             (25,071.69)               (966.86)
+02/20/20 $610  EXP 02/20/26
+26
+610.00 P
+ Total Options                                                                                                                        ($231,522.10)           ($310,147.16)             $78,625.06                                  A

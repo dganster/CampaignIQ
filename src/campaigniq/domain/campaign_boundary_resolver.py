@@ -18,13 +18,8 @@ class CampaignBoundaryResolver:
     def __init__(self, lot_book: LotBook) -> None:
         self.lot_book = lot_book
 
-    def resolve(self, campaign: Campaign) -> dict[str, str]:
-        """Assign exact pre-period lots to one boundary campaign.
-
-        A campaign may claim historical lots only when it started before the
-        available trade data and its observed closing activity exactly
-        consumes those lots. No partial or ambiguous provenance is assigned.
-        """
+    def candidate_assignments(self, campaign: Campaign) -> dict[str, Lot]:
+        """Return exact pre-period lot candidates without mutating the book."""
         if not campaign.started_before_data:
             return {}
 
@@ -61,6 +56,19 @@ class CampaignBoundaryResolver:
                 return {}
 
             candidates[lot.lot_id] = lot
+
+        return candidates
+
+    def resolve(self, campaign: Campaign) -> dict[str, str]:
+        """Assign exact pre-period lots to one boundary campaign.
+
+        A campaign may claim historical lots only when it started before the
+        available trade data and its observed closing activity exactly
+        consumes those lots. No partial or ambiguous provenance is assigned.
+        """
+        candidates = self.candidate_assignments(campaign)
+        if not candidates:
+            return {}
 
         for lot in candidates.values():
             replacement = Lot(

@@ -4,6 +4,7 @@ from decimal import Decimal
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_event_kind import PositionEventKind
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.importers.schwab.option_assignment_reader import (
     read_option_assignment,
 )
