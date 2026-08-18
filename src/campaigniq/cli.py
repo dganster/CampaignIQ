@@ -199,3 +199,7 @@ def main() -> None:
         _run_campaigns(args.statement)
     elif args.command == "import-period":
         _run_period(args)
+
+
+if __name__ == "__main__":
+    main()
