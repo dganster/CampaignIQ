@@ -9,7 +9,7 @@ DATA = Path("tests/data")
 JANUARY = DATA / "thinkorswim/Account Trading History 2026.csv"
 DECEMBER = DATA / "thinkorswim/Account Trade History December 2025.csv"
 NOVEMBER = DATA / "thinkorswim/Account Trade History November 2025.csv"
-DECEMBER_POSITIONS = DATA / "schwab_december_positions.txt"
+DECEMBER_POSITIONS = DATA / "schwab/december_positions.txt"
 JANUARY_REALIZED = DATA / "schwab/january_realized_gain_loss.txt"
 JANUARY_ASSIGNMENTS = DATA / "schwab/january_assignments.txt"
 

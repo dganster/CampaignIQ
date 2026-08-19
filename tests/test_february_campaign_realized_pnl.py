@@ -16,7 +16,7 @@ def test_tmus_assignment_matches_february_realized_stock_sale() -> None:
         thinkorswim_trade_history=(
             "tests/data/thinkorswim/Account Trading History 2026.csv"
         ),
-        opening_snapshot="tests/data/schwab_january_positions.txt",
+        opening_snapshot="tests/data/schwab/january_positions.txt",
         opening_snapshot_at=datetime(2026, 1, 31, 23, 59, 59),
         realized_gain_loss_report=(
             "tests/data/schwab/february_realized_gain_loss.txt"

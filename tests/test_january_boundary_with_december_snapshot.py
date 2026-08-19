@@ -17,7 +17,7 @@ from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
 JANUARY_TRADE_HISTORY = "tests/data/thinkorswim/Account Trading History 2026.csv"
 DECEMBER_TRADE_HISTORY = "tests/data/thinkorswim/Account Trade History December 2025.csv"
-DECEMBER_POSITIONS = Path("tests/data/schwab_december_positions.txt")
+DECEMBER_POSITIONS = Path("tests/data/schwab/december_positions.txt")
 
 
 def _trade_history(filename: str, *, through: date):

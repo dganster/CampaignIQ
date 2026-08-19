@@ -10,7 +10,7 @@ from campaigniq.importers.schwab.position_snapshot_reader import (
 )
 
 
-FIXTURE = Path("tests/data/schwab_january_positions.txt")
+FIXTURE = Path("tests/data/schwab/january_positions.txt")
 
 
 def test_reads_january_schwab_ending_equity_positions() -> None:
