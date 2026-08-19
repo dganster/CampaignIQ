@@ -71,19 +71,10 @@ class CampaignBoundaryResolver:
             return {}
 
         for lot in candidates.values():
-            replacement = Lot(
-                lot_id=lot.lot_id,
-                instrument=lot.instrument,
-                quantity=lot.quantity,
-                opened_at=lot.opened_at,
-                basis_total=lot.basis_total,
-                basis_source=lot.basis_source,
-                campaign_id=campaign.campaign_id,
+            self.lot_book.assign_campaign(
+                lot.lot_id,
+                campaign.campaign_id,
             )
-
-            lots = self.lot_book._lots[lot.instrument]
-            position = lots.index(lot)
-            lots[position] = replacement
 
         return {
             lot_id: campaign.campaign_id
