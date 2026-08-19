@@ -26,6 +26,7 @@ class _ClosingActivity:
     instrument: Instrument
     quantity: Decimal
     allocations: tuple[LotAllocation, ...]
+    is_assignment: bool = False
 
 
 @dataclass(slots=True)
@@ -168,6 +169,24 @@ class RealizedLotAttributor:
                 if quantity == 0:
                     continue
 
+                # A short-call assignment delivers shares away.  The shares
+                # therefore close an existing positive stock lot, and that
+                # opening lot must inherit the campaign identified from the
+                # assigned option BEFORE apply_signed_change creates its
+                # closing allocation.  Doing this afterward is too late:
+                # the allocation has already copied the lot's campaign_id.
+                if (
+                    event.kind == PositionEventKind.ASSIGNMENT
+                    and not isinstance(change.instrument, OptionContract)
+                    and assignment_campaign_id is not None
+                    and change.quantity < 0
+                ):
+                    self.lot_book.assign_unassigned_lots_to_campaign(
+                        change.instrument,
+                        quantity=abs(change.quantity),
+                        campaign_id=assignment_campaign_id,
+                    )
+
                 allocations = self.lot_book.apply_signed_change(
                     instrument=change.instrument,
                     quantity=quantity,
@@ -182,6 +201,7 @@ class RealizedLotAttributor:
                             instrument=change.instrument,
                             quantity=abs(quantity),
                             allocations=allocations,
+                            is_assignment=True,
                         )
                     )
 
@@ -393,17 +413,30 @@ class RealizedLotAttributor:
         activities: list[_ClosingActivity],
         record: RealizedGainLossRecord,
     ) -> tuple[LotAllocation, ...]:
-        """Consume closing activity matching one broker realized record."""
+        """Consume closing activity matching one broker realized record.
+
+        Schwab can report the realized stock sale from an option assignment
+        one business day before the assignment position event.  That
+        tolerance is restricted to assignment-derived stock activity; normal
+        trade closures still require an exact realized date.
+        """
         remaining = record.quantity
         matched: list[LotAllocation] = []
 
         index = 0
         while index < len(activities) and remaining > 0:
             activity = activities[index]
-            if (
-                activity.closed_date != record.closed_date
-                or activity.instrument != record.instrument
-            ):
+            if activity.instrument != record.instrument:
+                index += 1
+                continue
+
+            exact_date = activity.closed_date == record.closed_date
+            prior_business_day = (
+                activity.is_assignment
+                and cls._next_business_day(record.closed_date)
+                == activity.closed_date
+            )
+            if not (exact_date or prior_business_day):
                 index += 1
                 continue
 
@@ -423,6 +456,7 @@ class RealizedLotAttributor:
                         activity.allocations,
                         take,
                     ),
+                    is_assignment=activity.is_assignment,
                 )
                 index += 1
 

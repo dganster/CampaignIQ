@@ -132,10 +132,10 @@ class PeriodImportPipeline:
         # unambiguous open/close transaction (for example, a calendar roll).
         # Resolve only those in-period cases here; do not bypass the historical
         # ancestry requirement for started_before_data campaigns.
+
         for campaign in campaigns:
             if not campaign.started_before_data:
                 opening_lot_book.resolve_boundary_campaign(campaign)
-
         return PeriodImportResult(
             trades=trades,
             campaigns=campaigns,

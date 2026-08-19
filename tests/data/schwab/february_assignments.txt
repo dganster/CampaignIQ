@@ -1,0 +1,28 @@
+02/05
+Other Activity
+Option Assignment
+SPOT
+02/20/2026 610.00 P
+SPOTIFY TECHNOLOGY S
+2.0000
+02/06
+Other Activity
+Option Assignment
+SPOT
+02/20/2026 610.00 P
+SPOTIFY TECHNOLOGY S
+3.0000
+02/20
+Other Activity
+Option Assignment
+MSFT
+02/20/2026 485.00 P
+MICROSOFT CORP
+5.0000
+02/27
+Other Activity
+Option Assignment
+TMUS
+03/20/2026 170.00 C
+T-MOBILE US INC
+5.0000
