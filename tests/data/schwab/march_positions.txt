@@ -1,0 +1,59 @@
+Positions - Equities
+
+Symbol      Description                                                                        Quantity           Price($)       Market Value($)         Cost Basis($)        Gain/(Loss)($)
+CAT         CATERPILLAR INC (M)                                                             100.0000          742.83000               74,283.00           75,931.00              (1,648.00)
+CSCO        CISCO SYS INC (M)                                                               500.0000           79.46000               39,730.00           40,510.00                (780.00)
+GS          GOLDMAN SACHS GROUP INC (M)                                                     100.0000          859.57000               85,957.00           92,053.00              (6,096.00)
+HD          HOME DEPOT INC (M)                                                              500.0000          380.72000              190,360.00          175,299.07              15,060.93
+MSFT        MICROSOFT CORP (M)                                                              500.0000          392.74000              196,370.00          231,338.31             (34,968.31)
+NFLX        NETFLIX INC                                                                    5000.0000           96.24000              481,200.00          534,533.19             (53,333.19)
+ORCL        ORACLE CORP (M)                                                                 500.0000          145.40000               72,700.00          101,558.31             (28,858.31)
+SPOT        SPOTIFY TECHNOLOGY S A F (M)                                                    500.0000          514.94000              257,470.00          279,928.31             (22,458.31)
+UNH         UNITEDHEALTH GROUP INC (M)                                                       500.0000          293.27000              146,635.00          168,535.00             (21,900.00)
+
+Positions - Options
+
+Symbol   Description                      Quantity      Price($)    Market Value($)    Cost Basis($)   Unrealized Gain/(Loss)
+CAT      CALL CATERPILLAR INC,         (1.0000) S   47.18300     (4,718.30)          (6,394.34)         1,676.04
+03/20/2026 $710 EXP 03/20/26
+710.00 C
+
+CSCO     CALL CISCO SYS INC,           (5.0000) S    5.17630     (2,588.15)          (3,811.68)         1,223.53
+03/20/2026 $75 EXP 03/20/26
+75.00 C
+
+GS       CALL GOLDMAN SACHS GROUP,     (1.0000) S   26.21330     (2,621.33)          (6,420.34)         3,799.01
+03/20/2026 $870 EXP 03/20/26
+870.00 C
+
+HD       CALL HOME DEPOT INC,          (5.0000) S   56.43340    (28,216.70)         (31,381.68)         3,164.98
+03/20/2026 $325 EXP 03/20/26
+325.00 C
+
+MSFT     CALL MICROSOFT CORP,          (5.0000) S   22.90000    (11,450.00)         (13,921.68)         2,471.68
+03/20/2026 $375 EXP 03/20/26
+375.00 C
+
+NFLX     CALL NETFLIX INC,             (50.0000) S   22.63540   (113,177.00)         (39,066.79)       (74,110.21)
+03/20/2026 $74 EXP 03/20/26
+74.00 C
+
+ORCL     CALL ORACLE CORP,              (5.0000) S   17.17340     (8,586.70)         (13,536.68)         4,949.98
+03/20/2026 $135 EXP 03/20/26
+135.00 C
+
+SPOT     CALL SPOTIFY TECHNOLOGY,       (5.0000) S   68.82510    (34,412.55)         (25,096.68)        (9,315.87)
+03/20/2026 $450 EXP 03/20/26
+450.00 C
+
+UNH      CALL UNITEDHEALTH GROUP,       (5.0000) S   43.67600    (21,838.00)         (13,819.68)        (8,018.32)
+03/20/2026 $250 EXP 03/20/26
+250.00 C
+
+CRWD     PUT CROWDSTRIKE HLDGS IN,      (5.0000) S  128.68570    (64,342.85)         (42,486.68)       (21,856.17)
+03/20/2026 $500 EXP 03/20/26
+500.00 P
+
+META     PUT META PLATFORMS INC,        (5.0000) S   17.53010     (8,765.05)         (16,181.68)         7,416.63
+03/20/2026 $645 EXP 03/20/26
+645.00 P

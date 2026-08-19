@@ -1,0 +1,23 @@
+03/09
+Other Activity
+Option Assignment
+UNH
+03/20/2026 250.00 C
+CALL UNITEDHEALTH GROUP $250 EXP 03/20/26
+5.0000
+
+03/26
+Other Activity
+Option Assignment
+CRWD
+04/17/2026 500.00 P
+PUT CROWDSTRIKE HLDGS INC $500 EXP 04/17/26
+5.0000
+
+03/27
+Other Activity
+Option Assignment
+IBM
+04/17/2026 280.00 P
+PUT IBM CORP $280 EXP 04/17/26
+1.0000
