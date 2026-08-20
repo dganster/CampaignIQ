@@ -175,6 +175,43 @@ def test_assignment_settlement_uses_assignment_date_for_realized_record() -> Non
     assert result.basis_reconciled is True
     assert result.gain_loss_reconciled is True
 
+def test_assignment_settlement_can_precede_assignment_event() -> None:
+    from campaigniq.domain.option_contract import OptionContract
+    from campaigniq.domain.option_type import OptionType
+    from campaigniq.domain.position_event import PositionChange, PositionEvent
+    from campaigniq.domain.position_event_kind import PositionEventKind
+
+    assignment = PositionEvent(
+        kind=PositionEventKind.ASSIGNMENT,
+        changes=(PositionChange(
+            instrument=OptionContract(
+                underlying="UNH",
+                expiration=date(2026, 3, 20),
+                strike=Decimal("250"),
+                option_type=OptionType.CALL,
+            ),
+            quantity=Decimal("5"),
+        ),),
+        occurred_at=datetime(2026, 3, 9),
+    )
+
+    settlement = InstrumentLeg(
+        instrument=Instrument("UNH"),
+        side=Side.SELL,
+        position_effect=PositionEffect.CLOSE,
+        executions=(Execution(
+            quantity=Decimal("500"),
+            execution_price=Decimal("250"),
+            executed_at=datetime(2026, 3, 7),
+        ),),
+    )
+
+    closures = RealizedLotAttributor._assignment_closures([assignment])
+
+    assert RealizedLotAttributor._economic_closed_date(
+        settlement, closures
+    ) == date(2026, 3, 7)
+    assert closures[0].remaining_quantity == Decimal("500")
 
 def test_assignment_dates_ignore_non_assignment_events() -> None:
     from campaigniq.domain.option_contract import OptionContract

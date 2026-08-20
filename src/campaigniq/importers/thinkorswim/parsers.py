@@ -63,6 +63,8 @@ def parse_decimal(value: str) -> Decimal | None:
     if not value:
         return None
 
+    value = value.replace(",", "")
+
     return Decimal(value)
 
 from campaigniq.domain.option_type import OptionType
