@@ -149,6 +149,28 @@ class RealizedLotAttributor:
                     if len(campaign_ids) == 1:
                         assignment_campaign_id = next(iter(campaign_ids))
 
+                    if allocations and quantity > 0:
+                        share_allocations = tuple(
+                            LotAllocation(
+                                lot_id=allocation.lot_id,
+                                quantity=allocation.quantity * Decimal("100"),
+                                broker_basis=allocation.broker_basis,
+                                basis_source=allocation.basis_source,
+                                campaign_id=allocation.campaign_id,
+                            )
+                            for allocation in allocations
+                        )
+
+                        activities.append(
+                            _ClosingActivity(
+                                closed_date=event.occurred_at.date(),
+                                instrument=change.instrument,
+                                quantity=abs(quantity) * Decimal("100"),
+                                allocations=share_allocations,
+                                is_assignment=True,
+                            )
+                        )
+
                     continue
 
                 if (

@@ -3,6 +3,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from campaigniq.import_pipeline import PeriodImportPipeline
+from campaigniq.domain.value_objects.instrument import Instrument
 
 
 DATA = Path("tests/data")
@@ -28,10 +29,22 @@ def test_period_pipeline_imports_january_domain_data() -> None:
 
     assert result.trades
     assert result.campaigns
-    assert result.position_events == ()
+    assert len(result.position_events) == 2
+    assert {
+        (
+            event.changes[0].instrument,
+            event.changes[0].quantity,
+        )
+        for event in result.position_events
+    } == {
+    (Instrument("DXCM"), Decimal("-500")),
+    (Instrument("EL"), Decimal("-500")),
+}
     assert len(result.realized_gain_loss) == 28
     assert sum((record.gain_loss for record in result.realized_gain_loss), Decimal("0")) == Decimal("126642.32")
-    assert len(result.position_history.items()) == len(result.trades)
+    assert len(result.position_history.items()) == (
+        len(result.trades) + len(result.position_events)
+    )
     assert result.boundary_reconstruction.unresolved_positions == ()
     assert result.boundary_reconstruction.unresolved_campaigns == ()
     assert result.boundary_reconstruction.historical_requirements == ()

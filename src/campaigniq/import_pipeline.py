@@ -34,6 +34,12 @@ from campaigniq.importers.schwab.position_snapshot_reader import (
 from campaigniq.importers.thinkorswim.trade_history_reader import (
     ThinkorswimTradeHistoryReader,
 )
+from campaigniq.importers.thinkorswim.cash_balance_reader import (
+    ThinkorswimCashBalanceReader,
+)
+from campaigniq.importers.thinkorswim.cash_balance_event import (
+    to_expiration_event,
+)
 from campaigniq.importers.thinkorswim.translator import to_trade
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
@@ -57,6 +63,7 @@ class PeriodImportPipeline:
     def __init__(self) -> None:
         self._source_reader = ThinkorswimSourceReader()
         self._trade_history_reader = ThinkorswimTradeHistoryReader()
+        self._cash_balance_reader = ThinkorswimCashBalanceReader()
         self._campaign_reconstructor = CampaignReconstructor()
         self._boundary_analyzer = BoundaryReconstructionAnalyzer()
 
@@ -84,10 +91,23 @@ class PeriodImportPipeline:
 
         campaigns = tuple(self._campaign_reconstructor.reconstruct(list(trades)))
 
-        position_events = tuple(
+        assignment_events = (
             read_option_assignment_events(assignment_lines)
             if assignment_lines
             else ()
+        )
+
+        expiration_events = self._read_expiration_events(
+            thinkorswim_trade_history,
+            start=period_start,
+            end=period_end,
+        )
+
+        position_events = tuple(
+            sorted(
+                (*assignment_events, *expiration_events),
+                key=lambda event: event.occurred_at,
+            )
         )
 
         position_history = PositionHistory()
@@ -226,6 +246,39 @@ class PeriodImportPipeline:
                         basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
                     )
                 )
+
+    def _read_expiration_events(
+        self,
+        filename: str | Path,
+        *,
+        start: date,
+        end: date,
+    ) -> list[PositionEvent]:
+        """Read TOS EXP Cash Balance records within a date range."""
+
+        statement = self._source_reader.read(str(filename))
+        rows = self._cash_balance_reader.read(
+            statement.section("Cash Balance")
+        )
+
+        events: list[PositionEvent] = []
+
+        for row in rows:
+            if row.transaction_type != "EXP":
+                continue
+
+            if row.transaction_date < start:
+                continue
+
+            if row.transaction_date > end:
+                continue
+
+            events.append(to_expiration_event(row))
+
+        return sorted(
+            events,
+            key=lambda event: event.occurred_at,
+        )
 
     def _read_trades(
         self,
