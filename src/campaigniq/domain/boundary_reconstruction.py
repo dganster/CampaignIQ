@@ -155,19 +155,23 @@ class BoundaryReconstructionAnalyzer:
         """Return true when supplied history explains the opening lots."""
         required = cls._required_quantities(campaign)
 
-        for instrument, quantity in required.items():
+        for instrument in required:
             lots = opening_lot_book.lots(instrument)
-            if len(lots) != 1:
-                return False
-
-            lot = lots[0]
-            if not cls._historical_opening_quantity(
-                instrument,
-                historical_trades,
-            ) == lot.quantity:
+            if not lots:
                 continue
 
-            return True
+            opening_quantity = sum(
+                (lot.quantity for lot in lots),
+                Decimal("0"),
+            )
+
+            historical_quantity = cls._historical_opening_quantity(
+                instrument,
+                historical_trades,
+            )
+
+            if historical_quantity == opening_quantity:
+                return True
 
         return False
 

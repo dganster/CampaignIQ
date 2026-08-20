@@ -177,24 +177,23 @@ class LotBook:
                 if lot.campaign_id is None
             ]
 
-            # No opening-snapshot lot exists for this instrument.
+            # No opening lot exists for this instrument.
             # This is normal for a position opened during the campaign.
             if not matching_lots:
                 continue
 
-            # More than one unassigned opening lot is ambiguous.
-            if len(matching_lots) != 1:
+            # The campaign may claim multiple unassigned lots of the same
+            # instrument when together they exactly match the required quantity.
+
+            if sum(
+                (abs(lot.quantity) for lot in matching_lots),
+                Decimal("0"),
+            ) != quantity:
                 return {}
 
-            lot = matching_lots[0]
-
-            # A historical lot may only be claimed when the campaign
-            # consumes the entire opening lot.
-            if abs(lot.quantity) != quantity:
-                return {}
-
-            candidates[lot.lot_id] = lot
-
+            for lot in matching_lots:
+                candidates[lot.lot_id] = lot
+                
         for lot in candidates.values():
             self.assign_campaign(
                 lot.lot_id,

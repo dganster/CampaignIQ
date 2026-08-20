@@ -370,3 +370,66 @@ def test_mixed_campaign_can_claim_historical_lots_consumed_by_later_trade() -> N
         book.lots(Instrument("COIN"))[0].campaign_id
         == "CAMP-000006"
     )
+def test_same_instrument_multiple_historical_lots_can_be_claimed() -> None:
+    book = LotBook()
+
+    instrument = Instrument("CSCO-2026-05-15-72.5-C")
+
+    book.seed(
+        Lot(
+            lot_id="HIST-1",
+            instrument=instrument,
+            quantity=Decimal("-2"),
+            opened_at=datetime(2026, 3, 27, 10, 55, 41),
+            basis_total=None,
+            basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
+        )
+    )
+
+    book.seed(
+        Lot(
+            lot_id="HIST-2",
+            instrument=instrument,
+            quantity=Decimal("-3"),
+            opened_at=datetime(2026, 3, 27, 10, 55, 41),
+            basis_total=None,
+            basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
+        )
+    )
+
+    campaign = Campaign(
+        campaign_id="CAMP-TEST",
+        trades=(
+            Trade(
+                legs=(
+                    Leg(
+                        instrument=instrument,
+                        side=Side.BUY,
+                        position_effect=PositionEffect.CLOSE,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("5"),
+                                execution_price=Decimal("10"),
+                                executed_at=datetime(
+                                    2026, 4, 14, 8, 59, 19
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        started_before_data=True,
+    )
+
+    assignments = book.resolve_boundary_campaign(campaign)
+
+    assert assignments == {
+        "HIST-1": "CAMP-TEST",
+        "HIST-2": "CAMP-TEST",
+    }
+
+    assert all(
+        lot.campaign_id == "CAMP-TEST"
+        for lot in book.lots(instrument)
+    )

@@ -47,15 +47,19 @@ class CampaignBoundaryResolver:
                 if lot.campaign_id is None
             ]
 
-            if len(matching_lots) != 1:
+            if not matching_lots:
                 return {}
 
-            lot = matching_lots[0]
-
-            if abs(lot.quantity) != quantity:
+            # Multiple historical lots for one instrument are valid when
+            # together they exactly match the campaign's required quantity.
+            if sum(
+                (abs(lot.quantity) for lot in matching_lots),
+                Decimal("0"),
+            ) != quantity:
                 return {}
 
-            candidates[lot.lot_id] = lot
+            for lot in matching_lots:
+                candidates[lot.lot_id] = lot
 
         return candidates
 

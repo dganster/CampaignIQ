@@ -15,6 +15,7 @@ from campaigniq.domain.boundary_reconstruction import (
 from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.position_event import PositionEvent
@@ -142,10 +143,26 @@ class PeriodImportPipeline:
                 end=period_start - date.resolution,
             )
         )
+        
+        historical_expiration_events = (
+            self._read_expiration_events(
+                thinkorswim_trade_history,
+                start=historical_period_start,
+                end=period_start - date.resolution,
+            )
+            if historical_period_start is not None
+            else []
+        )
 
         self._seed_missing_historical_option_lots(
             opening_lot_book,
             historical_trades,
+        )
+
+        self._seed_missing_historical_expiration_lots(
+            opening_lot_book,
+            historical_expiration_events,
+            campaigns,
         )
 
         boundary = self._boundary_analyzer.analyze(
@@ -244,6 +261,83 @@ class PeriodImportPipeline:
                         opened_at=opened_at,
                         basis_total=None,
                         basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
+                    )
+                )
+
+    @staticmethod
+    def _seed_missing_historical_expiration_lots(
+        opening_lot_book: LotBook,
+        historical_expiration_events: list[PositionEvent],
+        campaigns: tuple,
+    ) -> None:
+        """Seed missing equity lots created by historical expiration events."""
+        required: dict[object, Decimal] = {}
+
+        for campaign in campaigns:
+            for trade in campaign.trades:
+                for leg in trade.legs:
+                    if leg.position_effect != PositionEffect.CLOSE:
+                        continue
+
+                    if not isinstance(leg.instrument, Instrument):
+                        continue
+
+                    quantity = sum(
+                        (
+                            abs(execution.quantity)
+                            for execution in leg.executions
+                        ),
+                        Decimal("0"),
+                    )
+
+                    if quantity:
+                        required[leg.instrument] = (
+                            required.get(leg.instrument, Decimal("0"))
+                            + quantity
+                        )
+
+        if not required:
+            return
+
+        for event in historical_expiration_events:
+            for change in event.changes:
+                if change.quantity <= 0:
+                    continue
+
+                instrument = change.instrument
+                if not isinstance(instrument, Instrument):
+                    continue
+
+                if instrument not in required:
+                    continue
+
+                existing_quantity = sum(
+                    (
+                        lot.quantity
+                        for lot in opening_lot_book.lots(instrument)
+                        if lot.quantity > 0
+                    ),
+                    Decimal("0"),
+                )
+
+                missing_quantity = required[instrument] - existing_quantity
+                if missing_quantity <= 0:
+                    continue
+
+                quantity = min(change.quantity, missing_quantity)
+
+                opening_lot_book.seed(
+                    Lot(
+                        lot_id=(
+                            f"HISTORICAL-EXPIRATION:"
+                            f"{event.occurred_at.isoformat()}:"
+                            f"{instrument}"
+                        ),
+                        instrument=instrument,
+                        quantity=quantity,
+                        opened_at=event.occurred_at,
+                        basis_total=None,
+                        basis_source="HISTORICAL_EXPIRATION_RECONSTRUCTION",
                     )
                 )
 

@@ -13,6 +13,9 @@ NOVEMBER = DATA / "thinkorswim/Account Trade History November 2025.csv"
 DECEMBER_POSITIONS = DATA / "schwab/december_positions.txt"
 JANUARY_REALIZED = DATA / "schwab/january_realized_gain_loss.txt"
 JANUARY_ASSIGNMENTS = DATA / "schwab/january_assignments.txt"
+APRIL_ASSIGNMENTS = DATA / "schwab/march_assignments.txt"
+MARCH_POSITIONS = DATA / "schwab/march_positions.txt"
+APRIL_REALIZED = DATA / "schwab/april_realized_gain_loss.txt"
 
 
 def test_period_pipeline_imports_january_domain_data() -> None:
@@ -118,3 +121,25 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
     assert len(attributions) == 28
     assert sum((item.gain_loss for item in campaign_results), Decimal("0")) == Decimal("126642.32")
     assert sum((item.record.gain_loss for item in attributions if item.has_unassigned_campaign_allocation), Decimal("0")) == Decimal("0")
+
+def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 30),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=MARCH_POSITIONS,
+        opening_snapshot_at=datetime(2026, 3, 31),
+        assignment_lines=APRIL_ASSIGNMENTS.read_text().splitlines(),
+        realized_gain_loss_report=APRIL_REALIZED,
+        historical_trade_histories=(JANUARY,),
+        historical_period_start=date(2026, 3, 1),
+    )
+
+    crwd_lots = [
+        lot
+        for lot in result.opening_lot_book.lots(Instrument("CRWD"))
+        if lot.quantity == Decimal("500")
+    ]
+
+    assert crwd_lots
+    assert crwd_lots[0].basis_source == "HISTORICAL_EXPIRATION_RECONSTRUCTION"

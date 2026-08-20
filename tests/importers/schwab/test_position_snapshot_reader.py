@@ -30,6 +30,20 @@ def test_reads_january_schwab_ending_equity_positions() -> None:
     assert lin.quantity == Decimal("500")
     assert lin.basis_total == Decimal("213921.31")
 
+def test_reads_march_schwab_ending_equity_positions() -> None:
+    fixture = Path("tests/data/schwab/march_positions.txt")
+
+    rows = read_position_snapshot_section(
+        fixture.read_text().splitlines(),
+        snapshot_at=datetime(2026, 3, 31),
+    )
+    equities = [row for row in rows if row.expiration is None]
+
+    assert len(equities) == 9
+
+    csco = next(row for row in equities if row.symbol == "CSCO")
+    assert csco.quantity == Decimal("500")
+    assert csco.basis_total == Decimal("40510.00")
 
 def test_reads_january_schwab_ending_option_positions() -> None:
     rows = read_position_snapshot_section(
