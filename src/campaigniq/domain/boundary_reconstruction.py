@@ -73,7 +73,19 @@ class BoundaryReconstructionAnalyzer:
             if not campaign.started_before_data:
                 continue
 
-            candidates = resolver.candidate_assignments(campaign)
+            historically_proven = (
+                bool(historical_trades)
+                and self._campaign_ancestry_established(
+                    campaign,
+                    opening_lot_book,
+                    historical_trades,
+                )
+            )
+
+            candidates = resolver.candidate_assignments(
+                campaign,
+                allow_partial=historically_proven,
+            )
             position_resolved = bool(candidates)
             if not position_resolved:
                 closing_instruments = self._closing_instruments(campaign)
@@ -94,11 +106,7 @@ class BoundaryReconstructionAnalyzer:
                 )
                 continue
 
-            if historical_trades and not self._campaign_ancestry_established(
-                campaign,
-                opening_lot_book,
-                historical_trades,
-            ):
+            if historical_trades and not historically_proven:
                 unresolved_campaigns.append(campaign.campaign_id)
                 closing_instruments = self._closing_instruments(campaign)
                 requirements.append(
@@ -113,7 +121,10 @@ class BoundaryReconstructionAnalyzer:
                 )
                 continue
 
-            resolver.resolve(campaign)
+            resolver.resolve(
+                campaign,
+                allow_partial=historically_proven,
+            )
 
         return BoundaryReconstruction(
             unresolved_positions=tuple(sorted(unresolved_positions)),

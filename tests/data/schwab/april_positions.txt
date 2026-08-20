@@ -1,0 +1,163 @@
+Positions - Equities
+                                                                                                                                                                                 Unrealized        Est.       Est. Annual
+Symbol      Description                                                                        Quantity           Price($)       Market Value($)         Cost Basis($)        Gain/(Loss)($)      Yield        Income($)
+
+ACN         ACCENTURE PLC IRELAND F (M)                                                     100.0000          178.71000               17,871.00              19,351.00          (1,480.00)      3.64%             652.00
+APD         AIR PRODS & CHEMS INC (M)                                                       100.0000          300.05000               30,005.00              29,349.00                 656.00   2.38%             716.00
+                                (M)
+GOOG        ALPHABET INC                                                                    100.0000          381.94000               38,194.00              33,642.00            4,552.00      0.21%              84.00
+AMZN        AMAZON.COM INC (M)                                                              100.0000          265.06000               26,506.00              24,803.00            1,703.00        N/A                   N/A
+                                               (M)
+AXP         AMERICAN EXPRESS CO                                                             100.0000          323.05000               32,305.00              33,706.00          (1,401.00)      1.01%             328.00
+ADP         AUTOMATIC DATA PROCESSIN (M)                                                    100.0000          211.94000               21,194.00              19,990.00            1,204.00       3.2%             680.00
+                                       (M)
+CAT         CATERPILLAR INC                                                                 100.0000          890.11000               89,011.00              75,931.00           13,080.00      0.67%             604.00
+                               (M)
+CMI         CUMMINS INC                                                                     100.0000          671.01000               67,101.00              57,699.00            9,402.00      1.19%             800.00
+                                                          (M)
+GS          GOLDMAN SACHS GROUP INC                                                         100.0000          923.77000               92,377.00              92,053.00                 324.00   1.94%           1,800.00
+                                       (M)
+HD          HOME DEPOT INC                                                                  500.0000          328.80000              164,400.00          175,299.07            (10,899.07)      2.83%           4,660.00
+IBM         IBM CORP (M)                                                                    100.0000          230.98000               23,098.00              25,207.66          (2,109.66)       2.9%             672.00
+                                             (M)
+JNJ         JOHNSON & JOHNSON                                                               100.0000          229.85000               22,985.00              24,034.00          (1,049.00)      2.26%             520.00
+LMT         LOCKHEED MARTIN CORP (M)                                                        100.0000          517.97000               51,797.00              60,542.00          (8,745.00)      2.66%           1,380.00
+
+                                                                                                                                                                                                                   3 of 14
+             Schwab One® Account of                      Account Nickname
+                                                         My Brokerage
+             DENNIS G GANSTER &
+                                                         Statement Period
+             BEVERLY JANE GANSTER
+             DESIGNATED BENE PLAN/TOD                    April 1-30, 2026
+
+Positions - Equities (continued)
+                                                                                                               Unrealized      Est.     Est. Annual
+Symbol   Description                      Quantity        Price($)     Market Value($)      Cost Basis($)   Gain/(Loss)($)    Yield      Income($)
+
+MCD      MCDONALDS CORP (M)              100.0000      293.59000             29,359.00       30,710.00         (1,351.00)    2.53%         744.00
+MSFT     MICROSOFT CORP (M)              500.0000      407.78000            203,890.00      231,338.31       (27,448.31)     0.89%       1,820.00
+                       (M)
+ORCL     ORACLE CORP                     500.0000      161.39000             80,695.00      101,558.31       (20,863.31)     1.23%       1,000.00
+PG       PROCTER & GAMBLE CO (M)         100.0000      147.09000             14,709.00       15,335.00           (626.00)    2.87%         422.72
+                                   (M)
+UNH      UNITEDHEALTH GROUP INC          100.0000      370.48000             37,048.00       32,376.00          4,672.00     2.38%         884.00
+
+Total Equities                                                         $1,042,545.00      $1,082,924.35     ($40,379.35)               $17,766.72
+
+
+Positions - Options
+                                                                                                               Unrealized       Est.    Est. Annual
+Symbol   Description                        Quantity        Price($)    Market Value($)     Cost Basis($)   Gain/(Loss)($)     Yield     Income($)
+
+ACN      CALL ACCENTURE PLC IRELA ,       (1.0000) S      8.80110              (880.11)       (2,188.29)        1,308.18
+05/15/20 $175   EXP 05/15/26
+26
+175.00 C
+APD      CALL AIR PRODS & CHEMS I ,       (1.0000) S     31.20300            (3,120.30)       (2,642.29)        (478.01)
+05/15/20 $270   EXP 05/15/26
+26
+270.00 C
+GOOG     CALL ALPHABET INC ,              (1.0000) S     74.75210            (7,475.21)       (3,456.27)      (4,018.94)
+06/18/20 $310   EXP 06/18/26
+26
+310.00 C
+AMZN     CALL AMAZON.COM INC ,            (1.0000) S     38.52710            (3,852.71)       (2,901.28)        (951.43)
+06/18/20 $230  EXP 06/18/26
+26
+230.00 C
+AXP      CALL AMERICAN EXPRESS CO ,       (1.0000) S     16.87420            (1,687.42)       (3,129.28)        1,441.86
+05/15/20 $310  EXP 05/15/26
+26
+310.00 C
+
+
+
+
+                                                                                                                                            4 of 14
+             Schwab One® Account of                   Account Nickname
+                                                      My Brokerage
+             DENNIS G GANSTER &
+                                                      Statement Period
+             BEVERLY JANE GANSTER
+             DESIGNATED BENE PLAN/TOD                 April 1-30, 2026
+
+Positions - Options (continued)
+                                                                                                          Unrealized     Est.   Est. Annual
+Symbol   Description                     Quantity       Price($)    Market Value($)    Cost Basis($)   Gain/(Loss)($)   Yield    Income($)
+
+AMT      CALL AMERICAN TOWER CORP ,     (1.0000) S    13.28920            (1,328.92)    (1,404.31)            75.39
+05/15/20 $170  EXP 05/15/26
+26
+170.00 C
+ADP      CALL AUTOMATIC DATA PROC ,     (1.0000) S    27.86850            (2,786.85)    (1,759.30)       (1,027.55)
+05/15/20 $185   EXP 05/15/26
+26
+185.00 C
+CAT      CALL CATERPILLAR INC ,         (1.0000) S   261.47180           (26,147.18)    (9,501.34)     (16,645.84)
+05/15/20 $630  EXP 05/15/26
+26
+630.00 C
+CMI      CALL CUMMINS INC ,             (1.0000) S   193.80130           (19,380.13)    (6,479.34)     (12,900.79)
+05/15/20 $480  EXP 05/15/26
+26
+480.00 C
+GS       CALL GOLDMAN SACHS GROUP ,     (1.0000) S   208.25450           (20,825.45)   (21,620.89)           795.44
+06/18/20 $720  EXP 06/18/26
+26
+720.00 C
+HD       CALL HOME DEPOT INC ,          (5.0000) S    35.63160           (17,815.80)   (18,051.67)           235.87
+05/15/20 $295  EXP 05/15/26
+26
+295.00 C
+IBM      CALL IBM CORP ,                (1.0000) S    21.52690            (2,152.69)    (3,253.34)         1,100.65
+05/15/20 $210   EXP 05/15/26
+26
+210.00 C
+JNJ      CALL JOHNSON & JOHNSON ,       (1.0000) S    11.43790            (1,143.79)    (2,173.30)         1,029.51
+05/15/20 $220   EXP 05/15/26
+26
+220.00 C
+LMT      CALL LOCKHEED MARTIN COR ,     (1.0000) S    38.46860            (3,846.86)    (4,703.24)           856.38
+06/18/20 $490   EXP 06/18/26
+26
+490.00 C
+
+
+                                                                                                                                    5 of 14
+                 Schwab One® Account of                                                                          Account Nickname
+                                                                                                                 My Brokerage
+                 DENNIS G GANSTER &
+                                                                                                                 Statement Period
+                 BEVERLY JANE GANSTER
+                 DESIGNATED BENE PLAN/TOD                                                                        April 1-30, 2026
+
+Positions - Options (continued)
+                                                                                                                                                                                 Unrealized          Est.      Est. Annual
+Symbol      Description                                                                          Quantity          Price($)      Market Value($)          Cost Basis($)       Gain/(Loss)($)        Yield       Income($)
+
+MCD      CALL MCDONALDS CORP ,                                                                  (1.0000) S        8.30750              (830.75)            (2,039.30)             1,208.55
+05/15/20 $290  EXP 05/15/26
+26
+290.00 C
+MSFT     CALL MICROSOFT CORP ,                                                                  (5.0000) S      70.45660            (35,228.30)           (43,355.78)             8,127.48
+06/18/20 $340   EXP 06/18/26
+26
+340.00 C
+ORCL     CALL ORACLE CORP ,                                                                     (5.0000) S      39.70250            (19,851.25)           (30,021.05)            10,169.80
+06/18/20 $125  EXP 06/18/26
+26
+125.00 C
+PG       CALL PROCTER & GAMBLE CO ,                                                             (1.0000) S        9.56540              (956.54)            (1,146.32)                189.78
+06/18/20 $140   EXP 06/18/26
+26
+140.00 C
+UNH      CALL UNITEDHEALTH GROUP ,                                                              (1.0000) S      71.66950             (7,166.95)            (5,554.23)            (1,612.72)
+06/18/20 $300  EXP 06/18/26
+26
+300.00 C
+META     PUT META PLATFORMS INC ,                                                               (5.0000) S      24.00180            (12,000.90)           (52,156.67)            40,155.77
+05/15/20 $625  EXP 05/15/26
+26
+625.00 P
+ Total Options                                                                                                                   ($188,478.11)         ($217,537.49)            $29,059.38                                A

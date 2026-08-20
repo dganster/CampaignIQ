@@ -18,8 +18,13 @@ class CampaignBoundaryResolver:
     def __init__(self, lot_book: LotBook) -> None:
         self.lot_book = lot_book
 
-    def candidate_assignments(self, campaign: Campaign) -> dict[str, Lot]:
-        """Return exact pre-period lot candidates without mutating the book."""
+    def candidate_assignments(
+        self,
+        campaign: Campaign,
+        *,
+        allow_partial: bool = False,
+    ) -> dict[str, Lot]:
+        """Return pre-period lot candidates without mutating the book."""
         if not campaign.started_before_data:
             return {}
 
@@ -52,25 +57,35 @@ class CampaignBoundaryResolver:
 
             # Multiple historical lots for one instrument are valid when
             # together they exactly match the campaign's required quantity.
-            if sum(
+            total_quantity = sum(
                 (abs(lot.quantity) for lot in matching_lots),
                 Decimal("0"),
-            ) != quantity:
-                return {}
+            )
+
+            if total_quantity != quantity:
+                if not (
+                    allow_partial
+                    and len(matching_lots) == 1
+                    and total_quantity > quantity
+                ):
+                    return {}
 
             for lot in matching_lots:
                 candidates[lot.lot_id] = lot
 
         return candidates
 
-    def resolve(self, campaign: Campaign) -> dict[str, str]:
-        """Assign exact pre-period lots to one boundary campaign.
-
-        A campaign may claim historical lots only when it started before the
-        available trade data and its observed closing activity exactly
-        consumes those lots. No partial or ambiguous provenance is assigned.
-        """
-        candidates = self.candidate_assignments(campaign)
+    def resolve(
+        self,
+        campaign: Campaign,
+        *,
+        allow_partial: bool = False,
+    ) -> dict[str, str]:
+        """Assign pre-period lots to one boundary campaign."""
+        candidates = self.candidate_assignments(
+            campaign,
+            allow_partial=allow_partial,
+        )
         if not candidates:
             return {}
 
