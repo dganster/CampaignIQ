@@ -15,7 +15,7 @@ from campaigniq.domain.option_type import OptionType
 _EQUITY_RE = re.compile(
     r"^\s*(?P<symbol>\S+)\s+.*?"
     r"(?P<quantity>\(?-?[\d,]+\.\d{4}\)?)\s+"
-    r"(?P<price>[\d,]+\.\d{5})\s+"
+    r"(?P<price>[\d,]+\.\d{4,5})\s+"
     r"(?P<market>\(?-?[\d,]+\.\d{2}\)?)\s+"
     r"(?P<basis>\(?-?[\d,]+\.\d{2}\)?)\s+"
     r"(?P<gain>\(?-?[\d,]+\.\d{2}\)?)"
@@ -59,6 +59,11 @@ def read_position_snapshot_section(
         line = lines[index].strip()
 
         if line.startswith("Positions - Equities"):
+            section = "equities"
+            index += 1
+            continue
+
+        if line.startswith("Positions - Other Assets"):
             section = "equities"
             index += 1
             continue
@@ -137,3 +142,44 @@ def _parse_amount(value: str) -> Decimal:
     if value.startswith("(") and value.endswith(")"):
         return -Decimal(value[1:-1])
     return Decimal(value)
+
+def test_reads_other_assets_as_equity_positions() -> None:
+    lines = [
+        "Positions - Other Assets",
+        "Symbol       Description                                                                           Quantity           Price($)     Market Value($)              Cost Basis($)          Gain/(Loss)($)        Yield       Income($)",
+        "",
+        "AMT          AMERICAN TOWER CORP NEW (M),                                                       100.0000         186.96000              18,696.00                18,171.00                   525.00     3.82%               716.00",
+        "             REIT",
+        "",
+        " Total Other Assets",
+    ]
+
+    rows = read_position_snapshot_section(
+        lines,
+        snapshot_at=datetime(2026, 5, 31, 23, 59, 59),
+    )
+
+    amt = next(row for row in rows if row.symbol == "AMT")
+
+    assert amt.quantity == Decimal("100.0000")
+    assert amt.basis_total == Decimal("18171.00")
+    assert amt.instrument() == Instrument("AMT")
+
+
+def test_reads_wrapped_gs_price_from_schwab_pdf_extraction() -> None:
+    lines = [
+        "Positions - Equities",
+        "GS          GOLDMAN SACHS GROUP INC                                                         100.0000          1,025.5600             102,556.00              92,053.00           10,503.00     1.75%            1,800.00",
+        "                                                                                                                       0",
+        "Total Equities",
+    ]
+
+    rows = read_position_snapshot_section(
+        lines,
+        snapshot_at=datetime(2026, 5, 31, 23, 59, 59),
+    )
+
+    gs = next(row for row in rows if row.symbol == "GS")
+
+    assert gs.quantity == Decimal("100.0000")
+    assert gs.basis_total == Decimal("92053.00")
