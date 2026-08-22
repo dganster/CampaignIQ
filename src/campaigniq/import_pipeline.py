@@ -149,15 +149,15 @@ class PeriodImportPipeline:
             )
         )
         
-        historical_expiration_events = (
-            self._read_expiration_events(
-                thinkorswim_trade_history,
+        historical_expiration_events = [
+            event
+            for filename in historical_trade_histories
+            for event in self._read_expiration_events(
+                filename,
                 start=historical_period_start,
                 end=period_start - date.resolution,
             )
-            if historical_period_start is not None
-            else []
-        )
+        ] if historical_period_start is not None else []
 
         self._seed_missing_historical_option_lots(
             opening_lot_book,

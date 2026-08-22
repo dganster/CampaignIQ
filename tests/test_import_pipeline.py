@@ -2,19 +2,25 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from campaigniq.import_pipeline import PeriodImportPipeline
 from campaigniq.domain.value_objects.instrument import Instrument
+from campaigniq.import_pipeline import PeriodImportPipeline
 
 
 DATA = Path("tests/data")
+
 JANUARY = DATA / "thinkorswim/Account Trading History 2026.csv"
+MARCH = DATA / "thinkorswim/Account Trade History March 2026.csv"
+APRIL = DATA / "thinkorswim/Account Trade History April 2026.csv"
+
 DECEMBER = DATA / "thinkorswim/Account Trade History December 2025.csv"
 NOVEMBER = DATA / "thinkorswim/Account Trade History November 2025.csv"
+
 DECEMBER_POSITIONS = DATA / "schwab/december_positions.txt"
+MARCH_POSITIONS = DATA / "schwab/march_positions.txt"
+
 JANUARY_REALIZED = DATA / "schwab/january_realized_gain_loss.txt"
 JANUARY_ASSIGNMENTS = DATA / "schwab/january_assignments.txt"
 APRIL_ASSIGNMENTS = DATA / "schwab/march_assignments.txt"
-MARCH_POSITIONS = DATA / "schwab/march_positions.txt"
 APRIL_REALIZED = DATA / "schwab/april_realized_gain_loss.txt"
 
 
@@ -40,11 +46,17 @@ def test_period_pipeline_imports_january_domain_data() -> None:
         )
         for event in result.position_events
     } == {
-    (Instrument("DXCM"), Decimal("-500")),
-    (Instrument("EL"), Decimal("-500")),
-}
+        (Instrument("DXCM"), Decimal("-500")),
+        (Instrument("EL"), Decimal("-500")),
+    }
     assert len(result.realized_gain_loss) == 28
-    assert sum((record.gain_loss for record in result.realized_gain_loss), Decimal("0")) == Decimal("126642.32")
+    assert (
+        sum(
+            (record.gain_loss for record in result.realized_gain_loss),
+            Decimal("0"),
+        )
+        == Decimal("126642.32")
+    )
     assert len(result.position_history.items()) == (
         len(result.trades) + len(result.position_events)
     )
@@ -92,7 +104,10 @@ def test_period_pipeline_resolves_unambiguous_snapshot_provenance_for_in_period_
         if lot.campaign_id is not None
     }
 
-    assert {"CAMP-000001", "CAMP-000002", "CAMP-000003"}.issubset(campaign_ids)
+    assert {"CAMP-000001", "CAMP-000002", "CAMP-000003"}.issubset(
+        campaign_ids
+    )
+
 
 def test_period_pipeline_assigns_campaign_provenance_to_opening_option_lots() -> None:
     result = PeriodImportPipeline().run(
@@ -114,6 +129,7 @@ def test_period_pipeline_assigns_campaign_provenance_to_opening_option_lots() ->
     ]
 
     assert option_lots
+
 
 def test_period_pipeline_assignment_provenance_reaches_equity_lot() -> None:
     from campaigniq.domain.realized_lot_attributor import RealizedLotAttributor
@@ -147,8 +163,11 @@ def test_period_pipeline_assignment_provenance_reaches_equity_lot() -> None:
 
     assert assigned_equity_lots
 
+
 def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
-    from campaigniq.domain.campaign_realized_pnl import aggregate_campaign_realized_pnl
+    from campaigniq.domain.campaign_realized_pnl import (
+        aggregate_campaign_realized_pnl,
+    )
     from campaigniq.domain.realized_lot_attributor import RealizedLotAttributor
 
     result = PeriodImportPipeline().run(
@@ -165,7 +184,9 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
         historical_period_start=date(2025, 11, 1),
     )
 
-    attributions = RealizedLotAttributor(result.opening_lot_book).attribute_campaigns(
+    attributions = RealizedLotAttributor(
+        result.opening_lot_book
+    ).attribute_campaigns(
         list(result.campaigns),
         list(result.realized_gain_loss),
         list(result.position_events),
@@ -173,23 +194,40 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
     campaign_results = aggregate_campaign_realized_pnl(list(attributions))
 
     assert len(attributions) == 28
-    assert sum((item.gain_loss for item in campaign_results), Decimal("0")) == Decimal("126642.32")
-    assert sum((item.record.gain_loss for item in attributions if item.has_unassigned_campaign_allocation), Decimal("0")) == Decimal("0")
+    assert (
+        sum(
+            (item.gain_loss for item in campaign_results),
+            Decimal("0"),
+        )
+        == Decimal("126642.32")
+    )
+    assert (
+        sum(
+            (
+                item.record.gain_loss
+                for item in attributions
+                if item.has_unassigned_campaign_allocation
+            ),
+            Decimal("0"),
+        )
+        == Decimal("0")
+    )
 
 def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -> None:
     result = PeriodImportPipeline().run(
         period_start=date(2026, 4, 1),
         period_end=date(2026, 4, 30),
-        thinkorswim_trade_history=JANUARY,
+        thinkorswim_trade_history=APRIL,
         opening_snapshot=MARCH_POSITIONS,
         opening_snapshot_at=datetime(2026, 3, 31),
-        assignment_lines=(
-            APRIL_ASSIGNMENTS.read_text().splitlines(),
-        ),
         realized_gain_loss_report=APRIL_REALIZED,
-        historical_trade_histories=(JANUARY,),
+        historical_trade_histories=(MARCH,),
         historical_period_start=date(2026, 3, 1),
     )
+
+    assert result.boundary_reconstruction.unresolved_positions == ()
+    assert result.boundary_reconstruction.unresolved_campaigns == ()
+    assert result.boundary_reconstruction.historical_requirements == ()
 
     crwd_lots = [
         lot
@@ -198,5 +236,17 @@ def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -
     ]
 
     assert crwd_lots
-    assert crwd_lots[0].basis_source == "HISTORICAL_EXPIRATION_RECONSTRUCTION"
+    assert crwd_lots[0].campaign_id == "CAMP-000005"
+    assert (
+        crwd_lots[0].basis_source
+        == "HISTORICAL_EXPIRATION_RECONSTRUCTION"
+    )
 
+    assert len(result.realized_gain_loss) == 23
+    assert (
+        sum(
+            (record.gain_loss for record in result.realized_gain_loss),
+            Decimal("0"),
+        )
+        == Decimal("-170808.05")
+    )
