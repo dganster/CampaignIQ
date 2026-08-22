@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-
+from campaigniq.domain.historical_campaign_provenance import (
+    HistoricalCampaignProvenanceResolver,
+)
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.boundary_reconstruction import (
     BoundaryReconstruction,
@@ -44,6 +46,8 @@ from campaigniq.importers.thinkorswim.cash_balance_event import (
 from campaigniq.importers.thinkorswim.translator import to_trade
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
+from collections import defaultdict
+
 
 @dataclass(frozen=True, slots=True)
 class PeriodImportResult:
@@ -76,7 +80,7 @@ class PeriodImportPipeline:
         thinkorswim_trade_history: str | Path,
         opening_snapshot: str | Path,
         opening_snapshot_at: datetime,
-        assignment_lines: list[str] | None = None,
+        assignment_lines: tuple[list[str], ...] = (),
         realized_gain_loss_report: str | Path | None = None,
         historical_trade_histories: tuple[str | Path, ...] = (),
         historical_period_start: date | None = None,
@@ -92,10 +96,11 @@ class PeriodImportPipeline:
 
         campaigns = tuple(self._campaign_reconstructor.reconstruct(list(trades)))
 
-        assignment_events = (
-            read_option_assignment_events(assignment_lines)
-            if assignment_lines
-            else ()
+        assignment_events = tuple(
+            event
+            for lines in assignment_lines
+            for event in read_option_assignment_events(lines)
+            if period_start <= event.occurred_at.date() <= period_end
         )
 
         expiration_events = self._read_expiration_events(
@@ -173,13 +178,6 @@ class PeriodImportPipeline:
             historical_period_start=historical_period_start,
         )
 
-        # Boundary analysis resolves campaigns whose provenance begins before
-        # the selected period.  Campaigns that begin inside the period can
-        # still consume a pre-period snapshot lot when their first trade is an
-        # unambiguous open/close transaction (for example, a calendar roll).
-        # Resolve only those in-period cases here; do not bypass the historical
-        # ancestry requirement for started_before_data campaigns.
-
         for campaign in campaigns:
             if not campaign.started_before_data:
                 opening_lot_book.resolve_boundary_campaign(campaign)
@@ -192,7 +190,7 @@ class PeriodImportPipeline:
             boundary_reconstruction=boundary,
             realized_gain_loss=realized_gain_loss,
         )
-
+    
     @staticmethod
     def _seed_missing_historical_option_lots(
         opening_lot_book: LotBook,

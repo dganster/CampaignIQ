@@ -1,0 +1,131 @@
+07/01
+Sale
+APD
+AIR PRODS & CHEMS INC
+Trade Date: 06/30/26
+Other Activity
+Option Assignment
+APD
+07/17/2026 270.00 C
+CALL AIR PRODS & CHEMS INC
+1.0000
+
+07/02
+Sale
+AXP
+AMERICAN EXPRESS CO
+Trade Date: 07/01/26
+Other Activity
+Option Assignment
+AXP
+07/17/2026 300.00 C
+CALL AMERICAN EXPRESS CO
+1.0000
+
+07/02
+Sale
+JPM
+JPMORGAN CHASE & CO
+Trade Date: 07/02/26
+Other Activity
+Option Assignment
+JPM
+07/17/2026 280.00 C
+CALL JPMORGAN CHASE & CO
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+ADP
+07/17/2026 207.50 C
+CALL AUTOMATIC DATA PROCESSIN
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+CVX
+07/17/2026 162.50 C
+CALL CHEVRON CORP NEW
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+DE
+07/17/2026 570.00 C
+CALL DEERE & CO
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+DELL
+07/17/2026 390.00 C
+CALL DELL TECHNOLOGIES INC
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+LLY
+07/17/2026 1050.00 C
+CALL ELI LILLY AND CO
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+GS
+07/17/2026 1035.00 C
+CALL GOLDMAN SACHS GROUP
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+HD
+07/17/2026 310.00 C
+CALL HOME DEPOT INC
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+LMT
+07/17/2026 480.00 C
+CALL LOCKHEED MARTIN CORP
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+META
+07/17/2026 530.00 C
+CALL META PLATFORMS INC
+5.0000
+
+07/17
+Other Activity
+Option Assignment
+PNC
+07/17/2026 242.50 C
+CALL PNC FINL SERVICES
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+UNH
+07/17/2026 382.50 C
+CALL UNITEDHEALTH GROUP
+1.0000
+
+07/17
+Other Activity
+Option Assignment
+WMT
+07/17/2026 107.00 C
+CALL WALMART INC
+1.0000

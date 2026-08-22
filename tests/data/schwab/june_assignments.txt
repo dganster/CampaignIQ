@@ -1,0 +1,98 @@
+06/01
+Other Activity
+Option Assignment
+GS
+06/18/2026 720.00 C
+GOLDMAN SACHS GROUP INC
+1.0000
+06/04
+Other Activity
+Option Assignment
+HD
+06/18/2026 280.00 C
+HOME DEPOT INC
+1.0000
+06/12
+Other Activity
+Option Assignment
+AMT
+06/18/2026 155.00 C
+AMERICAN TOWER CORP NEW REIT
+1.0000
+06/12
+Other Activity
+Option Assignment
+ADP
+06/18/2026 185.00 C
+AUTOMATIC DATA PROCESSIN
+1.0000
+06/15
+Other Activity
+Option Assignment
+UNH
+06/18/2026 300.00 C
+UNITEDHEALTH GROUP INC
+1.0000
+06/18
+Other Activity
+Option Assignment
+META
+06/18/2026 605.00 P
+META PLATFORMS INC
+5.0000
+06/22
+Other Activity
+Option Assignment
+GOOG
+06/18/2026 310.00 C
+ALPHABET INC CLASS C
+1.0000
+06/22
+Other Activity
+Option Assignment
+CAT
+06/18/2026 630.00 C
+CATERPILLAR INC
+1.0000
+06/22
+Other Activity
+Option Assignment
+CMI
+06/18/2026 610.00 C
+CUMMINS INC
+1.0000
+06/22
+Other Activity
+Option Assignment
+JNJ
+06/18/2026 220.00 C
+JOHNSON & JOHNSON
+1.0000
+06/22
+Other Activity
+Option Assignment
+LMT
+06/18/2026 490.00 C
+LOCKHEED MARTIN CORP
+1.0000
+06/22
+Other Activity
+Option Assignment
+MSFT
+06/18/2026 340.00 C
+MICROSOFT CORP
+1.0000
+06/22
+Other Activity
+Option Assignment
+ORCL
+06/18/2026 125.00 C
+ORACLE CORP
+1.0000
+06/22
+Other Activity
+Option Assignment
+PG
+06/18/2026 140.00 C
+PROCTER & GAMBLE CO
+1.0000

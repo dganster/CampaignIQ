@@ -72,7 +72,13 @@ def _build_parser() -> argparse.ArgumentParser:
     period.add_argument("--opening-snapshot", required=True, type=Path)
     period.add_argument("--snapshot-at", required=True, type=datetime.fromisoformat)
     period.add_argument("--realized", type=Path)
-    period.add_argument("--assignments", type=Path)
+    period.add_argument(
+        "--assignments",
+        action="append",
+        default=[],
+        type=Path,
+        help="Schwab assignment extract; may be repeated",
+    )
     period.add_argument(
         "--history",
         action="append",
@@ -116,10 +122,9 @@ def _run_campaigns(statement_file: Path) -> None:
 
 
 def _run_period(args: argparse.Namespace) -> None:
-    assignment_lines = (
-        args.assignments.read_text().splitlines()
-        if args.assignments is not None
-        else None
+    assignment_lines = tuple(
+        path.read_text().splitlines()
+        for path in args.assignments
     )
 
     result = PeriodImportPipeline().run(

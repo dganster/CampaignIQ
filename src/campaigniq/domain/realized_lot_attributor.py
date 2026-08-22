@@ -110,14 +110,21 @@ class RealizedLotAttributor:
                 )
                 if leg.position_effect != PositionEffect.CLOSE:
                     continue
+
+                is_assignment = self._matches_assignment_closure(
+                    leg, assignment_closures
+                )
+                closed_date = self._economic_closed_date(
+                    leg, assignment_closures
+                )
+
                 activities.append(
                     _ClosingActivity(
-                        closed_date=self._economic_closed_date(
-                            leg, assignment_closures
-                        ),
+                        closed_date=closed_date,
                         instrument=leg.instrument,
                         quantity=self._leg_quantity(leg),
                         allocations=allocations,
+                        is_assignment=is_assignment,
                     )
                 )
 
@@ -324,6 +331,35 @@ class RealizedLotAttributor:
         )
 
     @classmethod
+    def _matches_assignment_closure(
+        cls,
+        leg: Leg,
+        assignment_closures: list[_AssignmentClosure],
+    ) -> bool:
+        if leg.position_effect != PositionEffect.CLOSE:
+            return False
+
+        if isinstance(leg.instrument, OptionContract):
+            return False
+
+        execution_price = cls._leg_execution_price(leg)
+        if execution_price is None:
+            execution_price = Decimal("NaN")
+
+        trade_date = cls._leg_date(leg)
+
+        return any(
+            closure.underlying == leg.instrument
+            and closure.occurred_on <= trade_date
+            and trade_date <= cls._next_business_day(
+                closure.occurred_on
+            )
+            and closure.remaining_quantity > 0
+            and closure.strike == execution_price
+            for closure in assignment_closures
+        )
+
+    @classmethod
     def _economic_closed_date(
         cls,
         leg: Leg,
@@ -458,7 +494,17 @@ class RealizedLotAttributor:
                 and cls._next_business_day(record.closed_date)
                 == activity.closed_date
             )
-            if not (exact_date or prior_business_day):
+            assignment_holiday_settlement = (
+                activity.is_assignment
+                and activity.closed_date
+                == record.closed_date + timedelta(days=1)
+                and cls._is_us_market_holiday(activity.closed_date)
+            )
+            if not (
+                exact_date
+                or prior_business_day
+                or assignment_holiday_settlement
+            ):
                 index += 1
                 continue
 

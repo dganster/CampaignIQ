@@ -74,7 +74,6 @@ def read_option_assignment_section(
 
     return rows
 
-
 def _parse_transaction_date(
     lines: list[str],
     assignment_index: int,
@@ -86,6 +85,12 @@ def _parse_transaction_date(
     for index in range(assignment_index - 1, -1, -1):
         value = lines[index].strip()
 
+        if value.startswith("Trade Date:"):
+            trade_date = value.removeprefix("Trade Date:").strip()
+
+            month, day, short_year = trade_date.split("/")
+            return date(2000 + int(short_year), int(month), int(day))
+
         try:
             month, day = value.split("/")
             return date(year, int(month), int(day))
@@ -95,7 +100,6 @@ def _parse_transaction_date(
     raise ValueError(
         "Could not find transaction date for Option Assignment."
     )
-
 
 def _parse_date(value: str) -> date:
     """Parse an MM/DD/YYYY date."""

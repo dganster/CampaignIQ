@@ -94,6 +94,58 @@ def test_period_pipeline_resolves_unambiguous_snapshot_provenance_for_in_period_
 
     assert {"CAMP-000001", "CAMP-000002", "CAMP-000003"}.issubset(campaign_ids)
 
+def test_period_pipeline_assigns_campaign_provenance_to_opening_option_lots() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+        historical_trade_histories=(DECEMBER, NOVEMBER),
+        historical_period_start=date(2025, 11, 1),
+    )
+
+    option_lots = [
+        lot
+        for lots in result.opening_lot_book._lots.values()
+        for lot in lots
+        if lot.instrument.__class__.__name__ == "OptionContract"
+        and lot.campaign_id is not None
+    ]
+
+    assert option_lots
+
+def test_period_pipeline_assignment_provenance_reaches_equity_lot() -> None:
+    from campaigniq.domain.realized_lot_attributor import RealizedLotAttributor
+
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+        assignment_lines=(
+            JANUARY_ASSIGNMENTS.read_text().splitlines(),
+        ),
+        historical_trade_histories=(DECEMBER, NOVEMBER),
+        historical_period_start=date(2025, 11, 1),
+    )
+
+    RealizedLotAttributor(result.opening_lot_book).attribute_campaigns(
+        list(result.campaigns),
+        list(result.realized_gain_loss),
+        list(result.position_events),
+    )
+
+    assigned_equity_lots = [
+        lot
+        for lots in result.opening_lot_book._lots.values()
+        for lot in lots
+        if lot.campaign_id is not None
+        and isinstance(lot.instrument, Instrument)
+    ]
+
+    assert assigned_equity_lots
 
 def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
     from campaigniq.domain.campaign_realized_pnl import aggregate_campaign_realized_pnl
@@ -105,7 +157,9 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
         thinkorswim_trade_history=JANUARY,
         opening_snapshot=DECEMBER_POSITIONS,
         opening_snapshot_at=datetime(2025, 12, 31),
-        assignment_lines=JANUARY_ASSIGNMENTS.read_text().splitlines(),
+        assignment_lines=(
+            JANUARY_ASSIGNMENTS.read_text().splitlines(),
+        ),
         realized_gain_loss_report=JANUARY_REALIZED,
         historical_trade_histories=(DECEMBER, NOVEMBER),
         historical_period_start=date(2025, 11, 1),
@@ -129,7 +183,9 @@ def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -
         thinkorswim_trade_history=JANUARY,
         opening_snapshot=MARCH_POSITIONS,
         opening_snapshot_at=datetime(2026, 3, 31),
-        assignment_lines=APRIL_ASSIGNMENTS.read_text().splitlines(),
+        assignment_lines=(
+            APRIL_ASSIGNMENTS.read_text().splitlines(),
+        ),
         realized_gain_loss_report=APRIL_REALIZED,
         historical_trade_histories=(JANUARY,),
         historical_period_start=date(2026, 3, 1),
@@ -143,3 +199,4 @@ def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -
 
     assert crwd_lots
     assert crwd_lots[0].basis_source == "HISTORICAL_EXPIRATION_RECONSTRUCTION"
+
