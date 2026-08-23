@@ -1,0 +1,241 @@
+                                                                                      Schwab Private Client Services™
+
+
+
+
+Realized Gain / Loss                                                                                                                              Updated: 06:35:39 PM ET, 08/20/2026
+
+
+
+  My Brokerage                      …368                                                                                                                                                         View Positions
+
+
+
+        Historical gains and losses for your transitioned TD Ameritrade account are not shown on this page. Please visit GainsKeeper® to view historical transactions for your account.
+
+
+For today’s transactions, real time realized gain/loss information may be delayed.                                             View Historical GainsKeeper Transactions                 Cost Basis Calculator
+
+
+   Date range
+
+      Custom date range
+
+
+   Options
+
+      Include option contracts
+
+
+   From mm/dd/yyyy
+
+      07/01/2026
+
+
+   To mm/dd/yyyy
+
+      07/31/2026
+
+
+   Symbol (Optional)
+
+
+
+
+                                                                                                 Search
+
+
+
+
+  Gain/Loss Summary              Transaction Analyzer
+
+
+
+    Reporting Period                              Gain/Loss
+    07/01/2026 to 07/31/2026                      Long Term             $0.00      (N/A)             Totals
+                                                  Short Term     +$25,213.38    (+2.58%)
+    Total Proceeds $1,004,027.15                                                                     Total Gains         +$31,778.77
+    Total Cost Basis $992,534.73                  Net Gain       +$25,213.38    (+2.48%)
+                                                                                                     Total Losses         -$6,565.39                      Gain/Loss Ratio
+                                                  Disallowed Loss -$13,720.96
+                                                                                                     Net Gain            +$25,213.38
+                                                                                                                                                             82.88%
+                                                                                                                                                             ​
+
+
+
+
+   Realized Gain/Loss Details
+
+   Chart based on 26 records.                                                                                                                                                             Show Chart
+
+
+    150%
+
+
+    125%
+
+
+    100%
+
+
+     75%
+
+
+     50%
+
+
+     25%
+
+
+      0%
+
+
+     -25%
+         Jun 30          Jul 2            Jul 4         Jul 6       Jul 8        Jul 10         Jul 12          Jul 14      Jul 16       Jul 18            Jul 20       Jul 22
+                                                                                                                                          Realized Gain/Loss     $   %
+
+
+Symbol                         Closed                                                                 Cost Basis (CB)                 Total        Long Term                   Short Term
+Description                      Date   Quantity   Closing Price   Cost Basis Method       Proceeds   Transaction CB    Transaction Total $   Transaction LT $           Transaction ST $
+
+
+AXP                        07/01/2026      100        $342.89                 FIFO      $34,288.61      $33,706.00             +$582.61                                       +$582.61
+AMERICAN EXPRESS CO
+
+JPM                        07/02/2026      100        $305.28                 FIFO      $30,527.69      $30,060.00             +$467.69                                       +$467.69
+JPMORGAN CHASE & CO
+
+AMZN                       07/06/2026      100        $244.75                 FIFO      $24,475.48      $24,803.00              -$327.52                                       -$327.52
+AMAZON.COM INC
+
+MCD                        07/06/2026      100        $274.12                 FIFO      $27,411.50      $30,710.00                  $0.00                                         $0.00
+MCDONALDS CORP                                                                                                                                                           Disallowed Loss:
+                                                                                                                                                                               $3,298.50
+
+AMZN 07/17/2026 230.00 C   07/07/2026         1        $16.64                 FIFO       $1,664.31       $1,655.66                +$8.65                                         +$8.65
+CALL AMAZON.COM INC $...
+
+MCD 07/17/2026 270.00 C    07/07/2026         1        $13.64                 FIFO       $1,364.31         $715.66             +$648.65                                       +$648.65
+CALL MCDONALDS CORP
+$...
+
+ADP                        07/17/2026      100        $221.94                 FIFO      $22,193.86      $21,938.95             +$254.91                                       +$254.91
+AUTOMATIC DATA PROCE
+
+CVX                        07/17/2026      100        $169.59                 FIFO      $16,958.98      $16,797.00             +$161.98                                       +$161.98
+CHEVRON CORP NEW
+
+DE                         07/17/2026      100        $606.13                 FIFO      $60,613.08      $59,808.00             +$805.08                                       +$805.08
+DEERE & CO
+
+DELL                       07/17/2026      100        $444.08                 FIFO      $44,408.41      $43,244.32           +$1,164.09                                     +$1,164.09
+DELL TECHNOLOGIES IN C
+
+LLY                        07/17/2026      100     $1,122.17                  FIFO     $112,217.01     $110,522.00           +$1,695.01                                     +$1,695.01
+ELI LILLY AND CO
+
+GS                         07/17/2026      100      $1,118.34                 FIFO     $111,834.02     $110,037.00           +$1,797.02                                     +$1,797.02
+GOLDMAN SACHS GROUP
+
+HD                         07/17/2026      100        $330.27                 FIFO      $33,026.64      $37,230.12                $0.00               $0.00              Disallowed Loss:
+HOME DEPOT INC                                                                                          $32,582.00             +$444.64            +$444.64                    $4,203.48
+
+
+LMT                        07/17/2026      100        $509.00                 FIFO      $50,900.27      $57,021.79                $0.00                                          $0.00
+LOCKHEED MARTIN CORP                                                                                    $50,182.00             +$718.27                                       +$718.27
+                                                                                                                                                                         Disallowed Loss:
+                                                                                                                                                                               $6,121.52
+
+META                       07/17/2026      500        $570.28                 FIFO     $285,140.69    $291,378.56             -$6,237.87                                     -$6,237.87
+META PLATFORMS INC A
+
+PNC                        07/17/2026      100        $253.66                 FIFO      $25,365.80      $25,142.00             +$223.80                                       +$223.80
+PNC FINL SERVICES
+
+UNH                        07/17/2026      100        $415.13                 FIFO      $41,513.46      $40,800.00             +$713.46                                       +$713.46
+UNITEDHEALTH GROUP I
+
+WMT                        07/17/2026      100        $111.21                 FIFO      $11,121.09      $11,033.00               +$88.09                                        +$88.09
+WALMART INC
+
+AMT 07/17/2026 170.00 C    07/20/2026         1        $11.14                 FIFO       $1,114.32           $21.66          +$1,092.66                                     +$1,092.66
+CALL AMERICAN TOWER C...
+
+CAT 07/17/2026 925.00 C    07/20/2026         1        $83.74                 FIFO       $8,374.17           $15.66          +$8,358.51                                     +$8,358.51
+CALL CATERPILLAR INC ...
+
+GLW 07/17/2026 177.50 C    07/20/2026         1        $27.01                 FIFO       $2,701.28            $1.01          +$2,700.27                                     +$2,700.27
+CALL CORNING INC $177...
+
+CMI 07/17/2026 660.00 C    07/20/2026         1        $61.33                 FIFO       $6,133.21           $27.66          +$6,105.55                                     +$6,105.55
+CALL CUMMINS INC $660...
+
+GE 07/17/2026 357.50 C     07/20/2026         1        $25.31                 FIFO       $2,531.29            $5.01          +$2,526.28                                     +$2,526.28
+CALL GE AEROSPACE $35...
+
+IBM 07/17/2026 247.50 C    07/20/2026         1        $23.24                 FIFO       $2,324.29            $3.01          +$2,321.28                                     +$2,321.28
+CALL IBM CORP $247.5 ...
+
+DELL                       07/20/2026      100        $390.00                 FIFO      $39,000.18      $38,937.00               +$63.18                                        +$63.18
+DELL TECHNOLOGIES IN C
+                                                                                                                                                                                              Realized Gain/Loss
+
+
+
+         Symbol                                             Closed                                                                                     Cost Basis (CB)                    Total        Long Term                          Short Term
+         Description                                           Date       Quantity      Closing Price     Cost Basis Method             Proceeds        Transaction CB     Transaction Total $    Transaction LT $                 Transaction ST $
+
+
+         DELL 08/21/2026 340.00 C                    07/21/2026                   1           $68.23                    FIFO         $6,823.20              $6,920.66                   $0.00                                                 $0.00
+         CALL DELL TECHNOLOGIE...                                                                                                                                                                                      Disallowed Loss: $97.46
+
+
+         Account Total                                                                                                      $1,004,027.15             $992,534.73            +$25,213.38                   $0.00                   +$25,213.38
+
+
+(0423-3BXK, 0623-37YU, 1123-3XUW)
+
+The Realized Gain-Loss Analysis should not be considered a substitute for your trade confirmations, account statements or tax forms. Supplemental data is shown for informational purposes only, and should not be considered
+individualized recommendations or personalized investment advice.
+
+Values for fixed income securities have been adjusted for amortization/accretion; with the exception of variable rate and mortgage-backed securities or for accounts with this preference turned off.
+
+Total Cash represents income and expenses as they occur; it may be inconsistent with values shown elsewhere on Schwab.com and on your monthly account statement.
+
+The Realized Gain/Loss page provides summary information of closed transactions. Not all closed transactions appear on this page.
+
+Please view the Cost Basis Disclosure Statement for additional information on cost basis methods choices and how Schwab reports adjusted cost basis information to the IRS.
+
+Please note that gains and losses realized in retirement accounts are not recognized for tax purposes. Rather, income may be recognized when you receive a cash distribution from these accounts. Please contact your tax advisor for
+further information.
+
+The total Realized Gain/Loss for this account includes values for Short Positions held in the account. For more information on summary totals when there are Short Positions, please see the Help Section.
+
+
+
+
+      Investment and Insurance Products Are: Not FDIC Insured • Not Insured by Any Federal Government Agency • Not a Deposit or Other Obligation of, or Guaranteed by, the Bank or any of its Affiliates • Subject to Investment Risks,
+                                                                                         Including Possible Loss of Principal Amount Invested
+
+
+
+
+Today's Date: 06:35 PM ET, 08/20/2026
+
+
+
+Check the background of Charles Schwab or one of its investment professionals on FINRA's BrokerCheck           .                                                                                                                                    Back to Top
+
+
+
+
+The Charles Schwab Corporation provides a full range of brokerage, banking and financial advisory services through its operating subsidiaries. Its broker-dealer subsidiary, Charles Schwab & Co. Inc. (Member SIPC   ), and its affiliates offer investment
+services and products. Its banking subsidiary, Charles Schwab Bank, SSB (member FDIC and an Equal Housing Lender), provides deposit and lending services and products.
+
+
+This site is designed for U.S. residents. Non-U.S. residents are subject to country-specific restrictions. Learn more about our services for non-US Residents   , Charles Schwab Hong Kong clients   , Charles Schwab UK clients      .
+
+
+© 2026 Charles Schwab & Co., Inc. All rights reserved. Member SIPC        . Unauthorized access is prohibited. Usage will be monitored.
+
