@@ -170,6 +170,12 @@ class PeriodImportPipeline:
             campaigns,
         )
 
+        self._seed_missing_historical_covered_equity_lots(
+            opening_lot_book,
+            campaigns,
+            historical_trades,
+        )
+
         boundary = self._boundary_analyzer.analyze(
             period_start=period_start,
             campaigns=campaigns,
@@ -240,14 +246,58 @@ class PeriodImportPipeline:
                     invalid.add(instrument)
 
         for instrument, lots in pending.items():
-            if instrument in invalid or opening_lot_book.lots(instrument):
+            if instrument in invalid:
                 continue
+
             remaining_lots = [
                 (quantity, opened_at)
                 for quantity, opened_at in lots
                 if quantity != 0
             ]
-            for index, (quantity, opened_at) in enumerate(remaining_lots, 1):
+
+            historical_quantity = sum(
+                (quantity for quantity, _ in remaining_lots),
+                Decimal("0"),
+            )
+
+            existing_quantity = sum(
+                (lot.quantity for lot in opening_lot_book.lots(instrument)),
+                Decimal("0"),
+            )
+
+            missing_quantity = historical_quantity - existing_quantity
+
+            if missing_quantity == 0:
+                continue
+
+            # Seed only the portion that is absent from the opening
+            # snapshot.  This preserves the snapshot lot representing
+            # the surviving position while reconstructing contracts
+            # that were closed during the selected period.
+            if abs(missing_quantity) < abs(historical_quantity):
+                opened_at = min(
+                    opened_at
+                    for quantity, opened_at in remaining_lots
+                    if quantity != 0
+                )
+                opening_lot_book.seed(
+                    Lot(
+                        lot_id=(
+                            f"HISTORICAL-TRADE:{opened_at.isoformat()}"
+                            f":{instrument}:MISSING"
+                        ),
+                        instrument=instrument,
+                        quantity=missing_quantity,
+                        opened_at=opened_at,
+                        basis_total=None,
+                        basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
+                    )
+                )
+                continue
+
+            for index, (quantity, opened_at) in enumerate(
+                remaining_lots, 1
+            ):
                 opening_lot_book.seed(
                     Lot(
                         lot_id=(
@@ -260,7 +310,7 @@ class PeriodImportPipeline:
                         basis_total=None,
                         basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
                     )
-                )
+                )   
 
     @staticmethod
     def _seed_missing_historical_expiration_lots(
@@ -336,6 +386,190 @@ class PeriodImportPipeline:
                         opened_at=event.occurred_at,
                         basis_total=None,
                         basis_source="HISTORICAL_EXPIRATION_RECONSTRUCTION",
+                    )
+                )
+
+    @staticmethod
+    def _seed_missing_historical_covered_equity_lots(
+        opening_lot_book: LotBook,
+        campaigns: tuple,
+        historical_trades: tuple[Trade, ...],
+    ) -> None:
+        """Reconstruct equity consumed by a continuing covered-call campaign.
+
+        A boundary campaign can continue a covered-call position that was
+        established before the selected period.  In that case the opening
+        snapshot may contain only the surviving portion of the underlying
+        shares while the historical option position explains the larger
+        covered position.
+
+        Example:
+            historical option position: 5 short calls
+            opening snapshot:            1 short call + 100 shares
+            current-period close:        4 calls + 400 shares
+
+        The missing 400-share lot is reconstructed so the current-period
+        campaign can resolve its equity close without claiming the surviving
+        100-share snapshot lot.
+        """
+        if not historical_trades:
+            return
+
+        historical_campaigns = CampaignReconstructor().reconstruct(
+            list(historical_trades)
+        )
+
+        historical_survivors: dict[OptionContract, Decimal] = defaultdict(
+            Decimal
+        )
+
+        for historical_campaign in historical_campaigns:
+            for trade in historical_campaign.trades:
+                for leg in trade.legs:
+                    if not isinstance(leg.instrument, OptionContract):
+                        continue
+
+                    for execution in leg.executions:
+                        historical_survivors[leg.instrument] += (
+                            execution.quantity
+                        )
+
+        for campaign in campaigns:
+            closing_options: dict[OptionContract, Decimal] = defaultdict(
+                Decimal
+            )
+            closing_equity: dict[Instrument, Decimal] = defaultdict(
+                Decimal
+            )
+
+            for trade in campaign.trades:
+                for leg in trade.legs:
+                    if leg.position_effect != PositionEffect.CLOSE:
+                        continue
+
+                    quantity = sum(
+                        (
+                            abs(execution.quantity)
+                            for execution in leg.executions
+                        ),
+                        Decimal("0"),
+                    )
+
+                    if quantity == 0:
+                        continue
+
+                    if isinstance(leg.instrument, OptionContract):
+                        closing_options[leg.instrument] += quantity
+                    elif isinstance(leg.instrument, Instrument):
+                        closing_equity[leg.instrument] += quantity
+
+            if not closing_options or not closing_equity:
+                continue
+
+            for option, closing_option_quantity in closing_options.items():
+                historical_quantity = historical_survivors.get(
+                    option,
+                    Decimal("0"),
+                )
+
+                if historical_quantity >= 0:
+                    continue
+
+                # This is specifically the continuing-boundary pattern:
+                # the historical position contains more short contracts than
+                # the current campaign closes, leaving a smaller short option
+                # position in the opening snapshot.
+                historical_contracts = abs(historical_quantity)
+                if historical_contracts <= closing_option_quantity:
+                    continue
+
+                opening_option_quantity = sum(
+                    (
+                        lot.quantity
+                        for lot in opening_lot_book.lots(option)
+                    ),
+                    Decimal("0"),
+                )
+
+                if opening_option_quantity != historical_quantity:
+                    continue
+
+                underlying = Instrument(option.underlying)
+                equity_close_quantity = closing_equity.get(
+                    underlying,
+                    Decimal("0"),
+                )
+
+                if equity_close_quantity <= 0:
+                    continue
+
+                opening_equity_lots = [
+                    lot
+                    for lot in opening_lot_book.lots(underlying)
+                    if lot.quantity > 0 and lot.campaign_id is None
+                ]
+
+                if len(opening_equity_lots) != 1:
+                    continue
+
+                surviving_equity_lot = opening_equity_lots[0]
+
+                if surviving_equity_lot.quantity >= equity_close_quantity:
+                    continue
+
+                missing_equity_quantity = equity_close_quantity
+
+                historical_campaign_id = None
+                for historical_campaign in historical_campaigns:
+                    historical_quantity_for_option = sum(
+                        (
+                            execution.quantity
+                            for trade in historical_campaign.trades
+                            for leg in trade.legs
+                            if (
+                                leg.instrument == option
+                                and leg.position_effect
+                                == PositionEffect.OPEN
+                            )
+                            for execution in leg.executions
+                        ),
+                        Decimal("0"),
+                    )
+
+                    if historical_quantity_for_option == historical_quantity:
+                        if historical_campaign_id is not None:
+                            historical_campaign_id = None
+                            break
+                        historical_campaign_id = (
+                            f"HIST-{historical_campaign.campaign_id}"
+                        )
+
+                if historical_campaign_id is None:
+                    continue
+
+                # The surviving snapshot shares belong to the historical
+                # covered-call campaign.  Remove them from consideration by
+                # the current boundary resolver, leaving only the missing
+                # shares that were consumed by this period's close.
+                opening_lot_book.assign_campaign(
+                    surviving_equity_lot.lot_id,
+                    historical_campaign_id,
+                )
+
+                opened_at = surviving_equity_lot.opened_at
+                opening_lot_book.seed(
+                    Lot(
+                        lot_id=(
+                            f"HISTORICAL-COVERED-EQUITY:"
+                            f"{opened_at.isoformat()}:"
+                            f"{underlying}:"
+                            f"{historical_campaign_id}"
+                        ),
+                        instrument=underlying,
+                        quantity=missing_equity_quantity,
+                        opened_at=opened_at,
+                        basis_total=None,
+                        basis_source="HISTORICAL_TRADE_RECONSTRUCTION",
                     )
                 )
 

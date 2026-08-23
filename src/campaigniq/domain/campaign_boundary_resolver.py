@@ -63,11 +63,16 @@ class CampaignBoundaryResolver:
             )
 
             if total_quantity != quantity:
-                if not (
-                    allow_partial
-                    and len(matching_lots) == 1
-                    and total_quantity > quantity
-                ):
+                if allow_partial and total_quantity > quantity:
+                    exact_lots = [
+                        lot
+                        for lot in matching_lots
+                        if abs(lot.quantity) == quantity
+                    ]
+                    if not exact_lots:
+                        return {}
+                    matching_lots = exact_lots
+                else:
                     return {}
 
             for lot in matching_lots:
