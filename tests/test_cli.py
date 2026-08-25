@@ -18,6 +18,7 @@ def test_cli_import_period_parser_accepts_demo_arguments() -> None:
             "--history", "dec.csv",
             "--history", "nov.csv",
             "--history-start", "2025-11-01",
+            "--historical-source-root", "tests/data/thinkorswim",
         ]
     )
 
@@ -25,3 +26,4 @@ def test_cli_import_period_parser_accepts_demo_arguments() -> None:
     assert args.start.isoformat() == "2026-01-01"
     assert args.end.isoformat() == "2026-01-31"
     assert args.history == [Path("dec.csv"), Path("nov.csv")]
+    assert args.historical_source_root == Path("tests/data/thinkorswim")

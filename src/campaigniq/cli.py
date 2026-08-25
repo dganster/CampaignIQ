@@ -87,7 +87,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="historical Thinkorswim trade-history file; may be repeated",
     )
     period.add_argument("--history-start", type=date.fromisoformat)
-
+    period.add_argument(
+        "--historical-source-root",
+        type=Path,
+        help="directory containing historical Thinkorswim trade-history files",
+    )
     return parser
 
 
@@ -137,6 +141,7 @@ def _run_period(args: argparse.Namespace) -> None:
         realized_gain_loss_report=args.realized,
         historical_trade_histories=tuple(args.history),
         historical_period_start=args.history_start,
+        historical_source_root=args.historical_source_root,
     )
 
     attributions = ()

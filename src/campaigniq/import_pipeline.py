@@ -84,8 +84,120 @@ class PeriodImportPipeline:
         realized_gain_loss_report: str | Path | None = None,
         historical_trade_histories: tuple[str | Path, ...] = (),
         historical_period_start: date | None = None,
+        historical_source_root: str | Path | None = None,
     ) -> PeriodImportResult:
         """Run one monthly import from source records through boundary analysis."""
+
+        # Preserve the existing manual-history behavior exactly.
+        if historical_source_root is None:
+            return self._run_once(
+                period_start=period_start,
+                period_end=period_end,
+                thinkorswim_trade_history=thinkorswim_trade_history,
+                opening_snapshot=opening_snapshot,
+                opening_snapshot_at=opening_snapshot_at,
+                assignment_lines=assignment_lines,
+                realized_gain_loss_report=realized_gain_loss_report,
+                historical_trade_histories=historical_trade_histories,
+                historical_period_start=historical_period_start,
+            )
+
+        # First pass: deliberately do not seed historical evidence.
+        first_pass = self._run_once(
+            period_start=period_start,
+            period_end=period_end,
+            thinkorswim_trade_history=thinkorswim_trade_history,
+            opening_snapshot=opening_snapshot,
+            opening_snapshot_at=opening_snapshot_at,
+            assignment_lines=assignment_lines,
+            realized_gain_loss_report=realized_gain_loss_report,
+            historical_trade_histories=historical_trade_histories,
+            historical_period_start=historical_period_start,
+            seed_historical=False,
+        )
+
+        requirements = first_pass.boundary_reconstruction.historical_requirements
+
+        if not requirements:
+            return first_pass
+
+        from campaigniq.domain.historical_evidence import (
+            ThinkorswimHistoricalEvidenceRepository,
+        )
+        from campaigniq.domain.historical_evidence_resolver import (
+            HistoricalEvidenceResolver,
+        )
+
+        resolver = HistoricalEvidenceResolver(
+            ThinkorswimHistoricalEvidenceRepository(
+                historical_source_root
+            )
+        )
+
+        discovered_paths: dict[Path, object] = {}
+
+        for requirement in requirements:
+            resolution = resolver.resolve(requirement)
+
+            for evidence in resolution.trade_history:
+                discovered_paths[evidence.path] = evidence
+
+        if not discovered_paths:
+            return first_pass
+
+        all_history = tuple(
+            dict.fromkeys(
+                (
+                    *historical_trade_histories,
+                    *discovered_paths.keys(),
+                )
+            )
+        )
+
+        historical_starts = [
+            evidence.coverage_start
+            for evidence in discovered_paths.values()
+        ]
+
+        effective_historical_period_start = historical_period_start
+
+        if historical_starts:
+            discovered_start = min(historical_starts)
+
+            if (
+                effective_historical_period_start is None
+                or discovered_start < effective_historical_period_start
+            ):
+                effective_historical_period_start = discovered_start
+
+        return self._run_once(
+            period_start=period_start,
+            period_end=period_end,
+            thinkorswim_trade_history=thinkorswim_trade_history,
+            opening_snapshot=opening_snapshot,
+            opening_snapshot_at=opening_snapshot_at,
+            assignment_lines=assignment_lines,
+            realized_gain_loss_report=realized_gain_loss_report,
+            historical_trade_histories=all_history,
+            historical_period_start=effective_historical_period_start,
+        )
+
+    def _run_once(
+        self,
+        *,
+        period_start: date,
+        period_end: date,
+        thinkorswim_trade_history: str | Path,
+        opening_snapshot: str | Path,
+        opening_snapshot_at: datetime,
+        assignment_lines: tuple[list[str], ...],
+        realized_gain_loss_report: str | Path | None,
+        historical_trade_histories: tuple[str | Path, ...],
+        historical_period_start: date | None,
+        seed_historical: bool = True,
+    ) -> PeriodImportResult:
+        """Run one complete pipeline pass."""
+
         trades = tuple(
             self._read_trades(
                 thinkorswim_trade_history,
@@ -94,7 +206,9 @@ class PeriodImportPipeline:
             )
         )
 
-        campaigns = tuple(self._campaign_reconstructor.reconstruct(list(trades)))
+        campaigns = tuple(
+            self._campaign_reconstructor.reconstruct(list(trades))
+        )
 
         assignment_events = tuple(
             event
@@ -117,8 +231,10 @@ class PeriodImportPipeline:
         )
 
         position_history = PositionHistory()
+
         for trade in trades:
             position_history.add_trade(trade)
+
         for event in position_events:
             position_history.add_event(event)
 
@@ -131,50 +247,59 @@ class PeriodImportPipeline:
         )
 
         opening_lot_book = LotBook()
+
         snapshot_lines = Path(opening_snapshot).read_text().splitlines()
         snapshot_rows = read_position_snapshot_section(
             snapshot_lines,
             snapshot_at=opening_snapshot_at,
         )
+
         for lot in to_lots(list(snapshot_rows)):
             opening_lot_book.seed(lot)
 
-        historical_trades = tuple(
-            trade
-            for filename in historical_trade_histories
-            for trade in self._read_trades(
-                filename,
-                start=historical_period_start,
-                end=period_start - date.resolution,
+        if seed_historical:
+            historical_trades = tuple(
+                trade
+                for filename in historical_trade_histories
+                for trade in self._read_trades(
+                    filename,
+                    start=historical_period_start,
+                    end=period_start - date.resolution,
+                )
             )
-        )
-        
-        historical_expiration_events = [
-            event
-            for filename in historical_trade_histories
-            for event in self._read_expiration_events(
-                filename,
-                start=historical_period_start,
-                end=period_start - date.resolution,
+
+            historical_expiration_events = (
+                [
+                    event
+                    for filename in historical_trade_histories
+                    for event in self._read_expiration_events(
+                        filename,
+                        start=historical_period_start,
+                        end=period_start - date.resolution,
+                    )
+                ]
+                if historical_period_start is not None
+                else []
             )
-        ] if historical_period_start is not None else []
 
-        self._seed_missing_historical_option_lots(
-            opening_lot_book,
-            historical_trades,
-        )
+            self._seed_missing_historical_option_lots(
+                opening_lot_book,
+                historical_trades,
+            )
 
-        self._seed_missing_historical_expiration_lots(
-            opening_lot_book,
-            historical_expiration_events,
-            campaigns,
-        )
+            self._seed_missing_historical_expiration_lots(
+                opening_lot_book,
+                historical_expiration_events,
+                campaigns,
+            )
 
-        self._seed_missing_historical_covered_equity_lots(
-            opening_lot_book,
-            campaigns,
-            historical_trades,
-        )
+            self._seed_missing_historical_covered_equity_lots(
+                opening_lot_book,
+                campaigns,
+                historical_trades,
+            )
+        else:
+            historical_trades = ()
 
         boundary = self._boundary_analyzer.analyze(
             period_start=period_start,
@@ -187,6 +312,7 @@ class PeriodImportPipeline:
         for campaign in campaigns:
             if not campaign.started_before_data:
                 opening_lot_book.resolve_boundary_campaign(campaign)
+
         return PeriodImportResult(
             trades=trades,
             campaigns=campaigns,
@@ -196,7 +322,7 @@ class PeriodImportPipeline:
             boundary_reconstruction=boundary,
             realized_gain_loss=realized_gain_loss,
         )
-    
+
     @staticmethod
     def _seed_missing_historical_option_lots(
         opening_lot_book: LotBook,

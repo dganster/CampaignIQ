@@ -5,6 +5,14 @@ from pathlib import Path
 from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.import_pipeline import PeriodImportPipeline
 
+from campaigniq.domain.boundary_validation import HistoricalRequirement
+from campaigniq.domain.historical_evidence import (
+    ThinkorswimHistoricalEvidenceRepository,
+)
+from campaigniq.domain.historical_evidence_resolver import (
+    HistoricalEvidenceResolver,
+)
+
 
 DATA = Path("tests/data")
 
@@ -64,6 +72,57 @@ def test_period_pipeline_imports_january_domain_data() -> None:
     assert result.boundary_reconstruction.unresolved_campaigns == ()
     assert result.boundary_reconstruction.historical_requirements == ()
 
+    campaign_ids = {
+        lot.campaign_id
+        for lots in result.opening_lot_book._lots.values()
+        for lot in lots
+        if lot.campaign_id is not None
+    }
+
+    assert {"CAMP-000001", "CAMP-000002", "CAMP-000003"}.issubset(
+        campaign_ids
+    )
+
+    assert result.boundary_reconstruction.historical_requirements == ()
+
+def test_period_pipeline_can_load_resolved_historical_trade_history() -> None:
+    repository = ThinkorswimHistoricalEvidenceRepository(
+    DATA / "thinkorswim"
+)
+
+    requirement = HistoricalRequirement(
+        case_id="TEST-RESOLVED",
+        earliest_unresolved_date=date(2025, 12, 1),
+        months=("2025-12",),
+        document_types=("Account Trade History",),
+        reason="Historical campaign ancestry is unresolved.",
+    )
+
+    resolution = HistoricalEvidenceResolver(repository).resolve(
+        requirement
+    )
+
+    assert resolution.complete
+    assert len(resolution.trade_history) == 1
+
+    pipeline = PeriodImportPipeline()
+
+    trades = pipeline._read_trades(
+        resolution.trade_history[0].path,
+        start=date(2025, 12, 1),
+        end=date(2025, 12, 31),
+    )
+
+    assert trades
+    assert all(
+        min(
+            execution.executed_at
+            for leg in trade.legs
+            for execution in leg.executions
+        ).date().month
+        == 12
+        for trade in trades
+    )
 
 def test_period_pipeline_excludes_forex_and_respects_period() -> None:
     result = PeriodImportPipeline().run(
@@ -250,3 +309,30 @@ def test_period_pipeline_reconstructs_crwd_shares_from_historical_expiration() -
         )
         == Decimal("-170808.05")
     )
+
+def test_period_pipeline_automatically_discovers_historical_trade_history() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+        historical_source_root=DATA / "thinkorswim",
+    )
+
+    assert result.boundary_reconstruction.historical_requirements == ()
+    assert result.boundary_reconstruction.unresolved_positions == ()
+    assert result.boundary_reconstruction.unresolved_campaigns == ()
+
+    campaign_ids = {
+        lot.campaign_id
+        for lots in result.opening_lot_book._lots.values()
+        for lot in lots
+        if lot.campaign_id is not None
+    }
+
+    assert {
+        "CAMP-000001",
+        "CAMP-000002",
+        "CAMP-000003",
+    }.issubset(campaign_ids)
