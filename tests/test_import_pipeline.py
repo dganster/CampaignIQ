@@ -9,11 +9,14 @@ from campaigniq.domain.boundary_validation import HistoricalRequirement
 from campaigniq.domain.historical_evidence import (
     ThinkorswimHistoricalEvidenceRepository,
 )
+
 from campaigniq.domain.historical_evidence_resolver import (
     HistoricalEvidenceResolver,
 )
 
 from campaigniq.domain.value_objects.forex_pair import ForexPair
+from campaigniq.domain.position_effect import PositionEffect
+from campaigniq.domain.position_event_applier import PositionEventApplier
 
 
 DATA = Path("tests/data")
@@ -370,3 +373,83 @@ def test_period_pipeline_imports_forex_trades() -> None:
     ]
 
     assert forex_trades
+
+def test_period_pipeline_classifies_january_forex_economically() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+        historical_trade_histories=(DECEMBER,),
+        historical_period_start=date(2025, 12, 1),
+    )
+
+    forex_trades = [
+        trade
+        for trade in result.trades
+        if isinstance(trade.legs[0].instrument, ForexPair)
+    ]
+
+    assert len(forex_trades) == 22
+
+    assert all(
+        len(trade.legs) == 1
+        and len(trade.legs[0].executions) == 1
+        for trade in forex_trades
+    )
+
+    assert sum(
+        execution.quantity
+        for trade in forex_trades
+        for execution in trade.legs[0].executions
+    ) == Decimal("0")
+
+def test_period_pipeline_classifies_january_forex_economically() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+        historical_trade_histories=(DECEMBER,),
+        historical_period_start=date(2025, 12, 1),
+    )
+
+    forex_trades = [
+        trade
+        for trade in result.trades
+        if isinstance(trade.legs[0].instrument, ForexPair)
+    ]
+
+    assert len(forex_trades) == 22
+
+    assert all(
+        trade.legs[0].position_effect
+        in (PositionEffect.OPEN, PositionEffect.CLOSE)
+        for trade in forex_trades
+    )
+
+    applier = PositionEventApplier()
+    result.position_history.apply(applier)
+
+    for pair in (
+        "AUD/USD",
+        "EUR/USD",
+        "GBP/USD",
+        "NZD/USD",
+        "USD/CAD",
+        "USD/CHF",
+        "USD/JPY",
+    ):
+        state = applier.state(ForexPair(*pair.split("/")))
+        assert state.quantity == Decimal("0")
+
+    assert not any(
+        isinstance(
+            trade.legs[0].instrument,
+            ForexPair,
+        )
+        and trade.legs[0].instrument == ForexPair("USD", "MXN")
+        for trade in forex_trades
+    )
