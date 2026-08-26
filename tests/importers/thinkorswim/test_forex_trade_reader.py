@@ -32,6 +32,23 @@ def test_reads_january_forex_trades() -> None:
     assert second.price == Decimal("1.1724")
     assert second.broker_pnl_usd == Decimal("4.00")
 
+def test_reads_january_forex_broker_pnl() -> None:
+    statement = ThinkorswimSourceReader().read(DATA_FILE)
+    section = statement.section("Forex Statements")
+
+    rows = read_forex_trades(section)
+
+    pnl = sum(
+        (
+            row.broker_pnl_usd
+            for row in rows
+            if row.broker_pnl_usd is not None
+            and row.executed_at.date().month == 1
+        ),
+        Decimal("0"),
+    )
+
+    assert pnl == Decimal("-18.48")
 
 def test_ignores_non_trade_forex_statement_rows() -> None:
     statement = ThinkorswimSourceReader().read(DATA_FILE)
