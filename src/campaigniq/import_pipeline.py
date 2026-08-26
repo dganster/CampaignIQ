@@ -48,6 +48,19 @@ from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
 from collections import defaultdict
 
+from campaigniq.domain.value_objects.forex_pair import ForexPair
+from campaigniq.importers.thinkorswim.forex_position_effect_resolver import (
+    ForexPositionEffectResolver,
+)
+from campaigniq.importers.thinkorswim.forex_position_state import (
+    build_forex_positions,
+)
+from campaigniq.importers.thinkorswim.forex_trade_reader import (
+    read_forex_trades,
+)
+from campaigniq.importers.thinkorswim.forex_translator import (
+    to_forex_trade,
+)
 
 @dataclass(frozen=True, slots=True)
 class PeriodImportResult:
@@ -182,6 +195,30 @@ class PeriodImportPipeline:
             historical_period_start=effective_historical_period_start,
         )
 
+    def _read_historical_forex_positions(
+        self,
+        filenames: tuple[str | Path, ...],
+        *,
+        start: date | None,
+        end: date,
+    ) -> dict[str, Decimal]:
+        """Build Forex positions from historical executions before the period."""
+
+        rows = []
+
+        for filename in filenames:
+            statement = self._source_reader.read(str(filename))
+            rows.extend(
+                row
+                for row in read_forex_trades(
+                    statement.section("Forex Statements")
+                )
+                if (start is None or row.executed_at.date() >= start)
+                and row.executed_at.date() <= end
+            )
+
+        return build_forex_positions(rows)
+
     def _run_once(
         self,
         *,
@@ -198,16 +235,34 @@ class PeriodImportPipeline:
     ) -> PeriodImportResult:
         """Run one complete pipeline pass."""
 
+        forex_initial_positions = self._read_historical_forex_positions(
+            historical_trade_histories,
+            start=historical_period_start,
+            end=period_start - date.resolution,
+        )
+
         trades = tuple(
             self._read_trades(
                 thinkorswim_trade_history,
                 start=period_start,
                 end=period_end,
+                forex_initial_positions=forex_initial_positions,
+            )
+        )
+
+        campaign_trades = tuple(
+            trade
+            for trade in trades
+            if not isinstance(
+                trade.legs[0].instrument,
+                ForexPair,
             )
         )
 
         campaigns = tuple(
-            self._campaign_reconstructor.reconstruct(list(trades))
+            self._campaign_reconstructor.reconstruct(
+                list(campaign_trades)
+            )
         )
 
         assignment_events = tuple(
@@ -732,20 +787,76 @@ class PeriodImportPipeline:
             key=lambda event: event.occurred_at,
         )
 
+    def _read_forex_trades(
+        self,
+        filename: str | Path,
+        *,
+        start: date | None,
+        end: date | None,
+        initial_positions: dict[str, Decimal] | None = None,
+    ) -> list[Trade]:
+        """Read Forex executions with economic position effects."""
+
+        statement = self._source_reader.read(str(filename))
+
+        rows = read_forex_trades(
+            statement.section("Forex Statements")
+        )
+
+        resolver = ForexPositionEffectResolver(
+            initial_positions=initial_positions,
+        )
+
+        trades: list[Trade] = []
+
+        for row in sorted(rows, key=lambda item: item.executed_at):
+            effects = resolver.resolve(
+                pair=row.pair,
+                quantity=row.quantity,
+            )
+
+            occurred_date = row.executed_at.date()
+
+            if start is not None and occurred_date < start:
+                continue
+
+            if end is not None and occurred_date > end:
+                continue
+
+            for effect in effects:
+                trades.append(
+                    to_forex_trade(
+                        row,
+                        effect.position_effect,
+                        quantity=effect.quantity,
+                    )
+                )
+
+        return trades
+
     def _read_trades(
         self,
         filename: str | Path,
         *,
         start: date | None,
         end: date | None,
+        forex_initial_positions: dict[str, Decimal] | None = None,
     ) -> list[Trade]:
-        """Read non-Forex domain trades within an optional date range."""
+        """Read domain trades within an optional date range."""
+
         statement = self._source_reader.read(str(filename))
+
+        trades: list[Trade] = []
+
+        # Account Trade History supplies the normal stock, ETF, and
+        # option trades. Forex records are handled separately because
+        # Thinkorswim's Forex Statements section contains the actual
+        # executed Forex trades and prices.
+
         orders = self._trade_history_reader.read(
             statement.section("Account Trade History")
         )
 
-        trades: list[Trade] = []
         for order in orders:
             if any(
                 row.option_type.upper() == "FOREX"
@@ -754,6 +865,7 @@ class PeriodImportPipeline:
                 continue
 
             trade = to_trade(order)
+
             occurred_at = min(
                 execution.executed_at
                 for leg in trade.legs
@@ -763,10 +875,20 @@ class PeriodImportPipeline:
 
             if start is not None and occurred_date < start:
                 continue
+
             if end is not None and occurred_date > end:
                 continue
 
             trades.append(trade)
+
+        trades.extend(
+            self._read_forex_trades(
+                filename,
+                start=start,
+                end=end,
+                initial_positions=forex_initial_positions,
+            )
+        )
 
         return sorted(
             trades,

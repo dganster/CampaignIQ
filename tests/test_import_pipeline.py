@@ -13,6 +13,8 @@ from campaigniq.domain.historical_evidence_resolver import (
     HistoricalEvidenceResolver,
 )
 
+from campaigniq.domain.value_objects.forex_pair import ForexPair
+
 
 DATA = Path("tests/data")
 
@@ -124,7 +126,7 @@ def test_period_pipeline_can_load_resolved_historical_trade_history() -> None:
         for trade in trades
     )
 
-def test_period_pipeline_excludes_forex_and_respects_period() -> None:
+def test_period_pipeline_imports_forex_and_respects_period() -> None:
     result = PeriodImportPipeline().run(
         period_start=date(2026, 1, 1),
         period_end=date(2026, 1, 31),
@@ -133,7 +135,19 @@ def test_period_pipeline_excludes_forex_and_respects_period() -> None:
         opening_snapshot_at=datetime(2025, 12, 31),
     )
 
-    assert len(result.trades) == 45
+    assert len(result.trades) == 67
+
+    forex_trades = [
+        trade
+        for trade in result.trades
+        if isinstance(
+            trade.legs[0].instrument,
+            ForexPair,
+        )
+    ]
+
+    assert len(forex_trades) == 22
+
     assert all(
         min(
             execution.executed_at
@@ -336,3 +350,23 @@ def test_period_pipeline_automatically_discovers_historical_trade_history() -> N
         "CAMP-000002",
         "CAMP-000003",
     }.issubset(campaign_ids)
+
+def test_period_pipeline_imports_forex_trades() -> None:
+    result = PeriodImportPipeline().run(
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        thinkorswim_trade_history=JANUARY,
+        opening_snapshot=DECEMBER_POSITIONS,
+        opening_snapshot_at=datetime(2025, 12, 31),
+    )
+
+    forex_trades = [
+        trade
+        for trade in result.trades
+        if isinstance(
+            trade.legs[0].instrument,
+            ForexPair,
+        )
+    ]
+
+    assert forex_trades
