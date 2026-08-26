@@ -9,7 +9,9 @@ from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
-from campaigniq.import_pipeline import PeriodImportPipeline
+from campaigniq.domain.historical_lot_reconstructor import (
+    HistoricalLotReconstructor,
+)
 
 
 def test_missing_historical_option_lot_is_reconstructed_for_cmi() -> None:
@@ -37,7 +39,7 @@ def test_missing_historical_option_lot_is_reconstructed_for_cmi() -> None:
     )
 
     book = LotBook()
-    PeriodImportPipeline._seed_missing_historical_option_lots(book, (trade,))
+    HistoricalLotReconstructor.seed_missing_option_lots(book, (trade,))
 
     lots = book.lots(instrument)
     assert len(lots) == 1
