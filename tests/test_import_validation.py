@@ -128,3 +128,22 @@ def test_rejects_forex_report_with_requested_month_name_but_wrong_boundaries(tmp
     assert result.valid is False
     assert "2026-08-01 through 2026-08-31" in result.message
     assert "2026-07-31 through 2026-08-31" in result.message
+
+
+def test_forex_validation_counts_new_transactions(tmp_path):
+    path = tmp_path / "fx-with-new.csv"
+    path.write_text(
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="100","Aug 27, 2026 15:05:18","Aug 27, 2026 17:00:00",new,EUR/USD,Buy,1.16505,"+100,000","-116,505",0.00,1.16505,,"+100,000",,\n'
+    )
+    result = validate_monthly_input(
+        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
+        path,
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 31),
+    )
+    assert result.valid is True
+    assert result.record_count == 1
+    assert "1 new transaction(s)" in result.message

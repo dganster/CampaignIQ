@@ -119,8 +119,8 @@ def validate_monthly_input(
                     "requested monthly report must cover "
                     f"{expected_report_start} through {period_end}.",
                 )
-            count = len(report.settlements) + len(report.financing)
-            return MonthlyInputValidation(role, True, f"Recognized Thinkorswim FOREX Transaction Report with {len(report.settlements)} settlement(s) and {len(report.financing)} financing record(s).", count)
+            count = len(report.settlements) + len(report.financing) + len(report.new_transactions)
+            return MonthlyInputValidation(role, True, f"Recognized Thinkorswim FOREX Transaction Report with {len(report.settlements)} settlement(s), {len(report.financing)} financing record(s), and {len(report.new_transactions)} new transaction(s).", count)
 
         if role is MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS:
             if "Realized Gain / Loss" not in text:
