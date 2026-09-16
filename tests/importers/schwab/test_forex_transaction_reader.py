@@ -176,3 +176,18 @@ def test_optional_pl_and_commission_reconciliation_is_unknown_when_controls_abse
     assert report.pl_total_control_reconciled is None
     assert report.commission_control_delta_usd is None
     assert report.commission_control_reconciled is None
+
+
+def test_commission_control_includes_settlement_fees(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",+3.00\n'
+        '"MTD fee, USD:",0.25\n'
+        '"Commission Total, USD:",,0.25\n'
+        '="101","Aug 27, 2026 20:19:57","Aug 28, 2026 17:00:00",settlement,EUR/USD,Sell,1.16508,"-100,000","+116,508",0.25,,"+3.00 USD",0,,"+3.00 USD"\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.settlements[0].fee_usd == Decimal("0.25")
+    assert report.transaction_fee_usd == Decimal("0.25")
+    assert report.commission_control_delta_usd == Decimal("0.00")
+    assert report.commission_control_reconciled is True

@@ -9,6 +9,7 @@ M=re.compile(r"^\s*([+-]?)\$?([\d,]+(?:\.\d+)?)\s*(?:USD)?\s*$",re.I)
 class SchwabForexSettlement:
     order_id:str; trade_at:datetime; settlement_at:datetime; instrument:str; side:str
     rate:Decimal; amount:Decimal; settlement_pl_usd:Decimal; total_position:Decimal
+    fee_usd:Decimal=Decimal("0")
 @dataclass(frozen=True,slots=True)
 class SchwabForexFinancing:
     order_id:str; occurred_at:datetime; instrument:str; financing_usd:Decimal
@@ -45,7 +46,10 @@ class SchwabForexTransactionReport:
         return None if delta is None else delta == Decimal("0")
     @property
     def transaction_fee_usd(self):
-        return sum((x.fee_usd for x in self.new_transactions),Decimal("0"))
+        return (
+            sum((x.fee_usd for x in self.new_transactions),Decimal("0"))
+            + sum((x.fee_usd for x in self.settlements),Decimal("0"))
+        )
     @property
     def commission_control_delta_usd(self):
         return None if self.commission_total_usd is None else self.commission_total_usd - self.transaction_fee_usd
@@ -94,7 +98,7 @@ def read_forex_transaction_report(source:str|Path):
         kind=c[3].lower()
         if kind=="settlement":
             if len(c)<13 or not c[11]: raise ValueError(f"Incomplete settlement: {row!r}")
-            settlements.append(SchwabForexSettlement(oid(c[0]),dt(c[1]),dt(c[2]),c[4],c[5],dec(c[6]),dec(c[7]),usd(c[11]),dec(c[12])))
+            settlements.append(SchwabForexSettlement(oid(c[0]),dt(c[1]),dt(c[2]),c[4],c[5],dec(c[6]),dec(c[7]),usd(c[11]),dec(c[12]),usd(c[9]) if len(c)>9 and c[9] else Decimal("0")))
         elif kind=="new":
             if len(c)<13 or not all(c[i] for i in (1,2,4,5,6,7,8,9,10,12)):
                 raise ValueError(f"Incomplete new FOREX transaction: {row!r}")
