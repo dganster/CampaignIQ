@@ -191,3 +191,49 @@ def test_commission_control_includes_settlement_fees(tmp_path):
     assert report.transaction_fee_usd == Decimal("0.25")
     assert report.commission_control_delta_usd == Decimal("0.00")
     assert report.commission_control_reconciled is True
+
+
+def test_financing_controls_reconcile_by_instrument_including_zero_only_controls(tmp_path):
+    text = (
+        '"Transaction Report since Dec 31, 2025 through Jan 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '"Total Financing, USD:",US$,+250.84\n'
+        ',USD$FX,-23.87\n'
+        ',CAD$FX,0.00\n'
+        '="1","Jan 10, 2026 12:00:00","Jan 10, 2026 12:00:00",financing,US$,,,,,,,,,,+250.84 USD\n'
+        '="2","Jan 11, 2026 12:00:00","Jan 11, 2026 12:00:00",financing,USD$FX,,,,,,,,,,-23.87 USD\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.financing_usd_by_instrument == {
+        "US$": Decimal("250.84"),
+        "USD$FX": Decimal("-23.87"),
+    }
+    assert report.financing_control_deltas_usd == (
+        ("US$", Decimal("0.00")),
+        ("USD$FX", Decimal("0.00")),
+        ("CAD$FX", Decimal("0.00")),
+    )
+    assert report.financing_control_reconciled is True
+
+
+def test_financing_control_detects_instrument_delta_and_is_unknown_when_absent(tmp_path):
+    mismatch = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '"Total Financing, USD:",US$,+10.00\n'
+        '="1","Aug 10, 2026 12:00:00","Aug 10, 2026 12:00:00",financing,US$,,,,,,,,,,+9.75 USD\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, mismatch))
+    assert report.financing_control_deltas_usd == (("US$", Decimal("0.25")),)
+    assert report.financing_control_reconciled is False
+
+    absent = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, absent))
+    assert report.financing_control_deltas_usd == ()
+    assert report.financing_control_reconciled is None

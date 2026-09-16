@@ -38,6 +38,19 @@ class SchwabForexTransactionReport:
     @property
     def financing_usd(self): return sum((x.financing_usd for x in self.financing),Decimal("0"))
     @property
+    def financing_usd_by_instrument(self):
+        totals={}
+        for x in self.financing:
+            totals[x.instrument]=totals.get(x.instrument,Decimal("0"))+x.financing_usd
+        return totals
+    @property
+    def financing_control_deltas_usd(self):
+        rows=self.financing_usd_by_instrument
+        return tuple((instrument,control-rows.get(instrument,Decimal("0"))) for instrument,control in self.financing_totals_usd)
+    @property
+    def financing_control_reconciled(self):
+        return None if not self.financing_totals_usd else all(delta == Decimal("0") for _,delta in self.financing_control_deltas_usd)
+    @property
     def pl_total_control_delta_usd(self):
         return None if self.pl_total_usd is None else self.pl_total_usd - self.settlement_pl_usd
     @property
