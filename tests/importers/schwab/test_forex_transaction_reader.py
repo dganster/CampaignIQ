@@ -35,3 +35,31 @@ def test_forex_settlement_control_total_reconciles_exactly(tmp_path):
     report = read_forex_transaction_report(put(tmp_path, text))
     assert report.settlement_control_delta_usd == Decimal("0.00")
     assert report.settlement_control_reconciled is True
+
+
+def test_parses_exact_report_period_with_timestamps(tmp_path):
+    from datetime import date
+    text='"Transaction Report since Jul 31, 2026 16:00:00 (EDT) through Aug 31, 2026 16:00:00 (EDT)"\n"MTD Settled PL, USD:",0.00\n"MTD fee, USD:",0.00\n'
+    report=read_forex_transaction_report(put(tmp_path,text))
+    assert report.period_start == date(2026,7,31)
+    assert report.period_end == date(2026,8,31)
+
+def test_parses_exact_report_period_without_timestamps(tmp_path):
+    from datetime import date
+    text='"Transaction Report since Jun 30, 2026 through Jul 31, 2026"\n"MTD Settled PL, USD:",0.00\n"MTD fee, USD:",0.00\n'
+    report=read_forex_transaction_report(put(tmp_path,text))
+    assert report.period_start == date(2026,6,30)
+    assert report.period_end == date(2026,7,31)
+
+
+
+def test_parses_unquoted_csv_period_header_split_at_date_commas(tmp_path):
+    from datetime import date
+    text = (
+        "Transaction Report since Jul 31, 2026 through Aug 31, 2026\n"
+        "MTD Settled PL,$0.00\n"
+        "MTD Fee,$0.00\n"
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.period_start == date(2026, 7, 31)
+    assert report.period_end == date(2026, 8, 31)

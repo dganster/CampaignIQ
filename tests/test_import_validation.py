@@ -116,3 +116,15 @@ def test_rejects_forex_transaction_report_for_wrong_month(tmp_path):
     path.write_text('"Transaction Report since Jun 30, 2026 through Jul 31, 2026"\n"MTD Settled PL, USD:",0.00\n"MTD fee, USD:",0.00\n')
     result=validate_monthly_input(MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,path,period_start=date(2026,8,1),period_end=date(2026,8,31))
     assert result.valid is False
+
+
+def test_rejects_forex_report_with_requested_month_name_but_wrong_boundaries(tmp_path):
+    path=tmp_path/"fx_wrong_boundaries.csv"
+    path.write_text('"Transaction Report since Aug 1, 2026 through Aug 31, 2026"\n"MTD Settled PL, USD:",0.00\n"MTD fee, USD:",0.00\n')
+    result=validate_monthly_input(
+        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT, path,
+        period_start=date(2026,8,1), period_end=date(2026,8,31),
+    )
+    assert result.valid is False
+    assert "2026-08-01 through 2026-08-31" in result.message
+    assert "2026-07-31 through 2026-08-31" in result.message

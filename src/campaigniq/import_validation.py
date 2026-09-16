@@ -110,9 +110,15 @@ def validate_monthly_input(
 
         if role is MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
             report = read_forex_transaction_report(source)
-            period_text = report.period_text.lower()
-            if period_start.strftime("%b").lower() not in period_text or str(period_start.year) not in period_text:
-                return MonthlyInputValidation(role, False, "Recognized Thinkorswim FOREX Transaction Report, but its report period does not match the requested month.")
+            expected_report_start = period_start - period_start.resolution
+            if (report.period_start, report.period_end) != (expected_report_start, period_end):
+                return MonthlyInputValidation(
+                    role, False,
+                    "Thinkorswim FOREX Transaction Report covers "
+                    f"{report.period_start} through {report.period_end}; "
+                    "requested monthly report must cover "
+                    f"{expected_report_start} through {period_end}.",
+                )
             count = len(report.settlements) + len(report.financing)
             return MonthlyInputValidation(role, True, f"Recognized Thinkorswim FOREX Transaction Report with {len(report.settlements)} settlement(s) and {len(report.financing)} financing record(s).", count)
 
