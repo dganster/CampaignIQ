@@ -128,3 +128,22 @@ def test_wizard_copy_describes_four_monthly_documents() -> None:
     text = source()
     assert "supply the four monthly brokerage documents" in text
     assert "supply the three documents" not in text
+
+
+def test_wizard_reports_forex_settlement_control_after_execution() -> None:
+    text = source()
+    execute = text.index("execution = execute_monthly_import(")
+    control = text.index('st.markdown("#### FOREX Settlement Control")', execute)
+    final_success = text.index(
+        '"Closing inventory reconciled and authoritative month-end state "',
+        control,
+    )
+
+    assert execute < control < final_success
+    assert '"Broker MTD Settled P&L: $' in text
+    assert '"Parsed settlement-row P&L: $' in text
+    assert '"FOREX settlement control reconciled exactly."' in text
+    assert '"FOREX settlement control difference: "' in text
+    assert '"monthly finalization."' in text
+    assert "execution.forex_settlement_control_delta_usd" in text
+    assert "execution.forex_settlement_control_reconciled" in text

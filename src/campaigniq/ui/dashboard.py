@@ -359,6 +359,25 @@ def render_monthly_import_wizard():
             )
             return
 
+        forex_report = execution.result.forex_transaction_report
+        if forex_report is not None:
+            st.markdown("#### FOREX Settlement Control")
+            st.write(
+                f"Broker MTD Settled P&L: ${forex_report.mtd_settled_pl_usd:,.2f}"
+            )
+            st.write(
+                f"Parsed settlement-row P&L: ${forex_report.settlement_pl_usd:,.2f}"
+            )
+            if execution.forex_settlement_control_reconciled:
+                st.success("FOREX settlement control reconciled exactly.")
+            else:
+                st.warning(
+                    "FOREX settlement control difference: "
+                    f"${execution.forex_settlement_control_delta_usd:,.2f}. "
+                    "This difference is reported for review and did not block "
+                    "monthly finalization."
+                )
+
         st.success(
             "Closing inventory reconciled and authoritative month-end state "
             f"was persisted to {execution.authoritative_state_path}."
