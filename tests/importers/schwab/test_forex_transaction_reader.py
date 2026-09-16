@@ -21,3 +21,17 @@ def test_financing_with_conversion_rate_uses_usd_amount(tmp_path):
     text='"Transaction Report since Mar 31, 2026 through Apr 30, 2026"\n"MTD Settled PL, USD:",0.00\n"MTD fee, USD:",0.00\n="116469481550","Apr 13, 2026 17:12:21","Apr 13, 2026 17:12:21",financing,USD$FX,.78479,+6.37,+6.37 USD\n'
     r=read_forex_transaction_report(put(tmp_path,text))
     assert r.financing_usd == Decimal("6.37")
+
+def test_exposes_forex_settlement_control_total_delta(tmp_path):
+    text = '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n"MTD Settled PL, USD:",+3.27\n"MTD fee, USD:",0.00\n="1007745626983","Aug 27, 2026 20:19:57","Aug 28, 2026 17:00:00",settlement,EUR/USD,Sell,1.16508,"-100,000","+116,508",0.00,,"+3.00 USD",0,,"+3.00 USD"\n'
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.mtd_settled_pl_usd == Decimal("3.27")
+    assert report.settlement_pl_usd == Decimal("3.00")
+    assert report.settlement_control_delta_usd == Decimal("0.27")
+    assert report.settlement_control_reconciled is False
+
+def test_forex_settlement_control_total_reconciles_exactly(tmp_path):
+    text = '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n"MTD Settled PL, USD:",+3.00\n"MTD fee, USD:",0.00\n="1007745626983","Aug 27, 2026 20:19:57","Aug 28, 2026 17:00:00",settlement,EUR/USD,Sell,1.16508,"-100,000","+116,508",0.00,,"+3.00 USD",0,,"+3.00 USD"\n'
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.settlement_control_delta_usd == Decimal("0.00")
+    assert report.settlement_control_reconciled is True

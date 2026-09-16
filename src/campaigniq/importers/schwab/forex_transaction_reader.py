@@ -19,6 +19,12 @@ class SchwabForexTransactionReport:
     @property
     def settlement_pl_usd(self): return sum((x.settlement_pl_usd for x in self.settlements),Decimal("0"))
     @property
+    def settlement_control_delta_usd(self):
+        return self.mtd_settled_pl_usd - self.settlement_pl_usd
+    @property
+    def settlement_control_reconciled(self):
+        return self.settlement_control_delta_usd == Decimal("0")
+    @property
     def financing_usd(self): return sum((x.financing_usd for x in self.financing),Decimal("0"))
 def dec(s): return Decimal(s.strip().replace(",","").lstrip("+"))
 def usd(s):
