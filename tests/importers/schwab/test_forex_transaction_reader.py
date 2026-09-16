@@ -145,3 +145,34 @@ def test_rejects_unrecognized_forex_transaction_type(tmp_path):
     )
     with pytest.raises(ValueError, match="Unrecognized FOREX transaction type"):
         read_forex_transaction_report(path)
+
+
+def test_exposes_optional_pl_and_commission_control_reconciliation(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",+3.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '"PL Total*, USD:",,+3.00\n'
+        '"Commission Total, USD:",,0.00\n'
+        '="100","Aug 27, 2026 15:05:18","Aug 27, 2026 17:00:00",new,EUR/USD,Buy,1.16505,"+100,000","-116,505",0.00,1.16505,,"+100,000",,\n'
+        '="101","Aug 27, 2026 20:19:57","Aug 28, 2026 17:00:00",settlement,EUR/USD,Sell,1.16508,"-100,000","+116,508",0.00,,"+3.00 USD",0,,"+3.00 USD"\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.pl_total_control_delta_usd == Decimal("0.00")
+    assert report.pl_total_control_reconciled is True
+    assert report.transaction_fee_usd == Decimal("0.00")
+    assert report.commission_control_delta_usd == Decimal("0.00")
+    assert report.commission_control_reconciled is True
+
+
+def test_optional_pl_and_commission_reconciliation_is_unknown_when_controls_absent(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.pl_total_control_delta_usd is None
+    assert report.pl_total_control_reconciled is None
+    assert report.commission_control_delta_usd is None
+    assert report.commission_control_reconciled is None

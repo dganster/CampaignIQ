@@ -36,6 +36,23 @@ class SchwabForexTransactionReport:
         return self.settlement_control_delta_usd == Decimal("0")
     @property
     def financing_usd(self): return sum((x.financing_usd for x in self.financing),Decimal("0"))
+    @property
+    def pl_total_control_delta_usd(self):
+        return None if self.pl_total_usd is None else self.pl_total_usd - self.settlement_pl_usd
+    @property
+    def pl_total_control_reconciled(self):
+        delta = self.pl_total_control_delta_usd
+        return None if delta is None else delta == Decimal("0")
+    @property
+    def transaction_fee_usd(self):
+        return sum((x.fee_usd for x in self.new_transactions),Decimal("0"))
+    @property
+    def commission_control_delta_usd(self):
+        return None if self.commission_total_usd is None else self.commission_total_usd - self.transaction_fee_usd
+    @property
+    def commission_control_reconciled(self):
+        delta = self.commission_control_delta_usd
+        return None if delta is None else delta == Decimal("0")
 def dec(s): return Decimal(s.strip().replace(",","").lstrip("+"))
 def usd(s):
     m=M.match(s)
