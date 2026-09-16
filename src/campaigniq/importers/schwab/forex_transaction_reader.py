@@ -89,6 +89,8 @@ def read_forex_transaction_report(source:str|Path):
             usd_cells=[x for x in c[4:] if "USD" in x.upper()]
             if not usd_cells: raise ValueError(f"Financing row lacks USD amount: {row!r}")
             financing.append(SchwabForexFinancing(oid(c[0]),dt(c[1]),c[4],usd(usd_cells[-1])))
+        else:
+            raise ValueError(f"Unrecognized FOREX transaction type {c[3]!r}: {row!r}")
     if not period: raise ValueError("Not a Thinkorswim FOREX Transaction Report: period missing")
     period_start,period_end=report_period(period)
     if pl is None: raise ValueError("FOREX report lacks MTD Settled PL")

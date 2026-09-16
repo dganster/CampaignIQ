@@ -133,3 +133,15 @@ def test_report_controls_remain_optional_for_legacy_minimal_fixtures(tmp_path):
     assert report.pl_total_usd is None
     assert report.commission_total_usd is None
     assert report.financing_totals_usd == ()
+
+
+def test_rejects_unrecognized_forex_transaction_type(tmp_path):
+    path = tmp_path / "unknown-kind.csv"
+    path.write_text(
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="999","Aug 27, 2026 15:05:18","Aug 27, 2026 17:00:00",mystery,EUR/USD,Buy,1.16505,"+100,000","-116,505",0.00,1.16505,,"+100,000",,\n'
+    )
+    with pytest.raises(ValueError, match="Unrecognized FOREX transaction type"):
+        read_forex_transaction_report(path)
