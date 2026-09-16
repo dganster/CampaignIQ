@@ -27,16 +27,17 @@ def test_assignments_use_their_preceding_transaction_dates() -> None:
     rows = read_option_assignment_section(lines)
 
     assert len(rows) == 2
-
     assert rows[0].transaction_date == date(2026, 7, 1)
+    assert rows[0].trade_date is None
     assert rows[0].symbol == "APD"
     assert rows[0].quantity == Decimal("1")
 
     assert rows[1].transaction_date == date(2026, 7, 20)
+    assert rows[1].trade_date is None
     assert rows[1].symbol == "META"
     assert rows[1].quantity == Decimal("5")
 
-def test_assignment_uses_explicit_trade_date_when_present() -> None:
+def test_assignment_preserves_transaction_and_trade_dates() -> None:
     lines = [
         "07/01",
         "Sale",
@@ -54,4 +55,5 @@ def test_assignment_uses_explicit_trade_date_when_present() -> None:
     rows = read_option_assignment_section(lines)
 
     assert len(rows) == 1
-    assert rows[0].transaction_date == date(2026, 6, 30)
+    assert rows[0].transaction_date == date(2026, 7, 1)
+    assert rows[0].trade_date == date(2026, 6, 30)

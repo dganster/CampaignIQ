@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
+from campaigniq.domain.forex_settlement_attribution import ForexSettlementAttribution
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,7 @@ class CampaignRealizedPnl:
 
 def aggregate_campaign_realized_pnl(
     attributions: list[RealizedAttribution],
+    forex_attributions: list[ForexSettlementAttribution] | tuple[ForexSettlementAttribution, ...] = (),
 ) -> tuple[CampaignRealizedPnl, ...]:
     """Aggregate realized broker results that map unambiguously to campaigns.
 
@@ -64,6 +66,21 @@ def aggregate_campaign_realized_pnl(
             and attribution.basis_reconciled
             and attribution.gain_loss_reconciled
         )
+
+    for attribution in forex_attributions:
+        total = totals.setdefault(
+            attribution.campaign_id,
+            {
+                "proceeds": Decimal("0"),
+                "cost_basis": Decimal("0"),
+                "gain_loss": Decimal("0"),
+                "allocation_count": 0,
+                "record_count": 0,
+                "fully_reconciled": True,
+            },
+        )
+        total["gain_loss"] += attribution.gain_loss
+        total["record_count"] += 1
 
     return tuple(
         CampaignRealizedPnl(

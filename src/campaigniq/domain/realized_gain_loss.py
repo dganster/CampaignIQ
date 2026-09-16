@@ -22,6 +22,7 @@ class RealizedGainLossRecord:
     gain_loss: Decimal
     basis_method: str
     term: str
+    disallowed_loss: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         if self.quantity <= 0:
@@ -29,4 +30,4 @@ class RealizedGainLossRecord:
 
     @property
     def expected_gain_loss(self) -> Decimal:
-        return self.proceeds - self.cost_basis
+        return self.proceeds - self.cost_basis + self.disallowed_loss

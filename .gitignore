@@ -26,3 +26,8 @@ htmlcov/
 # Local brokerage exports
 tests/data/**/*.csv
 !tests/data/README.md
+# Local CampaignIQ runtime state
+.campaigniq/
+
+# Private realized-attribution exports
+tests/data/reconciled/*-realized-attributions.json

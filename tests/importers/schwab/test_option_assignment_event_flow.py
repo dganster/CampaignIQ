@@ -70,3 +70,23 @@ def test_december_assignment_uses_contract_year_for_transaction_date() -> None:
     events = read_option_assignment_events(lines)
 
     assert events[0].occurred_at == datetime(2025, 12, 4)
+
+def test_assignment_event_uses_transaction_date_not_trade_date() -> None:
+    lines = [
+        "07/01",
+        "Sale",
+        "APD",
+        "AIR PRODS & CHEMS INC",
+        "Trade Date: 06/30/26",
+        "Other Activity",
+        "Option Assignment",
+        "APD",
+        "07/17/2026 270.00 C",
+        "CALL AIR PRODS & CHEMS INC",
+        "1.0000",
+    ]
+
+    events = read_option_assignment_events(lines)
+
+    assert len(events) == 1
+    assert events[0].occurred_at == datetime(2026, 7, 1)

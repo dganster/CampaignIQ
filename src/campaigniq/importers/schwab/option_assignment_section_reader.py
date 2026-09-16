@@ -43,6 +43,11 @@ def read_option_assignment_section(
             year=expiration.year,
         )
 
+        trade_date = _parse_trade_date(
+            lines,
+            index,
+        )
+
         if option_code not in {"C", "P"}:
             raise ValueError(
                 f"Unsupported option type: {option_code!r}"
@@ -60,6 +65,7 @@ def read_option_assignment_section(
         rows.append(
             SchwabOptionAssignmentRow(
                 transaction_date=transaction_date,
+                trade_date=trade_date,
                 symbol=symbol,
                 expiration=expiration,
                 strike=strike,
@@ -80,16 +86,10 @@ def _parse_transaction_date(
     *,
     year: int,
 ) -> date:
-    """Find the transaction date associated with an assignment."""
+    """Find the statement transaction date associated with an assignment."""
 
     for index in range(assignment_index - 1, -1, -1):
         value = lines[index].strip()
-
-        if value.startswith("Trade Date:"):
-            trade_date = value.removeprefix("Trade Date:").strip()
-
-            month, day, short_year = trade_date.split("/")
-            return date(2000 + int(short_year), int(month), int(day))
 
         try:
             month, day = value.split("/")
@@ -100,6 +100,30 @@ def _parse_transaction_date(
     raise ValueError(
         "Could not find transaction date for Option Assignment."
     )
+
+def _parse_trade_date(
+    lines: list[str],
+    assignment_index: int,
+) -> date | None:
+    """Find an explicit Schwab trade date when present."""
+
+    for index in range(assignment_index - 1, -1, -1):
+        value = lines[index].strip()
+
+        if value.startswith("Trade Date:"):
+            trade_date = value.removeprefix("Trade Date:").strip()
+            month, day, short_year = trade_date.split("/")
+            return date(2000 + int(short_year), int(month), int(day))
+
+        try:
+            month, day = value.split("/")
+            int(month)
+            int(day)
+            return None
+        except (ValueError, TypeError):
+            continue
+
+    return None
 
 def _parse_date(value: str) -> date:
     """Parse an MM/DD/YYYY date."""

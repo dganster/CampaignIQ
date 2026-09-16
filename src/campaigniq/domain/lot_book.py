@@ -37,6 +37,20 @@ class LotBook:
         """Return currently open lots for an instrument."""
         return tuple(self._lots.get(instrument, ()))
 
+    def clone(self) -> "LotBook":
+        """Return an independent copy of the current lot state."""
+
+        cloned = LotBook()
+        cloned._lots = defaultdict(
+            list,
+            {
+                instrument: list(lots)
+                for instrument, lots in self._lots.items()
+            },
+        )
+        cloned._next_id = self._next_id
+        return cloned
+
     def assign_unassigned_lots_to_campaign(
         self,
         instrument: Instrument,
@@ -67,16 +81,16 @@ class LotBook:
                 break
 
             take = min(lot.quantity, remaining)
-            replacement = Lot(
-                lot_id=lot.lot_id,
-                instrument=lot.instrument,
-                quantity=lot.quantity,
-                opened_at=lot.opened_at,
-                basis_total=lot.basis_total,
-                basis_source=lot.basis_source,
-                campaign_id=campaign_id,
-            )
-            lots[lots.index(lot)] = replacement
+
+            if take == lot.quantity:
+                self.assign_campaign(lot.lot_id, campaign_id)
+            else:
+                self.split_and_assign_campaign(
+                    lot.lot_id,
+                    quantity=take,
+                    campaign_id=campaign_id,
+                )
+
             remaining -= take
 
         if remaining:
@@ -114,6 +128,172 @@ class LotBook:
 
                 position = lots.index(lot)
                 lots[position] = replacement
+                return
+
+        raise ValueError(f"Lot {lot_id} not found.")
+
+    def reassign_campaign(
+        self,
+        lot_id: str,
+        campaign_id: str,
+    ) -> None:
+        """Rebind an existing lot to a new period-local campaign ID."""
+        for lots in self._lots.values():
+            for lot in lots:
+                if lot.lot_id != lot_id:
+                    continue
+
+                replacement = Lot(
+                    lot_id=lot.lot_id,
+                    instrument=lot.instrument,
+                    quantity=lot.quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=lot.basis_total,
+                    basis_source=lot.basis_source,
+                    campaign_id=campaign_id,
+                )
+
+                position = lots.index(lot)
+                lots[position] = replacement
+                return
+
+        raise ValueError(f"Lot {lot_id} not found.")
+
+    def split_and_reassign_campaign(
+        self,
+        lot_id: str,
+        *,
+        quantity: Decimal,
+        campaign_id: str,
+    ) -> None:
+        """Split part of an assigned lot and rebind only that part."""
+        if quantity <= 0:
+            raise ValueError("Split quantity must be positive.")
+
+        for lots in self._lots.values():
+            for lot in list(lots):
+                if lot.lot_id != lot_id:
+                    continue
+
+                if lot.campaign_id is None:
+                    raise ValueError(
+                        f"Lot {lot_id} is not already assigned to a campaign."
+                    )
+
+                absolute_quantity = abs(lot.quantity)
+                if quantity >= absolute_quantity:
+                    raise ValueError(
+                        f"Split quantity {quantity} must be less than "
+                        f"lot quantity {absolute_quantity}."
+                    )
+
+                sign = Decimal("1") if lot.quantity > 0 else Decimal("-1")
+                reassigned_quantity = sign * quantity
+                remainder_quantity = lot.quantity - reassigned_quantity
+
+                if lot.basis_total is None:
+                    reassigned_basis = None
+                    remainder_basis = None
+                else:
+                    reassigned_basis = (
+                        lot.basis_total
+                        * quantity
+                        / absolute_quantity
+                    )
+                    remainder_basis = lot.basis_total - reassigned_basis
+
+                reassigned = Lot(
+                    lot_id=lot.lot_id,
+                    instrument=lot.instrument,
+                    quantity=reassigned_quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=reassigned_basis,
+                    basis_source=lot.basis_source,
+                    campaign_id=campaign_id,
+                )
+
+                remainder = Lot(
+                    lot_id=self._new_lot_id(),
+                    instrument=lot.instrument,
+                    quantity=remainder_quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=remainder_basis,
+                    basis_source=lot.basis_source,
+                    campaign_id=lot.campaign_id,
+                )
+
+                position = lots.index(lot)
+                lots[position : position + 1] = [reassigned, remainder]
+                return
+
+        raise ValueError(f"Lot {lot_id} not found.")
+
+    def split_and_assign_campaign(
+        self,
+        lot_id: str,
+        *,
+        quantity: Decimal,
+        campaign_id: str,
+    ) -> None:
+        """Split part of an unassigned lot and assign that part to a campaign."""
+        if quantity <= 0:
+            raise ValueError("Split quantity must be positive.")
+
+        for lots in self._lots.values():
+            for lot in list(lots):
+                if lot.lot_id != lot_id:
+                    continue
+
+                if lot.campaign_id is not None:
+                    raise ValueError(
+                        f"Lot {lot_id} is already assigned to "
+                        f"campaign {lot.campaign_id}."
+                    )
+
+                absolute_quantity = abs(lot.quantity)
+                if quantity >= absolute_quantity:
+                    raise ValueError(
+                        f"Split quantity {quantity} must be less than "
+                        f"lot quantity {absolute_quantity}."
+                    )
+
+                sign = Decimal("1") if lot.quantity > 0 else Decimal("-1")
+                assigned_quantity = sign * quantity
+                remainder_quantity = lot.quantity - assigned_quantity
+
+                if lot.basis_total is None:
+                    assigned_basis = None
+                    remainder_basis = None
+                else:
+                    assigned_basis = (
+                        lot.basis_total
+                        * quantity
+                        / absolute_quantity
+                    )
+                    remainder_basis = lot.basis_total - assigned_basis
+
+                assigned = Lot(
+                    lot_id=lot.lot_id,
+                    instrument=lot.instrument,
+                    quantity=assigned_quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=assigned_basis,
+                    basis_source=lot.basis_source,
+                    campaign_id=campaign_id,
+                )
+
+                remainder = Lot(
+                    lot_id=self._new_lot_id(),
+                    instrument=lot.instrument,
+                    quantity=remainder_quantity,
+                    opened_at=lot.opened_at,
+                    basis_total=remainder_basis,
+                    basis_source=lot.basis_source,
+                    campaign_id=None,
+                )
+
+                position = lots.index(lot)
+                lots[position : position + 1] = [assigned, remainder]
                 return
 
         raise ValueError(f"Lot {lot_id} not found.")
@@ -348,6 +528,7 @@ class LotBook:
                     instrument=leg.instrument,
                     quantity=quantity,
                     closing_side=leg.side,
+                    campaign_id=campaign_id,
                 )
             )
         return tuple(allocations)
@@ -406,6 +587,7 @@ class LotBook:
         instrument: Instrument,
         quantity: Decimal,
         closing_side: Side,
+        campaign_id: str | None = None,
     ) -> list[LotAllocation]:
         lots = self._lots.get(instrument, [])
         target_sign = 1 if closing_side == Side.SELL else -1
@@ -426,7 +608,11 @@ class LotBook:
                     lot_id=lot.lot_id,
                     quantity=consumed,
                     broker_basis=None,
-                    campaign_id=lot.campaign_id,
+                    campaign_id=(
+                        lot.campaign_id
+                        if lot.campaign_id is not None
+                        else campaign_id
+                    ),
                 )
             )
 
@@ -439,12 +625,21 @@ class LotBook:
             if new_quantity == 0:
                 lots.remove(lot)
             else:
+                if lot.basis_total is None:
+                    remaining_basis = None
+                else:
+                    remaining_basis = (
+                        lot.basis_total
+                        * abs(new_quantity)
+                        / abs(lot.quantity)
+                    )
+
                 replacement = Lot(
                     lot_id=lot.lot_id,
                     instrument=lot.instrument,
                     quantity=new_quantity,
                     opened_at=lot.opened_at,
-                    basis_total=lot.basis_total,
+                    basis_total=remaining_basis,
                     basis_source=lot.basis_source,
                     campaign_id=lot.campaign_id,
                 )

@@ -150,7 +150,7 @@ def _run_period(args: argparse.Namespace) -> None:
         attributions = RealizedLotAttributor(result.opening_lot_book).attribute_campaigns(
             list(result.campaigns),
             list(result.realized_gain_loss),
-            list(result.position_events),
+            list(result.attribution_events),
         )
         campaign_results = aggregate_campaign_realized_pnl(list(attributions))
 

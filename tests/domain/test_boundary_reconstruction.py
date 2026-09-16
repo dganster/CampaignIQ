@@ -95,6 +95,72 @@ def test_supplied_opening_lot_resolves_campaign_and_removes_requirement() -> Non
     assert result.historical_requirements == ()
     assert book.lots(Instrument("AMZN"))[0].campaign_id == "CAMP-000009"
 
+def test_same_period_open_satisfies_later_close_without_boundary_requirement() -> None:
+    historical_instrument = Instrument("AMZN")
+    same_period_instrument = Instrument("LMT")
+
+    book = LotBook()
+    book.seed(
+        Lot(
+            lot_id="DEC-AMZN",
+            instrument=historical_instrument,
+            quantity=Decimal("5"),
+            opened_at=datetime(2025, 12, 31, 16, 0),
+            basis_total=Decimal("9000"),
+            basis_source="DECEMBER_SNAPSHOT",
+        )
+    )
+
+    campaign = Campaign(
+        campaign_id="CAMP-000009",
+        trades=(
+            _close_trade("AMZN", "5"),
+            Trade(
+                legs=(
+                    InstrumentLeg(
+                        instrument=same_period_instrument,
+                        side=Side.BUY,
+                        position_effect=PositionEffect.OPEN,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("5"),
+                                execution_price=Decimal("100"),
+                                executed_at=datetime(2026, 1, 15, 10, 0),
+                            ),
+                        ),
+                    ),
+                )
+            ),
+            Trade(
+                legs=(
+                    InstrumentLeg(
+                        instrument=same_period_instrument,
+                        side=Side.SELL,
+                        position_effect=PositionEffect.CLOSE,
+                        executions=(
+                            Execution(
+                                quantity=Decimal("-3"),
+                                execution_price=Decimal("110"),
+                                executed_at=datetime(2026, 1, 16, 10, 0),
+                            ),
+                        ),
+                    ),
+                )
+            ),
+        ),
+        started_before_data=True,
+    )
+
+    result = BoundaryReconstructionAnalyzer().analyze(
+        period_start=date(2026, 1, 1),
+        campaigns=[campaign],
+        opening_lot_book=book,
+    )
+
+    assert result.unresolved_campaigns == ()
+    assert result.unresolved_positions == ()
+    assert result.historical_requirements == ()
+    assert book.lots(historical_instrument)[0].campaign_id == "CAMP-000009"
 
 def test_multiple_unresolved_campaigns_share_position_requirements_without_merging_cases() -> None:
     campaigns = [

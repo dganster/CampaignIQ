@@ -1,0 +1,360 @@
+                                                                                       Schwab Private Client Services™
+
+
+
+
+Realized Gain / Loss                                                                                                                              Updated: 10:07:16 AM ET, 09/01/2026
+
+
+
+  My Brokerage                     …368                                                                                                                                                          View Positions
+
+
+
+        Historical gains and losses for your transitioned TD Ameritrade account are not shown on this page. Please visit GainsKeeper® to view historical transactions for your account.
+
+
+For today’s transactions, real time realized gain/loss information may be delayed.                                               View Historical GainsKeeper Transactions               Cost Basis Calculator
+
+
+   Date range
+
+      Custom date range
+
+
+   Options
+
+      Include option contracts
+
+
+   From mm/dd/yyyy
+
+      08/01/2026
+
+
+   To mm/dd/yyyy
+
+      08/31/2026
+
+
+   Symbol (Optional)
+
+
+
+
+                                                                                                   Search
+
+
+
+
+  Gain/Loss Summary             Transaction Analyzer
+
+
+
+    Reporting Period                           Gain/Loss
+    08/01/2026 to 08/31/2026                   Long Term         -$3,661.20    (-9.74%)              Totals
+    Total Proceeds      $1,200,514.47          Short Term       -$17,783.16    (-1.50%)
+                                                                                                     Total Gains          +$62,753.42
+    Total Cost Basis $1,221,958.83             Net Loss         -$21,444.36    (-1.75%)
+                                                                                                     Total Losses         -$84,197.78                     Gain/Loss Ratio
+                                                                                                     Net Loss             -$21,444.36
+                                                                                                                                                            42.70%
+                                                                                                                                                            ​
+
+
+
+
+   Realized Gain/Loss Details
+
+   Chart based on 62 records.                                                                                                                                                             Show Chart
+
+
+     200%
+
+
+
+
+     100%
+
+
+
+
+       0%
+
+
+
+
+     -100%
+
+
+
+
+     -200%
+
+
+
+
+     -300%
+          Aug 6       Aug 8        Aug 10    Aug 12    Aug 14    Aug 16       Aug 18      Aug 20     Aug 22      Aug 24     Aug 26      Aug 28   Aug 30         Sep 1   Sep 3
+                                                                                                                                      Realized Gain/Loss     $     %
+
+
+Symbol                                                                                                 Cost Basis (CB)                 Total        Long Term           Short Term
+Description                Closed Date   Quantity   Closing Price   Cost Basis Method       Proceeds   Transaction CB    Transaction Total $   Transaction LT $   Transaction ST $
+
+
+IBM                        08/07/2026       100        $216.86                 FIFO      $21,685.87      $26,595.00            -$4,909.13                              -$4,909.13
+IBM CORP
+
+AMT                        08/13/2026       100        $174.31                 FIFO      $17,431.21      $19,015.03            -$1,583.82                              -$1,583.82
+AMERICAN TOWER CORP REIT                                                                                 $17,857.00              -$425.79                                -$425.79
+
+ADP                        08/13/2026       100        $273.78                 FIFO      $27,378.42      $25,324.00           +$2,054.42                             +$2,054.42
+AUTOMATIC DATA PROCE
+
+CVX                        08/13/2026       100        $197.09                 FIFO      $19,708.57      $18,890.00             +$818.57                                +$818.57
+CHEVRON CORP NEW
+
+COST                       08/13/2026       100        $959.00                 FIFO      $95,900.00      $92,671.00           +$3,229.00                             +$3,229.00
+COSTCO WHSL CORP NEW
+
+LLY                        08/13/2026       100     $1,213.51                  FIFO     $121,351.48     $117,069.00           +$4,282.48                             +$4,282.48
+ELI LILLY AND CO
+
+GE                         08/13/2026       100        $360.77                 FIFO      $36,077.24      $37,747.85            -$1,670.61                              -$1,670.61
+GE AEROSPACE
+
+LMT                        08/13/2026       100        $598.96                 FIFO      $59,895.75      $57,272.52           +$2,623.23                             +$2,623.23
+LOCKHEED MARTIN CORP                                                                                     $51,151.00           +$8,744.75                             +$8,744.75
+
+NFLX                       08/13/2026       100         $77.51                 FIFO       $7,750.82       $6,777.00             +$973.82                                +$973.82
+NETFLIX INC
+
+PNC                        08/13/2026       100        $255.55                 FIFO      $25,555.45      $24,991.00             +$564.45                                +$564.45
+PNC FINL SERVICES
+
+AMT 08/21/2026 155.00 C    08/14/2026          1        $16.30                 FIFO       $1,630.31       $1,960.66              -$330.35                               -$330.35
+CALL AMERICAN TOWER C...
+
+ADP 08/21/2026 237.50 C    08/14/2026          1        $20.49                 FIFO       $2,049.30       $3,664.66            -$1,615.36                              -$1,615.36
+CALL AUTOMATIC DATA P...
+
+CVX 08/21/2026 177.50 C    08/14/2026          1        $14.09                 FIFO       $1,409.31       $1,975.66              -$566.35                               -$566.35
+CALL CHEVRON CORP NEW...
+
+COST 08/21/2026 885.00 C   08/14/2026          1        $51.83                 FIFO       $5,183.23       $7,530.66            -$2,347.43                              -$2,347.43
+CALL COSTCO WHSL CORP...
+
+LLY 08/21/2026 1080.00 C   08/14/2026          1       $118.13                 FIFO      $11,813.10      $13,366.66            -$1,553.56                              -$1,553.56
+CALL ELI LILLY AND CO...
+
+GE 08/21/2026 320.00 C     08/14/2026          1        $34.94                 FIFO       $3,494.27       $4,152.66              -$658.39                               -$658.39
+CALL GE AEROSPACE $32...
+
+LMT 08/21/2026 480.00 C    08/14/2026          1        $41.59                 FIFO       $4,159.25      $11,960.66            -$7,801.41                              -$7,801.41
+CALL LOCKHEED MARTIN ...
+
+NFLX 08/21/2026 63.00 C    08/14/2026          1          $5.97                FIFO        $597.33        $1,463.66              -$866.33                               -$866.33
+CALL NETFLIX INC $63 ...
+
+PNC 08/21/2026 235.00 C    08/14/2026          1        $17.80                 FIFO       $1,780.30       $2,120.66              -$340.36                               -$340.36
+CALL PNC FINL SERVICE...
+
+GLW                        08/14/2026       100        $164.30                 FIFO      $16,429.64      $19,834.00            -$3,404.36                              -$3,404.36
+CORNING INC
+
+DELL                       08/14/2026       100        $495.80                 FIFO      $49,579.96      $39,087.00         +$10,492.96                            +$10,492.96
+DELL TECHNOLOGIES IN C
+
+HD                         08/14/2026       100        $339.28                 FIFO      $33,928.28      $37,589.48            -$3,661.20         -$3,661.20
+HOME DEPOT INC                                                                                           $33,386.00             +$542.28           +$542.28
+
+MCD                        08/14/2026       100        $274.50                 FIFO      $27,450.41      $30,005.50            -$2,555.09                              -$2,555.09
+MCDONALDS CORP                                                                                           $26,707.00             +$743.41                                +$743.41
+
+GLW 08/21/2026 130.00 C    08/17/2026          1        $32.17                 FIFO       $3,217.27       $3,465.66              -$248.39                               -$248.39
+CALL CORNING INC $130...
+
+DELL 08/21/2026 340.00 C   08/17/2026          1        $69.04                 FIFO       $6,904.20      $15,763.12            -$8,858.92                              -$8,858.92
+CALL DELL TECHNOLOGIE...                                                                                 $15,665.66            -$8,761.46                              -$8,761.46
+
+HD 08/21/2026 310.00 C     08/17/2026          1        $28.68                 FIFO       $2,868.28       $3,005.66              -$137.38                               -$137.38
+CALL HOME DEPOT INC $...
+
+MCD 08/21/2026 250.00 C    08/17/2026          1        $20.46                 FIFO       $2,046.30       $2,510.66              -$464.36                               -$464.36
+CALL MCDONALDS CORP $...
+                                                                                                                                      Realized Gain/Loss
+
+
+
+Symbol                                                                                                 Cost Basis (CB)                 Total        Long Term          Short Term
+Description                Closed Date   Quantity   Closing Price   Cost Basis Method       Proceeds   Transaction CB    Transaction Total $   Transaction LT $   Transaction ST $
+
+
+AXP                        08/18/2026       100        $338.26                 FIFO      $33,826.28      $35,224.00            -$1,397.72                            -$1,397.72
+AMERICAN EXPRESS CO
+
+CAT                        08/18/2026       100        $837.20                 FIFO      $83,720.26      $99,056.00          -$15,335.74                            -$15,335.74
+CATERPILLAR INC
+
+CMI                        08/18/2026       100        $619.61                 FIFO      $61,960.70      $70,883.95            -$8,923.25                            -$8,923.25
+CUMMINS INC
+
+DE                         08/18/2026       100        $593.56                 FIFO      $59,355.76      $59,268.00               +$87.76                               +$87.76
+DEERE & CO
+
+GS                         08/18/2026       100     $1,035.98                  FIFO     $103,597.85    $106,488.00             -$2,890.15                            -$2,890.15
+GOLDMAN SACHS GROUP
+
+LIN                        08/18/2026       100        $480.46                 FIFO      $48,045.99      $51,486.00            -$3,440.01                            -$3,440.01
+LINDE PLC
+
+SPY                        08/18/2026       100        $768.31                 FIFO      $76,831.40      $74,235.00           +$2,596.40                             +$2,596.40
+STATE STREET SPDR S&P...
+
+UNH                        08/18/2026       100        $395.96                 FIFO      $39,596.16      $42,220.00            -$2,623.84                            -$2,623.84
+UNITEDHEALTH GROUP I
+
+AXP 08/21/2026 332.50 C    08/19/2026          1        $25.80                 FIFO       $2,580.29         $700.66           +$1,879.63                             +$1,879.63
+CALL AMERICAN EXPRESS...
+
+CAT 08/21/2026 800.00 C    08/19/2026          1       $111.34                 FIFO      $11,134.11       $3,966.66           +$7,167.45                             +$7,167.45
+CALL CATERPILLAR INC ...
+
+CMI 08/21/2026 590.00 C    08/19/2026          1        $76.16                 FIFO       $7,616.18       $3,045.66           +$4,570.52                             +$4,570.52
+CALL CUMMINS INC $590...
+
+DE 08/21/2026 555.00 C     08/19/2026          1        $50.64                 FIFO       $5,064.24       $4,215.66             +$848.58                               +$848.58
+CALL DEERE & CO $555 ...
+
+GS 08/21/2026 995.00 C     08/19/2026          1        $90.09                 FIFO       $9,009.15       $4,303.66           +$4,705.49                             +$4,705.49
+CALL GOLDMAN SACHS GR...
+
+LIN 08/21/2026 485.00 C    08/19/2026          1        $36.98                 FIFO       $3,698.26         $252.66           +$3,445.60                             +$3,445.60
+CALL LINDE PLC $485 E...
+
+SPY 08/21/2026 716.00 C    08/19/2026          1        $34.75                 FIFO       $3,475.27       $5,335.66            -$1,860.39                            -$1,860.39
+CALL STATE STREET SPD...
+
+UNH 08/21/2026 400.00 C    08/19/2026          1        $29.39                 FIFO       $2,939.28         $246.66           +$2,692.62                             +$2,692.62
+CALL UNITEDHEALTH GRO...
+
+AAPL 10/02/2026 290.00 P   08/19/2026          3          $3.99                FIFO       $1,197.97         $958.99             +$238.98                               +$238.98
+PUT APPLE INC $290 EX...
+
+ADP 10/02/2026 250.00 P    08/19/2026          3          $3.99                FIFO       $1,197.97         $991.99             +$205.98                               +$205.98
+PUT AUTOMATIC DATA PR...
+
+CVX 10/02/2026 190.00 P    08/19/2026          3          $2.71                FIFO        $813.98          $676.99             +$136.99                               +$136.99
+PUT CHEVRON CORP NEW ...
+
+GLW 10/02/2026 155.00 P    08/19/2026          5          $7.19                FIFO       $3,596.59       $6,278.32            -$2,681.73                            -$2,681.73
+PUT CORNING INC $155 ...
+
+COST 10/02/2026 910.00 P   08/19/2026          3        $12.09                 FIFO       $3,627.92       $3,043.99             +$583.93                               +$583.93
+PUT COSTCO WHSL CORP ...
+
+DELL 10/02/2026 415.00 P   08/19/2026          3        $21.39                 FIFO       $6,417.86       $7,780.99            -$1,363.13                            -$1,363.13
+PUT DELL TECHNOLOGIES...
+
+LLY 10/02/2026 1110.00 P   08/19/2026          3        $20.09                 FIFO       $6,027.87       $4,561.99           +$1,465.88                             +$1,465.88
+PUT ELI LILLY AND CO ...
+
+GE 10/02/2026 345.00 P     08/19/2026          3          $5.79                FIFO       $1,737.96       $1,531.99             +$205.97                               +$205.97
+PUT GE AEROSPACE $345...
+
+HD 10/02/2026 315.00 P     08/19/2026          3          $4.69                FIFO       $1,407.97       $1,126.99             +$280.98                               +$280.98
+PUT HOME DEPOT INC $3...
+
+IBM 10/02/2026 210.00 P    08/19/2026          3          $3.69                FIFO       $1,107.97         $871.99             +$235.98                               +$235.98
+PUT IBM CORP $210 EXP...
+
+JPM 10/02/2026 345.00 P    08/19/2026          3          $3.69                FIFO       $1,107.97       $1,216.99              -$109.02                              -$109.02
+PUT JPMORGAN CHASE & ...
+                                                                                                                                                                                                      Realized Gain/Loss
+
+
+
+         Symbol                                                                                                                                                   Cost Basis (CB)                     Total           Long Term              Short Term
+         Description                                       Closed Date          Quantity       Closing Price       Cost Basis Method           Proceeds           Transaction CB      Transaction Total $     Transaction LT $       Transaction ST $
+
+
+         LMT 10/02/2026 560.00 P                          08/19/2026                    3             $7.79                    FIFO         $2,337.95                $1,531.99                +$805.96                                       +$805.96
+         PUT LOCKHEED MARTIN C...
+
+         MCD 10/02/2026 255.00 P                          08/19/2026                    3             $3.59                    FIFO         $1,077.97                   $883.99               +$193.98                                       +$193.98
+         PUT MCDONALDS CORP $2...
+
+         ADP 10/02/2026 250.00 P                          08/25/2026                    2             $3.99                    FIFO            $798.65                  $315.33               +$483.32                                       +$483.32
+         PUT AUTOMATIC DATA PR...
+
+         DE 10/02/2026 550.00 P                           08/25/2026                    2           $11.16                     FIFO         $2,232.61                   $481.33             +$1,751.28                                   +$1,751.28
+         PUT DEERE & CO $550 E...
+
+         LLY 10/02/2026 1110.00 P                         08/25/2026                    2           $20.09                     FIFO         $4,018.58                $2,087.33              +$1,931.25                                   +$1,931.25
+         PUT ELI LILLY AND CO ...
+
+         AAPL 10/02/2026 290.00 P                         09/01/2026                    2             $3.99                    FIFO            $798.65                  $331.33               +$467.32                                       +$467.32
+         PUT APPLE INC $290 EX...
+
+         CVX 10/02/2026 190.00 P                          09/01/2026                    2             $2.71                    FIFO            $542.65                  $257.33               +$285.32                                       +$285.32
+         PUT CHEVRON CORP NEW ...
+
+         IBM 10/02/2026 210.00 P                          09/01/2026                    2             $3.69                    FIFO            $738.65                  $291.33               +$447.32                                       +$447.32
+         PUT IBM CORP $210 EXP...
+
+         Account Total                                                                                                              $1,200,514.47               $1,221,958.83            -$21,444.36           -$3,661.20            -$17,783.16
+
+
+
+
+         The total Realized Gain/Loss for this account includes values for Short Positions held in the account. For more information on summary totals when there are Short Positions, please see the Help Section.
+
+
+
+
+(0423-3BXK, 0623-37YU, 1123-3XUW)
+
+The Realized Gain-Loss Analysis should not be considered a substitute for your trade confirmations, account statements or tax forms. Supplemental data is shown for informational purposes only, and should not be considered
+individualized recommendations or personalized investment advice.
+
+Values for fixed income securities have been adjusted for amortization/accretion; with the exception of variable rate and mortgage-backed securities or for accounts with this preference turned off.
+
+Total Cash represents income and expenses as they occur; it may be inconsistent with values shown elsewhere on Schwab.com and on your monthly account statement.
+
+The Realized Gain/Loss page provides summary information of closed transactions. Not all closed transactions appear on this page.
+
+Please view the Cost Basis Disclosure Statement for additional information on cost basis methods choices and how Schwab reports adjusted cost basis information to the IRS.
+
+Please note that gains and losses realized in retirement accounts are not recognized for tax purposes. Rather, income may be recognized when you receive a cash distribution from these accounts. Please contact your tax advisor for
+further information.
+
+The total Realized Gain/Loss for this account includes values for Short Positions held in the account. For more information on summary totals when there are Short Positions, please see the Help Section.
+
+
+
+
+      Investment and Insurance Products Are: Not FDIC Insured • Not Insured by Any Federal Government Agency • Not a Deposit or Other Obligation of, or Guaranteed by, the Bank or any of its Affiliates • Subject to Investment Risks,
+                                                                                         Including Possible Loss of Principal Amount Invested
+
+
+
+
+Today's Date: 10:08 AM ET, 09/01/2026
+
+
+
+Check the background of Charles Schwab or one of its investment professionals on FINRA's BrokerCheck           .                                                                                                                                       Back to Top
+
+
+
+
+The Charles Schwab Corporation provides a full range of brokerage, banking and financial advisory services through its operating subsidiaries. Its broker-dealer subsidiary, Charles Schwab & Co. Inc. (Member SIPC      ), and its affiliates offer investment
+services and products. Its banking subsidiary, Charles Schwab Bank, SSB (member FDIC and an Equal Housing Lender), provides deposit and lending services and products.
+
+
+This site is designed for U.S. residents. Non-U.S. residents are subject to country-specific restrictions. Learn more about our services for non-US Residents    , Charles Schwab Hong Kong clients    , Charles Schwab UK clients       .
+
+
+© 2026 Charles Schwab & Co., Inc. All rights reserved. Member SIPC        . Unauthorized access is prohibited. Usage will be monitored.
+

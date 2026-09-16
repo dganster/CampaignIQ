@@ -6,24 +6,21 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from campaigniq.domain.historical_campaign_provenance import (
-    HistoricalCampaignProvenanceResolver,
-)
 from campaigniq.campaign_reconstructor import CampaignReconstructor
+from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.boundary_reconstruction import (
     BoundaryReconstruction,
     BoundaryReconstructionAnalyzer,
 )
-from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_book import LotBook
+from campaigniq.domain.lot_book_period_applier import LotBookPeriodApplier
 from campaigniq.domain.historical_lot_reconstructor import (
     HistoricalLotReconstructor,
 )
-from campaigniq.domain.option_contract import OptionContract
-from campaigniq.domain.value_objects.instrument import Instrument
-from campaigniq.domain.position_effect import PositionEffect
-from campaigniq.domain.side import Side
 from campaigniq.domain.position_event import PositionEvent
+from campaigniq.domain.position_event_reconciler import (
+    PositionEventReconciler,
+)
 from campaigniq.domain.position_history import PositionHistory
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
@@ -31,6 +28,14 @@ from campaigniq.importers.schwab.option_assignment_flow import (
     read_option_assignment_events,
 )
 from campaigniq.importers.schwab.position_snapshot import to_lots
+from campaigniq.domain.forex_settlement_attribution import (
+    ForexSettlementAttribution,
+    attribute_forex_settlements,
+)
+from campaigniq.importers.schwab.forex_transaction_reader import (
+    SchwabForexTransactionReport,
+    read_forex_transaction_report,
+)
 from campaigniq.importers.schwab.realized_gain_loss_reader import (
     read_realized_gain_loss_section,
 )
@@ -40,29 +45,23 @@ from campaigniq.importers.schwab.position_snapshot_reader import (
 from campaigniq.importers.thinkorswim.trade_history_reader import (
     ThinkorswimTradeHistoryReader,
 )
+from campaigniq.importers.thinkorswim.trade_reader import (
+    ThinkorswimTradeReader,
+)
 from campaigniq.importers.thinkorswim.cash_balance_reader import (
     ThinkorswimCashBalanceReader,
 )
-from campaigniq.importers.thinkorswim.cash_balance_event import (
-    to_expiration_event,
+from campaigniq.importers.thinkorswim.expiration_event_reader import (
+    ThinkorswimExpirationEventReader,
 )
 from campaigniq.importers.thinkorswim.translator import to_trade
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
-from collections import defaultdict
 
 from campaigniq.domain.value_objects.forex_pair import ForexPair
-from campaigniq.importers.thinkorswim.forex_position_effect_resolver import (
-    ForexPositionEffectResolver,
-)
-from campaigniq.importers.thinkorswim.forex_position_state import (
-    build_forex_positions,
-)
-from campaigniq.importers.thinkorswim.forex_trade_reader import (
-    read_forex_trades,
-)
-from campaigniq.importers.thinkorswim.forex_translator import (
-    to_forex_trade,
+
+from campaigniq.importers.thinkorswim.historical_forex_position_reader import (
+    ThinkorswimHistoricalForexPositionReader,
 )
 
 @dataclass(frozen=True, slots=True)
@@ -72,10 +71,14 @@ class PeriodImportResult:
     trades: tuple[Trade, ...]
     campaigns: tuple
     position_events: tuple[PositionEvent, ...]
+    attribution_events: tuple[PositionEvent, ...]
     position_history: PositionHistory
     opening_lot_book: LotBook
+    ending_lot_book: LotBook
     boundary_reconstruction: BoundaryReconstruction
     realized_gain_loss: tuple[RealizedGainLossRecord, ...]
+    forex_transaction_report: SchwabForexTransactionReport | None = None
+    forex_settlement_attributions: tuple[ForexSettlementAttribution, ...] = ()
 
 
 class PeriodImportPipeline:
@@ -83,13 +86,27 @@ class PeriodImportPipeline:
 
     def __init__(self) -> None:
         self._source_reader = ThinkorswimSourceReader()
+        self._historical_forex_position_reader = (
+            ThinkorswimHistoricalForexPositionReader(
+                self._source_reader,
+            )
+        )
         self._trade_history_reader = ThinkorswimTradeHistoryReader()
+        self._trade_reader = ThinkorswimTradeReader(
+            self._source_reader,
+            self._trade_history_reader,
+        )
         self._cash_balance_reader = ThinkorswimCashBalanceReader()
+        self._expiration_event_reader = ThinkorswimExpirationEventReader(
+            self._cash_balance_reader,
+        )
+        self._position_event_reconciler = PositionEventReconciler()
         self._campaign_reconstructor = CampaignReconstructor()
         self._historical_lot_reconstructor = HistoricalLotReconstructor(
             campaign_reconstructor=self._campaign_reconstructor,
         )
         self._boundary_analyzer = BoundaryReconstructionAnalyzer()
+        self._lot_book_period_applier = LotBookPeriodApplier()
 
     def run(
         self,
@@ -97,10 +114,13 @@ class PeriodImportPipeline:
         period_start: date,
         period_end: date,
         thinkorswim_trade_history: str | Path,
-        opening_snapshot: str | Path,
-        opening_snapshot_at: datetime,
+        opening_snapshot: str | Path | None = None,
+        opening_snapshot_at: datetime | None = None,
+        carried_opening_lot_book: LotBook | None = None,
         assignment_lines: tuple[list[str], ...] = (),
+        boundary_assignment_lines: tuple[list[str], ...] = (),
         realized_gain_loss_report: str | Path | None = None,
+        forex_transaction_report: str | Path | None = None,
         historical_trade_histories: tuple[str | Path, ...] = (),
         historical_period_start: date | None = None,
         historical_source_root: str | Path | None = None,
@@ -115,8 +135,11 @@ class PeriodImportPipeline:
                 thinkorswim_trade_history=thinkorswim_trade_history,
                 opening_snapshot=opening_snapshot,
                 opening_snapshot_at=opening_snapshot_at,
+                carried_opening_lot_book=carried_opening_lot_book,
                 assignment_lines=assignment_lines,
+                boundary_assignment_lines=boundary_assignment_lines,
                 realized_gain_loss_report=realized_gain_loss_report,
+                forex_transaction_report=forex_transaction_report,
                 historical_trade_histories=historical_trade_histories,
                 historical_period_start=historical_period_start,
             )
@@ -128,8 +151,11 @@ class PeriodImportPipeline:
             thinkorswim_trade_history=thinkorswim_trade_history,
             opening_snapshot=opening_snapshot,
             opening_snapshot_at=opening_snapshot_at,
+            carried_opening_lot_book=carried_opening_lot_book,
             assignment_lines=assignment_lines,
+            boundary_assignment_lines=boundary_assignment_lines,
             realized_gain_loss_report=realized_gain_loss_report,
+            forex_transaction_report=forex_transaction_report,
             historical_trade_histories=historical_trade_histories,
             historical_period_start=historical_period_start,
             seed_historical=False,
@@ -195,8 +221,11 @@ class PeriodImportPipeline:
             thinkorswim_trade_history=thinkorswim_trade_history,
             opening_snapshot=opening_snapshot,
             opening_snapshot_at=opening_snapshot_at,
+            carried_opening_lot_book=carried_opening_lot_book,
             assignment_lines=assignment_lines,
+            boundary_assignment_lines=boundary_assignment_lines,
             realized_gain_loss_report=realized_gain_loss_report,
+            forex_transaction_report=forex_transaction_report,
             historical_trade_histories=all_history,
             historical_period_start=effective_historical_period_start,
         )
@@ -210,20 +239,61 @@ class PeriodImportPipeline:
     ) -> dict[str, Decimal]:
         """Build Forex positions from historical executions before the period."""
 
-        rows = []
+        return self._historical_forex_position_reader.read(
+            filenames,
+            start=start,
+            end=end,
+        )
 
-        for filename in filenames:
-            statement = self._source_reader.read(str(filename))
-            rows.extend(
-                row
-                for row in read_forex_trades(
-                    statement.section("Forex Statements")
-                )
-                if (start is None or row.executed_at.date() >= start)
-                and row.executed_at.date() <= end
+    def _build_opening_lot_book(
+        self,
+        *,
+        opening_snapshot: str | Path | None,
+        opening_snapshot_at: datetime | None,
+        carried_opening_lot_book: LotBook | None,
+    ) -> LotBook:
+        """Build independent opening state from exactly one source."""
+
+        snapshot_supplied = opening_snapshot is not None
+        snapshot_at_supplied = opening_snapshot_at is not None
+        carried_supplied = carried_opening_lot_book is not None
+
+        valid_snapshot_source = (
+            snapshot_supplied
+            and snapshot_at_supplied
+            and not carried_supplied
+        )
+        valid_carried_source = (
+            carried_supplied
+            and not snapshot_supplied
+            and not snapshot_at_supplied
+        )
+
+        if not (valid_snapshot_source or valid_carried_source):
+            raise ValueError(
+                "Provide exactly one opening state source: "
+                "opening_snapshot with opening_snapshot_at, "
+                "or carried_opening_lot_book."
             )
 
-        return build_forex_positions(rows)
+        if carried_opening_lot_book is not None:
+            return carried_opening_lot_book.clone()
+
+        assert opening_snapshot is not None
+        assert opening_snapshot_at is not None
+
+        opening_lot_book = LotBook()
+
+        snapshot_lines = Path(opening_snapshot).read_text().splitlines()
+        snapshot_rows = read_position_snapshot_section(
+            snapshot_lines,
+            snapshot_at=opening_snapshot_at,
+        )
+
+        for lot in to_lots(list(snapshot_rows)):
+            opening_lot_book.seed(lot)
+
+        return opening_lot_book
 
     def _run_once(
         self,
@@ -231,10 +301,13 @@ class PeriodImportPipeline:
         period_start: date,
         period_end: date,
         thinkorswim_trade_history: str | Path,
-        opening_snapshot: str | Path,
-        opening_snapshot_at: datetime,
+        opening_snapshot: str | Path | None,
+        opening_snapshot_at: datetime | None,
+        carried_opening_lot_book: LotBook | None,
         assignment_lines: tuple[list[str], ...],
+        boundary_assignment_lines: tuple[list[str], ...],
         realized_gain_loss_report: str | Path | None,
+        forex_transaction_report: str | Path | None,
         historical_trade_histories: tuple[str | Path, ...],
         historical_period_start: date | None,
         seed_historical: bool = True,
@@ -256,20 +329,35 @@ class PeriodImportPipeline:
             )
         )
 
-        campaign_trades = tuple(
+        non_forex_trades = [
             trade
             for trade in trades
-            if not isinstance(
-                trade.legs[0].instrument,
-                ForexPair,
-            )
-        )
+            if not isinstance(trade.legs[0].instrument, ForexPair)
+        ]
+        forex_trades = [
+            trade
+            for trade in trades
+            if isinstance(trade.legs[0].instrument, ForexPair)
+        ]
 
-        campaigns = tuple(
-            self._campaign_reconstructor.reconstruct(
-                list(campaign_trades)
+        non_forex_campaigns = tuple(
+            self._campaign_reconstructor.reconstruct(non_forex_trades)
+        )
+        raw_forex_campaigns = tuple(
+            self._campaign_reconstructor.reconstruct(forex_trades)
+        )
+        forex_campaigns = tuple(
+            Campaign(
+                campaign_id=f"CAMP-{index:06d}",
+                trades=campaign.trades,
+                started_before_data=campaign.started_before_data,
+            )
+            for index, campaign in enumerate(
+                raw_forex_campaigns,
+                start=len(non_forex_campaigns) + 1,
             )
         )
+        campaigns = (*non_forex_campaigns, *forex_campaigns)
 
         assignment_events = tuple(
             event
@@ -278,17 +366,36 @@ class PeriodImportPipeline:
             if period_start <= event.occurred_at.date() <= period_end
         )
 
+        boundary_assignment_date = period_end + date.resolution
+        while boundary_assignment_date.weekday() >= 5:
+            boundary_assignment_date += date.resolution
+
+        boundary_assignment_events = tuple(
+            event
+            for lines in boundary_assignment_lines
+            for event in read_option_assignment_events(lines)
+            if event.occurred_at.date() == boundary_assignment_date
+        )
+
+        assignment_evidence = (
+            *assignment_events,
+            *boundary_assignment_events,
+        )
+
         expiration_events = self._read_expiration_events(
             thinkorswim_trade_history,
             start=period_start,
             end=period_end,
         )
 
-        position_events = tuple(
-            sorted(
-                (*assignment_events, *expiration_events),
-                key=lambda event: event.occurred_at,
-            )
+        position_events = self._position_event_reconciler.reconcile(
+            (*assignment_events, *expiration_events),
+            corroborating_assignments=boundary_assignment_events,
+        )
+
+        attribution_events = (
+            *position_events,
+            *boundary_assignment_events,
         )
 
         position_history = PositionHistory()
@@ -307,16 +414,11 @@ class PeriodImportPipeline:
             else ()
         )
 
-        opening_lot_book = LotBook()
-
-        snapshot_lines = Path(opening_snapshot).read_text().splitlines()
-        snapshot_rows = read_position_snapshot_section(
-            snapshot_lines,
-            snapshot_at=opening_snapshot_at,
+        opening_lot_book = self._build_opening_lot_book(
+            opening_snapshot=opening_snapshot,
+            opening_snapshot_at=opening_snapshot_at,
+            carried_opening_lot_book=carried_opening_lot_book,
         )
-
-        for lot in to_lots(list(snapshot_rows)):
-            opening_lot_book.seed(lot)
 
         if seed_historical:
             historical_trades = tuple(
@@ -346,7 +448,14 @@ class PeriodImportPipeline:
             self._historical_lot_reconstructor.seed_missing_option_lots(
                 opening_lot_book,
                 historical_trades,
+                historical_expiration_events=historical_expiration_events,
             )
+
+            self._historical_lot_reconstructor.assign_assignment_option_provenance(
+                opening_lot_book,
+                assignment_evidence,
+                historical_trades,
+)
 
             self._historical_lot_reconstructor.seed_missing_expiration_lots(
                 opening_lot_book,
@@ -357,6 +466,24 @@ class PeriodImportPipeline:
             self._historical_lot_reconstructor.seed_missing_covered_equity_lots(
                 opening_lot_book,
                 campaigns,
+                historical_trades,
+            )
+
+            self._historical_lot_reconstructor.assign_rolled_covered_equity_provenance(
+                opening_lot_book,
+                campaigns,
+                historical_trades,
+            )
+
+            self._historical_lot_reconstructor.assign_boundary_assignment_covered_equity_provenance(
+                opening_lot_book,
+                boundary_assignment_events,
+                historical_trades,
+            )
+
+            self._historical_lot_reconstructor.seed_missing_assignment_covered_equity_lots(
+                opening_lot_book,
+                assignment_events,
                 historical_trades,
             )
         else:
@@ -374,14 +501,38 @@ class PeriodImportPipeline:
             if not campaign.started_before_data:
                 opening_lot_book.resolve_boundary_campaign(campaign)
 
+        ending_lot_book = self._lot_book_period_applier.apply(
+            opening_lot_book=opening_lot_book,
+            position_history=position_history,
+            campaigns=campaigns,
+        )
+
+        parsed_forex_report = (
+            read_forex_transaction_report(forex_transaction_report)
+            if forex_transaction_report is not None
+            else None
+        )
+        forex_settlement_attributions = (
+            attribute_forex_settlements(
+                campaigns,
+                parsed_forex_report.settlements,
+            )
+            if parsed_forex_report is not None
+            else ()
+        )
+
         return PeriodImportResult(
             trades=trades,
             campaigns=campaigns,
             position_events=position_events,
+            attribution_events=attribution_events,
             position_history=position_history,
             opening_lot_book=opening_lot_book,
+            ending_lot_book=ending_lot_book,
             boundary_reconstruction=boundary,
             realized_gain_loss=realized_gain_loss,
+            forex_transaction_report=parsed_forex_report,
+            forex_settlement_attributions=forex_settlement_attributions,
         )
 
     def _read_expiration_events(
@@ -394,75 +545,12 @@ class PeriodImportPipeline:
         """Read TOS EXP Cash Balance records within a date range."""
 
         statement = self._source_reader.read(str(filename))
-        rows = self._cash_balance_reader.read(
-            statement.section("Cash Balance")
+
+        return self._expiration_event_reader.read(
+            statement.section("Cash Balance"),
+            start=start,
+            end=end,
         )
-
-        events: list[PositionEvent] = []
-
-        for row in rows:
-            if row.transaction_type != "EXP":
-                continue
-
-            if row.transaction_date < start:
-                continue
-
-            if row.transaction_date > end:
-                continue
-
-            events.append(to_expiration_event(row))
-
-        return sorted(
-            events,
-            key=lambda event: event.occurred_at,
-        )
-
-    def _read_forex_trades(
-        self,
-        filename: str | Path,
-        *,
-        start: date | None,
-        end: date | None,
-        initial_positions: dict[str, Decimal] | None = None,
-    ) -> list[Trade]:
-        """Read Forex executions with economic position effects."""
-
-        statement = self._source_reader.read(str(filename))
-
-        rows = read_forex_trades(
-            statement.section("Forex Statements")
-        )
-
-        resolver = ForexPositionEffectResolver(
-            initial_positions=initial_positions,
-        )
-
-        trades: list[Trade] = []
-
-        for row in sorted(rows, key=lambda item: item.executed_at):
-            effects = resolver.resolve(
-                pair=row.pair,
-                quantity=row.quantity,
-            )
-
-            occurred_date = row.executed_at.date()
-
-            if start is not None and occurred_date < start:
-                continue
-
-            if end is not None and occurred_date > end:
-                continue
-
-            for effect in effects:
-                trades.append(
-                    to_forex_trade(
-                        row,
-                        effect.position_effect,
-                        quantity=effect.quantity,
-                    )
-                )
-
-        return trades
 
     def _read_trades(
         self,
@@ -474,57 +562,9 @@ class PeriodImportPipeline:
     ) -> list[Trade]:
         """Read domain trades within an optional date range."""
 
-        statement = self._source_reader.read(str(filename))
-
-        trades: list[Trade] = []
-
-        # Account Trade History supplies the normal stock, ETF, and
-        # option trades. Forex records are handled separately because
-        # Thinkorswim's Forex Statements section contains the actual
-        # executed Forex trades and prices.
-
-        orders = self._trade_history_reader.read(
-            statement.section("Account Trade History")
-        )
-
-        for order in orders:
-            if any(
-                row.option_type.upper() == "FOREX"
-                for row in order.legs
-            ):
-                continue
-
-            trade = to_trade(order)
-
-            occurred_at = min(
-                execution.executed_at
-                for leg in trade.legs
-                for execution in leg.executions
-            )
-            occurred_date = occurred_at.date()
-
-            if start is not None and occurred_date < start:
-                continue
-
-            if end is not None and occurred_date > end:
-                continue
-
-            trades.append(trade)
-
-        trades.extend(
-            self._read_forex_trades(
-                filename,
-                start=start,
-                end=end,
-                initial_positions=forex_initial_positions,
-            )
-        )
-
-        return sorted(
-            trades,
-            key=lambda trade: min(
-                execution.executed_at
-                for leg in trade.legs
-                for execution in leg.executions
-            ),
+        return self._trade_reader.read(
+            filename,
+            start=start,
+            end=end,
+            forex_initial_positions=forex_initial_positions,
         )

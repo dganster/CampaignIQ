@@ -36,6 +36,7 @@ class _AssignmentClosure:
     strike: Decimal
     occurred_on: date
     remaining_quantity: Decimal
+    has_underlying_change: bool = False
 
 
 class RealizedLotAttributor:
@@ -259,21 +260,39 @@ class RealizedLotAttributor:
         events: list[PositionEvent],
     ) -> list[_AssignmentClosure]:
         closures: list[_AssignmentClosure] = []
+
         for event_index, event in enumerate(events):
             if event.kind != PositionEventKind.ASSIGNMENT:
                 continue
+
+            underlying_changes = {
+                change.instrument
+                for change in event.changes
+                if not isinstance(change.instrument, OptionContract)
+                and change.quantity != 0
+            }
+
             for change in event.changes:
                 if not isinstance(change.instrument, OptionContract):
                     continue
+
+                underlying = Instrument(change.instrument.underlying)
+
                 closures.append(
                     _AssignmentClosure(
                         event_index=event_index,
-                        underlying=Instrument(change.instrument.underlying),
+                        underlying=underlying,
                         strike=change.instrument.strike,
                         occurred_on=event.occurred_at.date(),
-                        remaining_quantity=abs(change.quantity) * Decimal("100"),
+                        remaining_quantity=(
+                            abs(change.quantity) * Decimal("100")
+                        ),
+                        has_underlying_change=(
+                            underlying in underlying_changes
+                        ),
                     )
                 )
+
         return closures
 
     @staticmethod
@@ -331,6 +350,25 @@ class RealizedLotAttributor:
         )
 
     @classmethod
+    def _is_assignment_settlement_date(
+        cls,
+        *,
+        trade_date: date,
+        closure: _AssignmentClosure,
+    ) -> bool:
+        if (
+            closure.occurred_on <= trade_date
+            and trade_date <= cls._next_business_day(closure.occurred_on)
+        ):
+            return True
+
+        return (
+            closure.has_underlying_change
+            and trade_date < closure.occurred_on
+            and cls._next_business_day(trade_date) == closure.occurred_on
+        )
+
+    @classmethod
     def _matches_assignment_closure(
         cls,
         leg: Leg,
@@ -350,9 +388,9 @@ class RealizedLotAttributor:
 
         return any(
             closure.underlying == leg.instrument
-            and closure.occurred_on <= trade_date
-            and trade_date <= cls._next_business_day(
-                closure.occurred_on
+            and cls._is_assignment_settlement_date(
+                trade_date=trade_date,
+                closure=closure,
             )
             and closure.remaining_quantity > 0
             and closure.strike == execution_price
@@ -376,8 +414,10 @@ class RealizedLotAttributor:
                 closure
                 for closure in assignment_closures
                 if closure.underlying == leg.instrument
-                and closure.occurred_on <= trade_date
-                and trade_date <= cls._next_business_day(closure.occurred_on)
+                and cls._is_assignment_settlement_date(
+                    trade_date=trade_date,
+                    closure=closure,
+                )
                 and closure.remaining_quantity > 0
                 and closure.strike == execution_price
             ]
@@ -494,6 +534,12 @@ class RealizedLotAttributor:
                 and cls._next_business_day(record.closed_date)
                 == activity.closed_date
             )
+            assignment_weekend_settlement = (
+                activity.is_assignment
+                and record.closed_date.weekday() == 4
+                and activity.closed_date
+                == record.closed_date + timedelta(days=1)
+            )
             assignment_holiday_settlement = (
                 activity.is_assignment
                 and activity.closed_date
@@ -503,6 +549,7 @@ class RealizedLotAttributor:
             if not (
                 exact_date
                 or prior_business_day
+                or assignment_weekend_settlement
                 or assignment_holiday_settlement
             ):
                 index += 1

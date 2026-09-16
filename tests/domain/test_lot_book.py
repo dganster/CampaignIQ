@@ -53,3 +53,75 @@ def test_short_lots_close_with_buy() -> None:
     allocations = book.apply_trade(stock_trade("IBM", Side.BUY, PositionEffect.CLOSE, "40", "90", 3))
     assert allocations[0].quantity == Decimal("40")
     assert book.lots(Instrument("IBM"))[0].quantity == Decimal("-60")
+
+def test_partial_close_reduces_seeded_long_lot_basis_proportionally() -> None:
+    book = LotBook()
+    book.seed(
+        Lot(
+            "DEC-IBM",
+            Instrument("IBM"),
+            Decimal("100"),
+            datetime(2025, 12, 31, 16),
+            Decimal("10000"),
+            "DECEMBER_SNAPSHOT",
+        )
+    )
+
+    book.apply_trade(
+        stock_trade("IBM", Side.SELL, PositionEffect.CLOSE, "40", "120", 5)
+    )
+
+    remaining = book.lots(Instrument("IBM"))
+    assert len(remaining) == 1
+    assert remaining[0].quantity == Decimal("60")
+    assert remaining[0].basis_total == Decimal("6000")
+    assert remaining[0].basis_source == "DECEMBER_SNAPSHOT"
+
+
+def test_partial_close_reduces_seeded_short_lot_basis_proportionally() -> None:
+    book = LotBook()
+    book.seed(
+        Lot(
+            "DEC-IBM-SHORT",
+            Instrument("IBM"),
+            Decimal("-100"),
+            datetime(2025, 12, 31, 16),
+            Decimal("-10000"),
+            "DECEMBER_SNAPSHOT",
+        )
+    )
+
+    book.apply_trade(
+        stock_trade("IBM", Side.BUY, PositionEffect.CLOSE, "40", "90", 5)
+    )
+
+    remaining = book.lots(Instrument("IBM"))
+    assert len(remaining) == 1
+    assert remaining[0].quantity == Decimal("-60")
+    assert remaining[0].basis_total == Decimal("-6000")
+    assert remaining[0].basis_source == "DECEMBER_SNAPSHOT"
+
+
+def test_clone_is_independent_and_preserves_generated_lot_sequence() -> None:
+    book = LotBook()
+    book.apply_trade(
+        stock_trade("IBM", Side.BUY, PositionEffect.OPEN, "100", "100", 2)
+    )
+
+    cloned = book.clone()
+    cloned.apply_trade(
+        stock_trade("IBM", Side.BUY, PositionEffect.OPEN, "50", "110", 3)
+    )
+
+    original_lots = book.lots(Instrument("IBM"))
+    cloned_lots = cloned.lots(Instrument("IBM"))
+
+    assert len(original_lots) == 1
+    assert original_lots[0].lot_id == "LOT-000001"
+
+    assert len(cloned_lots) == 2
+    assert [lot.lot_id for lot in cloned_lots] == [
+        "LOT-000001",
+        "LOT-000002",
+    ]
+

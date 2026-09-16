@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -143,18 +142,7 @@ class BoundaryReconstructionAnalyzer:
 
     @staticmethod
     def _required_quantities(campaign: Campaign) -> dict[object, Decimal]:
-        required: dict[object, Decimal] = defaultdict(Decimal)
-        for trade in campaign.trades:
-            for leg in trade.legs:
-                if leg.position_effect != PositionEffect.CLOSE:
-                    continue
-                quantity = sum(
-                    (abs(execution.quantity) for execution in leg.executions),
-                    Decimal("0"),
-                )
-                if quantity:
-                    required[leg.instrument] += quantity
-        return required
+        return CampaignBoundaryResolver.required_opening_quantities(campaign)
 
     @classmethod
     def _campaign_ancestry_established(
@@ -196,10 +184,7 @@ class BoundaryReconstructionAnalyzer:
                 execution.quantity
                 for trade in historical_trades
                 for leg in trade.legs
-                if (
-                    leg.instrument == instrument
-                    and leg.position_effect == PositionEffect.OPEN
-                )
+                if leg.instrument == instrument
                 for execution in leg.executions
             ),
             Decimal("0"),

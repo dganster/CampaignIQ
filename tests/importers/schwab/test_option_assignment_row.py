@@ -9,6 +9,7 @@ from campaigniq.importers.schwab.option_assignment_row import (
 def test_option_assignment_row_holds_schwab_fields() -> None:
     row = SchwabOptionAssignmentRow(
         transaction_date=date(2026, 7, 20),
+        trade_date=None,
         symbol="APD",
         expiration=date(2026, 7, 17),
         strike=Decimal("270"),

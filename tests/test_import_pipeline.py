@@ -17,6 +17,7 @@ from campaigniq.domain.historical_evidence_resolver import (
 from campaigniq.domain.value_objects.forex_pair import ForexPair
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.position_event_applier import PositionEventApplier
+from campaigniq.domain.lot_book import LotBook
 
 
 DATA = Path("tests/data")
@@ -226,7 +227,7 @@ def test_period_pipeline_assignment_provenance_reaches_equity_lot() -> None:
     RealizedLotAttributor(result.opening_lot_book).attribute_campaigns(
         list(result.campaigns),
         list(result.realized_gain_loss),
-        list(result.position_events),
+        list(result.attribution_events),
     )
 
     assigned_equity_lots = [
@@ -265,7 +266,7 @@ def test_period_pipeline_supports_realized_attribution_end_to_end() -> None:
     ).attribute_campaigns(
         list(result.campaigns),
         list(result.realized_gain_loss),
-        list(result.position_events),
+        list(result.attribution_events),
     )
     campaign_results = aggregate_campaign_realized_pnl(list(attributions))
 
@@ -453,3 +454,96 @@ def test_period_pipeline_classifies_january_forex_economically() -> None:
         and trade.legs[0].instrument == ForexPair("USD", "MXN")
         for trade in forex_trades
     )
+def test_pipeline_clones_carried_forward_opening_lot_book() -> None:
+    from campaigniq.domain.lot import Lot
+
+    carried = LotBook()
+    carried.seed(
+        Lot(
+            lot_id="CARRY:IBM",
+            instrument=Instrument("IBM"),
+            quantity=Decimal("100"),
+            opened_at=datetime(2026, 7, 31),
+            basis_total=Decimal("25000"),
+            basis_source="TEST",
+        )
+    )
+
+    pipeline = PeriodImportPipeline()
+
+    opening = pipeline._build_opening_lot_book(
+        opening_snapshot=None,
+        opening_snapshot_at=None,
+        carried_opening_lot_book=carried,
+    )
+
+    assert opening is not carried
+    assert opening.lots(Instrument("IBM")) == carried.lots(Instrument("IBM"))
+
+    opening.apply_signed_change(
+        instrument=Instrument("IBM"),
+        quantity=Decimal("-100"),
+        occurred_at=datetime(2026, 8, 1),
+    )
+
+    assert opening.lots(Instrument("IBM")) == ()
+    assert len(carried.lots(Instrument("IBM"))) == 1
+
+
+def test_pipeline_rejects_multiple_opening_state_sources() -> None:
+    import pytest
+
+    carried = LotBook()
+
+    pipeline = PeriodImportPipeline()
+
+    with pytest.raises(
+        ValueError,
+        match="exactly one opening state source",
+    ):
+        pipeline._build_opening_lot_book(
+            opening_snapshot=DECEMBER_POSITIONS,
+            opening_snapshot_at=datetime(2025, 12, 31),
+            carried_opening_lot_book=carried,
+        )
+
+def test_period_pipeline_accepts_carried_opening_lot_book() -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim/Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab/june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30),
+        assignment_lines=(
+            (DATA / "schwab/july_assignments.txt").read_text().splitlines(),
+        ),
+        historical_trade_histories=(
+            DATA / "thinkorswim/Account Trade History June 2026.csv",
+        ),
+        historical_period_start=date(2026, 6, 1),
+    )
+
+    august = PeriodImportPipeline().run(
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim/Account Trade History August 2026.csv"
+        ),
+        opening_snapshot=None,
+        opening_snapshot_at=None,
+        carried_opening_lot_book=july.ending_lot_book,
+        assignment_lines=(
+            (DATA / "schwab/august_assignments.txt").read_text().splitlines(),
+        ),
+        historical_trade_histories=(
+            DATA / "thinkorswim/Account Trade History July 2026.csv",
+        ),
+        historical_period_start=date(2026, 7, 1),
+    )
+
+    assert august.opening_lot_book is not july.ending_lot_book
+    assert august.boundary_reconstruction.unresolved_positions == ()
+    assert august.boundary_reconstruction.unresolved_campaigns == ()
+    assert august.boundary_reconstruction.historical_requirements == ()

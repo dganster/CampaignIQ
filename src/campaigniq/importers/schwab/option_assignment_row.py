@@ -10,6 +10,7 @@ class SchwabOptionAssignmentRow:
     """One Option Assignment row from a Schwab statement."""
 
     transaction_date: date
+    trade_date: date | None
     symbol: str
     expiration: date
     strike: Decimal

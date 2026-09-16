@@ -16,6 +16,12 @@ authors = [
 
 dependencies = []
 
+[project.optional-dependencies]
+ui = [
+    "streamlit>=1.63,<2",
+    "pandas>=3,<4",
+]
+
 [project.scripts]
 campaigniq = "campaigniq.cli:main"
 

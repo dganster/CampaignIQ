@@ -32,3 +32,42 @@ def test_preserves_february_settlement_row_in_january_report() -> None:
     )
     assert lin.closed_date.isoformat() == "2026-02-02"
     assert lin.gain_loss == Decimal("-12681.61")
+
+def test_reads_disallowed_losses_from_june_wash_sale_rows() -> None:
+    data = Path("tests/data/schwab/june_realized_gain_loss.txt")
+    records = read_realized_gain_loss_section(data.read_text().splitlines())
+
+    equities = {
+        record.instrument.symbol: record
+        for record in records
+        if not isinstance(record.instrument, OptionContract)
+    }
+
+    assert equities["HD"].gain_loss == Decimal("0.00")
+    assert equities["HD"].disallowed_loss == Decimal("4648.12")
+
+    assert equities["AMT"].gain_loss == Decimal("0.00")
+    assert equities["AMT"].disallowed_loss == Decimal("1158.03")
+
+    assert equities["LMT"].gain_loss == Decimal("0.00")
+    assert equities["LMT"].disallowed_loss == Decimal("6839.79")
+
+def test_reads_disallowed_losses_from_july_multiline_wash_sale_rows() -> None:
+    data = Path("tests/data/schwab/july_realized_gain_loss.txt")
+    records = read_realized_gain_loss_section(data.read_text().splitlines())
+
+    equities = {
+        record.instrument.symbol: record
+        for record in records
+        if not isinstance(record.instrument, OptionContract)
+    }
+
+    assert equities["MCD"].gain_loss == Decimal("0.00")
+    assert equities["MCD"].disallowed_loss == Decimal("3298.50")
+
+    assert equities["HD"].gain_loss == Decimal("0.00")
+    assert equities["HD"].disallowed_loss == Decimal("4203.48")
+
+    assert equities["LMT"].gain_loss == Decimal("0.00")
+    assert equities["LMT"].disallowed_loss == Decimal("6121.52")
+

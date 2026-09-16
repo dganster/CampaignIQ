@@ -1,0 +1,909 @@
+"""CampaignIQ read-only analytics dashboard."""
+
+from __future__ import annotations
+
+from datetime import date
+import hashlib
+from decimal import Decimal
+from pathlib import Path
+import tempfile
+
+import altair as alt
+import pandas as pd
+import streamlit as st
+
+from campaigniq.analytics.multi_month_analytics_summary import (
+    summarize_multi_month_analytics,
+)
+from campaigniq.analytics.multi_month_performance_summary import (
+    summarize_multi_month_performance,
+)
+from campaigniq.analytics.multi_month_campaign_performance import (
+    summarize_multi_month_campaign_performance,
+)
+from campaigniq.analytics.campaign_outcome_distribution import (
+    summarize_campaign_outcomes,
+)
+from campaigniq.ui.dashboard_campaigns import (
+    aggregate_period_qualified_campaigns,
+)
+from campaigniq.persistence.persisted_multi_month_analytics import (
+    load_persisted_monthly_campaign_attributions,
+)
+from campaigniq.import_contract import MonthlyInputRole
+from campaigniq.import_preflight import prepare_monthly_import
+from campaigniq.monthly_import_execution import execute_monthly_import
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+RECONCILED_DIR = PROJECT_ROOT / "tests" / "data" / "reconciled"
+
+RUNTIME_DATA_DIR = PROJECT_ROOT / ".campaigniq"
+AUTHORITATIVE_STATE_DIR = RUNTIME_DATA_DIR / "authoritative_state"
+HISTORICAL_SOURCE_ROOT = RUNTIME_DATA_DIR / "thinkorswim_history"
+
+AUTHORITATIVE_STATE_DIR.mkdir(parents=True, exist_ok=True)
+HISTORICAL_SOURCE_ROOT.mkdir(parents=True, exist_ok=True)
+
+MONTHLY_UPLOAD_ROLES = (
+    (
+        MonthlyInputRole.THINKORSWIM_TRADE_HISTORY,
+        "Thinkorswim trade history",
+        ("csv",),
+    ),
+    (
+        "schwab_brokerage_statement",
+        "Schwab Brokerage Statement",
+        ("txt", "csv"),
+    ),
+    (
+        MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
+        "Schwab Realized Gain/Loss Report",
+        ("txt", "csv"),
+    ),
+    (
+        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
+        "Thinkorswim Forex Transaction Report",
+        ("csv",),
+    ),
+)
+
+
+def money(value: Decimal) -> str:
+    """Format a Decimal as signed currency."""
+    amount = float(value)
+    if amount > 0:
+        return f"+${amount:,.2f}"
+    if amount < 0:
+        return f"-${abs(amount):,.2f}"
+    return "$0.00"
+
+
+def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
+    supplied = {}
+
+    tos_upload = uploads.get(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY)
+    if tos_upload is not None:
+        suffix = Path(tos_upload.name).suffix
+        tos_path = upload_dir / f"thinkorswim_trade_history{suffix}"
+        tos_path.write_bytes(tos_upload.getvalue())
+        supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY] = tos_path
+
+    schwab_upload = uploads.get("schwab_brokerage_statement")
+    if schwab_upload is not None:
+        suffix = Path(schwab_upload.name).suffix
+        schwab_path = upload_dir / f"schwab_brokerage_statement{suffix}"
+        schwab_path.write_bytes(schwab_upload.getvalue())
+
+        # The Brokerage Statement supplies closing positions and any
+        # assignment/exercise evidence needed by the existing Schwab readers.
+        supplied[MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT] = schwab_path
+        supplied[MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE] = schwab_path
+
+    realized_upload = uploads.get(MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS)
+    if realized_upload is not None:
+        suffix = Path(realized_upload.name).suffix
+        realized_path = upload_dir / f"schwab_realized_gain_loss{suffix}"
+        realized_path.write_bytes(realized_upload.getvalue())
+        supplied[MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS] = realized_path
+
+    forex_upload = uploads.get(MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT)
+    if forex_upload is not None:
+        suffix = Path(forex_upload.name).suffix
+        forex_path = upload_dir / f"schwab_forex_transaction_report{suffix}"
+        forex_path.write_bytes(forex_upload.getvalue())
+        supplied[MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT] = forex_path
+
+    return supplied
+
+
+def _monthly_import_signature(*, year, month, uploads):
+    digest = hashlib.sha256()
+    digest.update(f"{int(year):04d}-{int(month):02d}".encode())
+
+    for role, _, _ in MONTHLY_UPLOAD_ROLES:
+        upload = uploads.get(role)
+        digest.update(str(role).encode())
+        if upload is None:
+            digest.update(b"<missing>")
+            continue
+        digest.update(upload.name.encode())
+        digest.update(upload.getvalue())
+
+    return digest.hexdigest()
+
+
+def _show_validation(validation, *, label, required=True):
+    message = f"**{label}:** {validation.message}"
+    if validation.valid:
+        st.success(message)
+    elif required:
+        st.error(message)
+    else:
+        st.info(message)
+
+
+def _show_monthly_preflight(preflight):
+    st.markdown("#### Preflight")
+
+    _show_validation(
+        preflight.validation_for(
+            MonthlyInputRole.THINKORSWIM_TRADE_HISTORY
+        ),
+        label="Thinkorswim trade history",
+    )
+
+    realized_validation = preflight.validation_for(
+        MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS
+    )
+    closing_validation = preflight.validation_for(
+        MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT
+    )
+    assignment_validation = preflight.validation_for(
+        MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE
+    )
+
+    if closing_validation.valid:
+        st.success(
+            "**Schwab Brokerage Statement:** recognized for the requested "
+            "month, including closing positions."
+        )
+    else:
+        st.error(
+            "**Schwab Brokerage Statement:** CampaignIQ could not validate "
+            "the required closing-position evidence."
+        )
+        st.error(f"Closing positions: {closing_validation.message}")
+
+    _show_validation(
+        realized_validation,
+        label="Schwab Realized Gain/Loss Report",
+    )
+
+    _show_validation(
+        preflight.validation_for(MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT),
+        label="Thinkorswim Forex Transaction Report",
+    )
+
+    if assignment_validation.valid:
+        st.success(
+            "**Assignment/exercise evidence:** detected in the Schwab "
+            "Brokerage Statement."
+        )
+    else:
+        st.info(
+            "**Assignment/exercise evidence:** none detected for this "
+            "month. This evidence is optional."
+        )
+
+    _show_validation(
+        preflight.validation_for(MonthlyInputRole.OPENING_STATE),
+        label="Authoritative opening state",
+    )
+
+
+def render_monthly_import_wizard():
+    st.subheader("Monthly Import")
+    st.caption(
+        "Choose the month and supply the four monthly brokerage documents. "
+        "CampaignIQ extracts the Schwab evidence it needs internally, carries "
+        "the preceding authoritative lot state, reconciles closing inventory, "
+        "and only then persists the new month-end state."
+    )
+
+    today = date.today()
+    year_col, month_col = st.columns(2)
+    year = year_col.number_input(
+        "Year",
+        min_value=2020,
+        max_value=2100,
+        value=today.year,
+        step=1,
+        key="monthly_import_year",
+    )
+    month = month_col.selectbox(
+        "Month",
+        options=range(1, 13),
+        index=today.month - 1,
+        format_func=lambda value: date(2000, value, 1).strftime("%B"),
+        key="monthly_import_month",
+    )
+
+    uploads = {}
+    for role, label, file_types in MONTHLY_UPLOAD_ROLES:
+        uploads[role] = st.file_uploader(
+            label,
+            type=list(file_types),
+            key=f"monthly_import_{role}",
+        )
+
+    signature = _monthly_import_signature(
+        year=year,
+        month=month,
+        uploads=uploads,
+    )
+
+    if st.button(
+        "Validate monthly import",
+        type="primary",
+        key="monthly_import_validate",
+    ):
+        st.session_state["monthly_import_validated_signature"] = signature
+        st.session_state["monthly_import_confirm"] = False
+
+    validated_signature = st.session_state.get(
+        "monthly_import_validated_signature"
+    )
+    if validated_signature != signature:
+        if validated_signature is not None:
+            st.info(
+                "The month or an uploaded document changed. "
+                "Validate the monthly import again."
+            )
+        else:
+            st.info(
+                "Choose the month, Thinkorswim trade history, Schwab Brokerage "
+                "Statement, Schwab Realized Gain/Loss Report, and Schwab Forex "
+                "Transaction Report, then validate before import."
+            )
+        return
+
+    # Streamlit reruns the script for checkbox/button interactions. Recreate
+    # the temporary files and preflight on every validated rerun so Confirm
+    # and Execute always operate on exactly the documents that were validated.
+    with tempfile.TemporaryDirectory(prefix="campaigniq-monthly-import-") as tmp:
+        supplied = _save_uploaded_monthly_inputs(
+            upload_dir=Path(tmp),
+            uploads=uploads,
+        )
+
+        try:
+            preflight = prepare_monthly_import(
+                int(year),
+                int(month),
+                authoritative_state_root=AUTHORITATIVE_STATE_DIR,
+                supplied_inputs=supplied,
+            )
+        except Exception as exc:
+            st.error(f"Unable to validate monthly import: {exc}")
+            return
+
+        _show_monthly_preflight(preflight)
+
+        if not preflight.ready:
+            st.error(
+                "Monthly import is not ready. Resolve the required items above "
+                "before running the import."
+            )
+            return
+
+        st.success(
+            f"Preflight ready for {preflight.contract.period_start:%B %Y}."
+        )
+
+        confirm = st.checkbox(
+            "Run the import and persist the month-end state only if closing "
+            "inventory reconciles.",
+            key="monthly_import_confirm",
+        )
+        if not confirm:
+            return
+
+        if not st.button(
+            "Run reconciled import",
+            key="monthly_import_execute",
+        ):
+            return
+
+        execution_signature = _monthly_import_signature(
+            year=year,
+            month=month,
+            uploads=uploads,
+        )
+        if execution_signature != st.session_state.get(
+            "monthly_import_validated_signature"
+        ):
+            st.error(
+                "The import inputs changed after validation. "
+                "Validate the monthly import again."
+            )
+            return
+
+        try:
+            execution = execute_monthly_import(
+                preflight,
+                authoritative_state_root=AUTHORITATIVE_STATE_DIR,
+                supplied_inputs=supplied,
+                historical_source_root=HISTORICAL_SOURCE_ROOT,
+            )
+        except Exception as exc:
+            st.error(f"Monthly import failed: {exc}")
+            return
+
+        if not execution.closing_reconciliation.reconciled:
+            st.error(
+                "Closing inventory does not reconcile. "
+                "No authoritative month-end state was persisted."
+            )
+            st.dataframe(
+                [
+                    {
+                        "Instrument": repr(item.instrument),
+                        "Computed": str(item.computed_quantity),
+                        "Snapshot": str(item.snapshot_quantity),
+                        "Difference": str(item.difference),
+                    }
+                    for item in execution.closing_reconciliation.mismatches
+                ],
+                use_container_width=True,
+            )
+            return
+
+        st.success(
+            "Closing inventory reconciled and authoritative month-end state "
+            f"was persisted to {execution.authoritative_state_path}."
+        )
+
+
+
+def load_summaries():
+    """Load authoritative persisted periods and calculate monthly analytics."""
+    realized_paths = sorted(AUTHORITATIVE_STATE_DIR.glob("*-realized-attributions.json"))
+    forex_paths = sorted(AUTHORITATIVE_STATE_DIR.glob("*-forex-settlement-attributions.json"))
+
+    if not realized_paths:
+        raise FileNotFoundError(
+            f"No persisted attribution files found in {AUTHORITATIVE_STATE_DIR}"
+        )
+
+    monthly_attributions, monthly_forex_attributions = (
+        load_persisted_monthly_campaign_attributions(
+            realized_paths=realized_paths,
+            forex_paths=forex_paths,
+        )
+    )
+
+    summaries = summarize_multi_month_analytics(
+        monthly_attributions=monthly_attributions,
+        monthly_forex_attributions=monthly_forex_attributions,
+    )
+
+    return summaries, monthly_attributions, monthly_forex_attributions
+
+
+st.set_page_config(
+    page_title="CampaignIQ",
+    page_icon="📈",
+    layout="wide",
+)
+
+st.title("CampaignIQ")
+
+view = st.sidebar.radio(
+    "View",
+    ("Realized Campaign Analytics", "Monthly Import"),
+    key="campaigniq_view",
+)
+
+if view == "Monthly Import":
+    render_monthly_import_wizard()
+    st.stop()
+
+st.caption("Realized campaign analytics")
+
+try:
+    summaries, monthly_attributions, monthly_forex_attributions = load_summaries()
+except Exception as exc:
+    st.error(f"Unable to load CampaignIQ analytics: {exc}")
+    st.stop()
+
+if not summaries:
+    st.warning("No analytics periods are available.")
+    st.stop()
+
+multi_month_performance = summarize_multi_month_performance(summaries)
+multi_month_campaign_performance = summarize_multi_month_campaign_performance(
+    summary.campaign_performance
+    for summary in summaries
+)
+
+campaign_results, campaign_drilldowns = (
+    aggregate_period_qualified_campaigns(
+        monthly_attributions,
+        monthly_forex_attributions,
+    )
+)
+campaign_outcomes = summarize_campaign_outcomes(campaign_results)
+
+rows = []
+
+for summary in summaries:
+    pnl = summary.realized_pnl
+    performance = summary.campaign_performance
+
+    rows.append(
+        {
+            "period_start": summary.period_start,
+            "period_end": summary.period_end,
+            "month": summary.period_start.strftime("%B"),
+            "equity_options_realized_pnl": float(summary.equity_options_realized_pnl),
+            "forex_settled_pnl": float(summary.forex_settled_pnl),
+            "realized_pnl": float(summary.combined_realized_pnl),
+            "campaigns": performance.campaign_count,
+            "wins": performance.winning_campaign_count,
+            "losses": performance.losing_campaign_count,
+            "breakeven": performance.breakeven_campaign_count,
+            "win_rate": (
+                float(performance.win_rate)
+                if performance.win_rate is not None
+                else 0.0
+            ),
+            "records": pnl.broker_record_count,
+            "unattributed_records": pnl.unattributed_record_count,
+        }
+    )
+
+df = pd.DataFrame(rows)
+
+total_pnl = sum(
+    (summary.realized_pnl.broker_realized_pnl for summary in summaries),
+    Decimal("0"),
+)
+total_campaigns = sum(
+    summary.campaign_performance.campaign_count
+    for summary in summaries
+)
+total_wins = sum(
+    summary.campaign_performance.winning_campaign_count
+    for summary in summaries
+)
+total_records = sum(
+    summary.realized_pnl.broker_record_count
+    for summary in summaries
+)
+total_unattributed = sum(
+    summary.realized_pnl.unattributed_record_count
+    for summary in summaries
+)
+
+overall_win_rate = (
+    Decimal(total_wins) / Decimal(total_campaigns)
+    if total_campaigns
+    else Decimal("0")
+)
+
+first_period = summaries[0].period_start.strftime("%B %Y")
+last_period = summaries[-1].period_end.strftime("%B %Y")
+
+st.subheader(f"{first_period} – {last_period}")
+
+metric1, metric2, metric3, metric4 = st.columns(4)
+
+forex_settled_pnl = sum(
+    (
+        attribution.gain_loss
+        for attributions in monthly_forex_attributions.values()
+        for attribution in attributions
+    ),
+    Decimal("0"),
+)
+equity_options_realized_pnl = sum(
+    (summary.equity_options_realized_pnl for summary in summaries),
+    Decimal("0"),
+)
+combined_realized_pnl = equity_options_realized_pnl + forex_settled_pnl
+
+
+metric1.metric(
+    "Combined Realized P&L",
+    money(combined_realized_pnl),
+)
+metric2.metric(
+    "Campaigns",
+    f"{multi_month_campaign_performance.campaign_count:,}",
+)
+metric3.metric(
+    "Campaign Win Rate",
+    f"{float(multi_month_campaign_performance.win_rate):.1%}",
+)
+metric4.metric(
+    "Broker Records",
+    f"{total_records:,}",
+)
+
+pnl1, pnl2, pnl3 = st.columns(3)
+pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
+pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
+pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
+st.caption(
+    "Combined realized P&L includes equity/options realized P&L and FOREX settled P&L. "
+    "FOREX financing/interest is excluded."
+)
+
+perf1, perf2, perf3, perf4 = st.columns(4)
+
+profitable_month_rate_delta = (
+    f"{float(multi_month_performance.profitable_month_rate):.1%} profitable"
+    if multi_month_performance.profitable_month_rate is not None
+    else None
+)
+
+perf1.metric(
+    "Profitable Months",
+    f"{multi_month_performance.profitable_month_count:,} / "
+    f"{multi_month_performance.month_count:,}",
+    profitable_month_rate_delta,
+)
+
+perf2.metric(
+    "Average Monthly P&L",
+    (
+        money(multi_month_performance.average_monthly_pnl)
+        if multi_month_performance.average_monthly_pnl is not None
+        else "—"
+    ),
+)
+
+best_month_label = (
+    multi_month_performance.best_month_start.strftime("%B")
+    if multi_month_performance.best_month_start is not None
+    else "—"
+)
+
+perf3.metric(
+    "Best Month",
+    best_month_label,
+    (
+        money(multi_month_performance.best_month_pnl)
+        if multi_month_performance.best_month_pnl is not None
+        else None
+    ),
+)
+
+worst_month_label = (
+    multi_month_performance.worst_month_start.strftime("%B")
+    if multi_month_performance.worst_month_start is not None
+    else "—"
+)
+
+perf4.metric(
+    "Worst Month",
+    worst_month_label,
+    (
+        money(multi_month_performance.worst_month_pnl)
+        if multi_month_performance.worst_month_pnl is not None
+        else None
+    ),
+    delta_color="inverse",
+)
+
+st.subheader("Campaign Economics")
+
+econ1, econ2, econ3, econ4 = st.columns(4)
+
+econ1.metric(
+    "Average Winning Campaign",
+    (
+        money(multi_month_campaign_performance.average_win)
+        if multi_month_campaign_performance.average_win is not None
+        else "—"
+    ),
+)
+
+econ2.metric(
+    "Average Losing Campaign",
+    (
+        money(multi_month_campaign_performance.average_loss)
+        if multi_month_campaign_performance.average_loss is not None
+        else "—"
+    ),
+)
+
+econ3.metric(
+    "Win/Loss Payoff Ratio",
+    (
+        f"{multi_month_campaign_performance.payoff_ratio:.2f}×"
+        if multi_month_campaign_performance.payoff_ratio is not None
+        else "—"
+    ),
+)
+
+econ4.metric(
+    "Breakeven Campaigns",
+    f"{multi_month_campaign_performance.breakeven_campaign_count:,}",
+)
+
+st.subheader("Campaign Outcome Distribution")
+
+dist1, dist2, dist3, dist4 = st.columns(4)
+
+dist1.metric(
+    "Median Campaign P&L",
+    (
+        money(campaign_outcomes.median_campaign_pnl)
+        if campaign_outcomes.median_campaign_pnl is not None
+        else "—"
+    ),
+)
+
+dist2.metric(
+    "Median Winner",
+    (
+        money(campaign_outcomes.median_win)
+        if campaign_outcomes.median_win is not None
+        else "—"
+    ),
+)
+
+dist3.metric(
+    "Median Loser",
+    (
+        money(campaign_outcomes.median_loss)
+        if campaign_outcomes.median_loss is not None
+        else "—"
+    ),
+)
+
+dist4.metric(
+    "Excluded Campaigns",
+    f"{campaign_outcomes.excluded_campaign_count:,}",
+)
+
+tail1, tail2, tail3, tail4 = st.columns(4)
+
+tail1.metric(
+    "Best Campaign",
+    campaign_outcomes.best_campaign_id or "—",
+    (
+        money(campaign_outcomes.best_campaign_pnl)
+        if campaign_outcomes.best_campaign_pnl is not None
+        else None
+    ),
+)
+
+tail2.metric(
+    "Worst Campaign",
+    campaign_outcomes.worst_campaign_id or "—",
+    (
+        money(campaign_outcomes.worst_campaign_pnl)
+        if campaign_outcomes.worst_campaign_pnl is not None
+        else None
+    ),
+    delta_color="inverse",
+)
+
+tail3.metric(
+    "Top 3 Winners",
+    money(campaign_outcomes.top_3_winner_pnl),
+)
+
+tail4.metric(
+    "Bottom 3 Losers",
+    money(campaign_outcomes.bottom_3_loser_pnl),
+)
+
+st.subheader("Campaign Drill-Down")
+
+campaign_rows = [
+    {
+        "Campaign": summary.campaign_id,
+        "Symbols": ", ".join(summary.symbols),
+        "Realized P&L": float(summary.realized_pnl),
+        "Records": summary.record_count,
+        "Allocations": summary.allocation_count,
+        "First Close": summary.first_closed_date,
+        "Last Close": summary.last_closed_date,
+        "Reconciled": "Yes" if summary.fully_reconciled else "No",
+    }
+    for summary in campaign_drilldowns
+]
+
+campaign_df = pd.DataFrame(campaign_rows)
+if not campaign_df.empty:
+    campaign_df = campaign_df.sort_values(
+        "Realized P&L",
+        ascending=True,
+    ).reset_index(drop=True)
+
+st.dataframe(
+    campaign_df,
+    use_container_width=True,
+    hide_index=True,
+    height=420,
+    column_config={
+        "Realized P&L": st.column_config.NumberColumn(
+            "Realized P&L",
+            format="$%0,.2f",
+        ),
+        "First Close": st.column_config.DateColumn(
+            "First Close",
+            format="MMM D, YYYY",
+        ),
+        "Last Close": st.column_config.DateColumn(
+            "Last Close",
+            format="MMM D, YYYY",
+        ),
+    },
+)
+
+st.caption(
+    "Campaigns are sorted by realized P&L, worst first. "
+    "Click column headers to re-sort the table."
+)
+
+if total_unattributed == 0:
+    st.success("All broker realized records are attributed to campaigns.")
+else:
+    st.warning(
+        f"{total_unattributed} broker realized record(s) remain unattributed."
+    )
+
+st.divider()
+
+left, right = st.columns(2)
+
+with left:
+    st.subheader("Monthly Realized P&L")
+
+    pnl_chart = df[["period_start", "realized_pnl"]].copy()
+    pnl_chart["period_start"] = pd.to_datetime(pnl_chart["period_start"])
+    pnl_chart = pnl_chart.sort_values("period_start")
+
+    monthly_pnl_base = alt.Chart(pnl_chart).encode(
+        x=alt.X(
+            "period_start:T",
+            title="Month",
+            axis=alt.Axis(format="%B"),
+        ),
+        y=alt.Y(
+            "realized_pnl:Q",
+            title="Realized P&L ($)",
+        ),
+        tooltip=[
+            alt.Tooltip(
+                "period_start:T",
+                title="Month",
+                format="%B %Y",
+            ),
+            alt.Tooltip(
+                "realized_pnl:Q",
+                title="Realized P&L",
+                format="$,.2f",
+            ),
+        ],
+    )
+
+    monthly_pnl_chart = (
+        monthly_pnl_base.mark_bar()
+        + monthly_pnl_base.mark_point(
+            filled=True,
+            size=70,
+        )
+    )
+
+    st.altair_chart(
+        monthly_pnl_chart,
+        width="stretch",
+    )
+
+with right:
+    st.subheader("Cumulative Realized P&L")
+
+    cumulative = df[["period_start", "realized_pnl"]].copy()
+    cumulative["period_start"] = pd.to_datetime(cumulative["period_start"])
+    cumulative = cumulative.sort_values("period_start")
+    cumulative["cumulative_pnl"] = cumulative["realized_pnl"].cumsum()
+
+    cumulative_pnl_chart = (
+        alt.Chart(cumulative)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(
+                "period_start:T",
+                title="Month",
+                axis=alt.Axis(format="%B"),
+            ),
+            y=alt.Y(
+                "cumulative_pnl:Q",
+                title="Cumulative P&L ($)",
+            ),
+            tooltip=[
+                alt.Tooltip(
+                    "period_start:T",
+                    title="Month",
+                    format="%B %Y",
+                ),
+                alt.Tooltip(
+                    "cumulative_pnl:Q",
+                    title="Cumulative P&L",
+                    format="$,.2f",
+                ),
+            ],
+        )
+    )
+
+    st.altair_chart(
+        cumulative_pnl_chart,
+        width="stretch",
+    )
+
+st.divider()
+
+st.subheader("Monthly Performance")
+
+display_df = df[
+    [
+        "month",
+        "equity_options_realized_pnl",
+        "forex_settled_pnl",
+        "realized_pnl",
+        "campaigns",
+        "wins",
+        "losses",
+        "breakeven",
+        "win_rate",
+        "records",
+    ]
+].copy()
+
+display_df.columns = [
+    "Month",
+    "Equity/Options P&L",
+    "FOREX Settled P&L",
+    "Combined Realized P&L",
+    "Campaigns",
+    "Wins",
+    "Losses",
+    "Breakeven",
+    "Win Rate",
+    "Broker Records",
+]
+
+st.dataframe(
+    display_df,
+    hide_index=True,
+    width="stretch",
+    column_config={
+        "Equity/Options P&L": st.column_config.NumberColumn(
+            "Equity/Options P&L",
+            format="$%,.2f",
+        ),
+        "FOREX Settled P&L": st.column_config.NumberColumn(
+            "FOREX Settled P&L",
+            format="$%,.2f",
+        ),
+        "Combined Realized P&L": st.column_config.NumberColumn(
+            "Combined Realized P&L",
+            format="$%,.2f",
+        ),
+        "Win Rate": st.column_config.NumberColumn(
+            "Win Rate",
+            format="percent",
+        ),
+    },
+)
+
+st.caption(
+    "Monthly realized P&L combines equity/options realized P&L and FOREX "
+    "settled P&L. FOREX financing/interest is excluded."
+)

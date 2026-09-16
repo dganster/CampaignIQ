@@ -160,3 +160,24 @@ def test_reads_may_schwab_ending_position_inventory() -> None:
     assert amt_call.strike == Decimal("155")
     assert amt_call.option_type == OptionType.CALL
     assert amt_call.basis_total == Decimal("-1513.31")
+
+
+def test_reads_august_options_with_trailing_na_columns() -> None:
+    fixture = Path("tests/data/schwab/august_positions.txt")
+
+    rows = read_position_snapshot_section(
+        fixture.read_text().splitlines(),
+        snapshot_at=datetime(2026, 8, 31, 23, 59, 59),
+    )
+
+    options = [row for row in rows if row.expiration is not None]
+
+    assert len(rows) == 22
+    assert len(options) == 21
+
+    googl = next(row for row in options if row.symbol == "GOOGL")
+    assert googl.quantity == Decimal("-2")
+    assert googl.expiration.isoformat() == "2026-10-02"
+    assert googl.strike == Decimal("325")
+    assert googl.option_type == OptionType.PUT
+    assert googl.basis_total == Decimal("-1142.64")
