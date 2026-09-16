@@ -31,3 +31,14 @@ tests/data/**/*.csv
 
 # Private realized-attribution exports
 tests/data/reconciled/*-realized-attributions.json
+
+# Local development/tool artifacts
+.agents/
+.claude/
+*.bak
+*.bak.*
+latest:
+pytest
+
+# Private brokerage source reports
+forex_reports/
