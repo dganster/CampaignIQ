@@ -1,6 +1,7 @@
 """Attribute authoritative Schwab FOREX settlements to reconstructed FX campaigns."""
 
 from __future__ import annotations
+from datetime import timedelta
 
 from dataclasses import dataclass
 from decimal import Decimal
@@ -57,7 +58,7 @@ def attribute_forex_settlements(
             for candidate in candidates_by_pair.get(
                 settlement.instrument.upper(), []
             )
-            if candidate[0] <= settlement.trade_at
+            if candidate[0] <= settlement.trade_at - timedelta(hours=2)
         ]
         if not eligible:
             continue

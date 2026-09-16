@@ -43,7 +43,7 @@ def settlement(pair="EUR/USD", trade_at=datetime(2026, 8, 27, 20, 19, 57), pnl="
 
 def test_attributes_settlement_to_matching_forex_campaign():
     opened = trade("EUR/USD", Side.BUY, PositionEffect.OPEN, datetime(2026,8,20,10))
-    closed = trade("EUR/USD", Side.SELL, PositionEffect.CLOSE, datetime(2026,8,27,20))
+    closed = trade("EUR/USD", Side.SELL, PositionEffect.CLOSE, datetime(2026,8,27,18))
     campaign = CampaignReconstructor().reconstruct([opened, closed])[0]
 
     result = attribute_forex_settlements([campaign], [settlement()])
@@ -55,7 +55,7 @@ def test_attributes_settlement_to_matching_forex_campaign():
 
 def test_does_not_attribute_different_currency_pair():
     opened = trade("USD/JPY", Side.BUY, PositionEffect.OPEN, datetime(2026,8,20,10))
-    closed = trade("USD/JPY", Side.SELL, PositionEffect.CLOSE, datetime(2026,8,27,20))
+    closed = trade("USD/JPY", Side.SELL, PositionEffect.CLOSE, datetime(2026,8,27,18))
     campaign = CampaignReconstructor().reconstruct([opened, closed])[0]
 
     assert attribute_forex_settlements([campaign], [settlement()]) == ()

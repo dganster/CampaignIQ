@@ -386,7 +386,7 @@ def test_successful_monthly_execution_persists_nonempty_forex_attribution(
     synthetic.write_text(
         original.read_text(encoding="utf-8")
         + '\n08/20/26 10:00:00,TRD,BUY,100000,TO OPEN,EUR/USD,1.16000\n'
-        + '08/27/26 20:19:57,TRD,SELL,100000,TO CLOSE,EUR/USD,1.16508\n',
+        + '08/27/26 18:19:57,TRD,SELL,100000,TO CLOSE,EUR/USD,1.16508\n',
         encoding="utf-8",
     )
     inputs[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY] = synthetic
@@ -449,7 +449,7 @@ def test_monthly_execution_reports_nonzero_forex_control_delta_without_blocking_
     synthetic.write_text(
         original.read_text(encoding="utf-8")
         + '\n08/20/26 10:00:00,TRD,BUY,100000,TO OPEN,EUR/USD,1.16000\n'
-        + '08/27/26 20:19:57,TRD,SELL,100000,TO CLOSE,EUR/USD,1.16508\n',
+        + '08/27/26 18:19:57,TRD,SELL,100000,TO CLOSE,EUR/USD,1.16508\n',
         encoding="utf-8",
     )
     inputs[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY] = synthetic
