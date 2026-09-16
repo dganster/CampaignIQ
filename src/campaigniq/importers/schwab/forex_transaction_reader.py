@@ -103,7 +103,15 @@ def read_forex_transaction_report(source:str|Path):
         elif first.upper().startswith("YTD FEE"): ytd_fee=usd(c[1])
         elif first.upper().startswith("TOTAL FINANCING"):
             financing_totals.append((c[1],usd(c[2])))
-        elif not first and len(c)>=3 and c[1] and c[2] and financing_totals:
+        elif (
+            not first
+            and len(c) >= 3
+            and c[1]
+            and c[2]
+            and all(not value for value in c[3:])
+            and financing_totals
+            and pl_total is None
+        ):
             financing_totals.append((c[1],usd(c[2])))
         elif first.upper().startswith("PL TOTAL"): pl_total=usd(c[2])
         elif first.upper().startswith("COMMISSION TOTAL"): commission_total=usd(c[2])

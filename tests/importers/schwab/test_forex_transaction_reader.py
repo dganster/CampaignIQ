@@ -237,3 +237,33 @@ def test_financing_control_detects_instrument_delta_and_is_unknown_when_absent(t
     report = read_forex_transaction_report(put(tmp_path, absent))
     assert report.financing_control_deltas_usd == ()
     assert report.financing_control_reconciled is None
+
+def test_financing_continuations_stop_at_next_control(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '"Total Financing, USD:",US$,+10.00,,,,,,,,,,,,\n'
+        ',USD$FX,-2.00,,,,,,,,,,,,\n'
+        '"PL Total*, USD:",,0.00,,,,,,,,,,,,\n'
+        ',NOT_A_FINANCING_CONTROL,123.45,,,,,,,,,,,,\n'
+        '"Commission Total, USD:",,0.00,,,,,,,,,,,,\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.financing_totals_usd == (
+        ("US$", Decimal("10.00")),
+        ("USD$FX", Decimal("-2.00")),
+    )
+
+
+def test_financing_continuation_requires_report_control_row_shape(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '"Total Financing, USD:",US$,+10.00,,,,,,,,,,,,\n'
+        ',USD$FX,-2.00,unexpected,,,,,,,,,,,\n'
+        '"PL Total*, USD:",,0.00,,,,,,,,,,,,\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.financing_totals_usd == (("US$", Decimal("10.00")),)
