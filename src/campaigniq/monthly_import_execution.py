@@ -46,6 +46,16 @@ class MonthlyImportExecution:
     def finalized(self) -> bool:
         return self.authoritative_state_path is not None
 
+    @property
+    def forex_settlement_control_delta_usd(self):
+        report = self.result.forex_transaction_report
+        return report.settlement_control_delta_usd if report is not None else None
+
+    @property
+    def forex_settlement_control_reconciled(self):
+        report = self.result.forex_transaction_report
+        return report.settlement_control_reconciled if report is not None else None
+
 
 def execute_monthly_import(
     preflight: MonthlyImportPreflight,

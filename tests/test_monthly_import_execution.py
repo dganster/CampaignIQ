@@ -418,3 +418,58 @@ def test_successful_monthly_execution_persists_nonempty_forex_attribution(
     assert attribution.settlement.instrument == "EUR/USD"
     assert attribution.gain_loss == Decimal("3.00")
     assert persisted.attributions == (attribution,)
+
+def test_monthly_execution_reports_nonzero_forex_control_delta_without_blocking_finalization(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=DATA / "thinkorswim" / "Account Trade History July 2026.csv",
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(DATA / "schwab" / "july_assignments.txt").read_text().splitlines(),
+    )
+    save_authoritative_lot_state(
+        tmp_path, period_end=date(2026, 7, 31), lot_book=july.ending_lot_book
+    )
+
+    inputs = _august_inputs(tmp_path)
+    inputs[MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT].write_text(
+        '"Transaction Report since Jul 31, 2026 16:00:00 (EDT) through Aug 31, 2026 16:00:00 (EDT)"\n'
+        '"MTD Settled PL, USD:",+3.27\n'
+        '"MTD fee, USD:",0.00\n'
+        '="1007745626983","Aug 27, 2026 20:19:57","Aug 28, 2026 17:00:00",settlement,EUR/USD,Sell,1.16508,"-100,000","+116,508",0.00,,"+3.00 USD",0,,"+3.00 USD"\n',
+        encoding="utf-8",
+    )
+
+    original = inputs[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]
+    synthetic = tmp_path / "august_trade_history_forex_control_delta.csv"
+    synthetic.write_text(
+        original.read_text(encoding="utf-8")
+        + '\n08/20/26 10:00:00,TRD,BUY,100000,TO OPEN,EUR/USD,1.16000\n'
+        + '08/27/26 20:19:57,TRD,SELL,100000,TO CLOSE,EUR/USD,1.16508\n',
+        encoding="utf-8",
+    )
+    inputs[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY] = synthetic
+
+    preflight = prepare_monthly_import(
+        2026, 8, authoritative_state_root=tmp_path, supplied_inputs=inputs
+    )
+    assert preflight.ready
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight, authoritative_state_root=tmp_path, supplied_inputs=inputs
+    )
+
+    assert outcome.finalized is True
+    assert outcome.forex_settlement_control_delta_usd == Decimal("0.27")
+    assert outcome.forex_settlement_control_reconciled is False
+    assert len(outcome.result.forex_settlement_attributions) == 1
+    assert outcome.result.forex_settlement_attributions[0].gain_loss == Decimal("3.00")
