@@ -13,10 +13,16 @@ class SchwabForexSettlement:
 class SchwabForexFinancing:
     order_id:str; occurred_at:datetime; instrument:str; financing_usd:Decimal
 @dataclass(frozen=True,slots=True)
+class SchwabForexNewTransaction:
+    order_id:str; trade_at:datetime; settlement_at:datetime; instrument:str; side:str
+    rate:Decimal; amount:Decimal; counter_amount:Decimal; fee_usd:Decimal
+    average_acquisition_fx_rate:Decimal; total_position:Decimal
+@dataclass(frozen=True,slots=True)
 class SchwabForexTransactionReport:
     period_text:str; period_start:date; period_end:date
     mtd_settled_pl_usd:Decimal; mtd_fee_usd:Decimal
     settlements:tuple[SchwabForexSettlement,...]; financing:tuple[SchwabForexFinancing,...]
+    new_transactions:tuple[SchwabForexNewTransaction,...]=()
     @property
     def settlement_pl_usd(self): return sum((x.settlement_pl_usd for x in self.settlements),Decimal("0"))
     @property
@@ -49,7 +55,7 @@ def oid(s):
     s=s.strip(); return s[2:-1] if s.startswith('="') and s.endswith('"') else s.strip('"=')
 def read_forex_transaction_report(source:str|Path):
     with Path(source).open(newline="",encoding="utf-8-sig",errors="replace") as f: rows=list(csv.reader(f))
-    period=""; pl=fee=None; settlements=[]; financing=[]
+    period=""; pl=fee=None; settlements=[]; financing=[]; new_transactions=[]
     for row in rows:
         if not row: continue
         c=[x.strip() for x in row]; first=c[0] if c else ""
@@ -61,6 +67,13 @@ def read_forex_transaction_report(source:str|Path):
         if kind=="settlement":
             if len(c)<13 or not c[11]: raise ValueError(f"Incomplete settlement: {row!r}")
             settlements.append(SchwabForexSettlement(oid(c[0]),dt(c[1]),dt(c[2]),c[4],c[5],dec(c[6]),dec(c[7]),usd(c[11]),dec(c[12])))
+        elif kind=="new":
+            if len(c)<13 or not all(c[i] for i in (1,2,4,5,6,7,8,9,10,12)):
+                raise ValueError(f"Incomplete new FOREX transaction: {row!r}")
+            new_transactions.append(SchwabForexNewTransaction(
+                oid(c[0]),dt(c[1]),dt(c[2]),c[4],c[5],dec(c[6]),dec(c[7]),
+                dec(c[8]),usd(c[9]),dec(c[10]),dec(c[12])
+            ))
         elif kind=="financing":
             usd_cells=[x for x in c[4:] if "USD" in x.upper()]
             if not usd_cells: raise ValueError(f"Financing row lacks USD amount: {row!r}")
@@ -69,4 +82,4 @@ def read_forex_transaction_report(source:str|Path):
     period_start,period_end=report_period(period)
     if pl is None: raise ValueError("FOREX report lacks MTD Settled PL")
     if fee is None: raise ValueError("FOREX report lacks MTD fee")
-    return SchwabForexTransactionReport(period,period_start,period_end,pl,fee,tuple(settlements),tuple(financing))
+    return SchwabForexTransactionReport(period,period_start,period_end,pl,fee,tuple(settlements),tuple(financing),tuple(new_transactions))

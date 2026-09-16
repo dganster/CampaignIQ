@@ -63,3 +63,36 @@ def test_parses_unquoted_csv_period_header_split_at_date_commas(tmp_path):
     report = read_forex_transaction_report(put(tmp_path, text))
     assert report.period_start == date(2026, 7, 31)
     assert report.period_end == date(2026, 8, 31)
+
+
+def test_reads_new_forex_transaction_without_treating_it_as_settlement(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="123","Aug 27, 2026 15:05:18","Aug 27, 2026 17:00:00",new,EUR/USD,Buy,1.16505,"+100,000","-116,505",0.00,1.16505,,"+100,000",,\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert len(report.new_transactions) == 1
+    transaction = report.new_transactions[0]
+    assert transaction.instrument == "EUR/USD"
+    assert transaction.side == "Buy"
+    assert transaction.rate == Decimal("1.16505")
+    assert transaction.amount == Decimal("100000")
+    assert transaction.counter_amount == Decimal("-116505")
+    assert transaction.fee_usd == Decimal("0.00")
+    assert transaction.average_acquisition_fx_rate == Decimal("1.16505")
+    assert transaction.total_position == Decimal("100000")
+    assert report.settlements == ()
+    assert report.settlement_pl_usd == Decimal("0")
+
+
+def test_rejects_incomplete_new_forex_transaction(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="123","Aug 27, 2026 15:05:18","Aug 27, 2026 17:00:00",new,EUR/USD,Buy,1.16505,"+100,000","-116,505",0.00,,,"+100,000",,\n'
+    )
+    with pytest.raises(ValueError, match="Incomplete new FOREX transaction"):
+        read_forex_transaction_report(put(tmp_path, text))
