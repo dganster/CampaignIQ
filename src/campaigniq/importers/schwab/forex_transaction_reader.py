@@ -23,6 +23,9 @@ class SchwabForexTransactionReport:
     mtd_settled_pl_usd:Decimal; mtd_fee_usd:Decimal
     settlements:tuple[SchwabForexSettlement,...]; financing:tuple[SchwabForexFinancing,...]
     new_transactions:tuple[SchwabForexNewTransaction,...]=()
+    ytd_settled_pl_usd:Decimal|None=None; ytd_fee_usd:Decimal|None=None
+    pl_total_usd:Decimal|None=None; commission_total_usd:Decimal|None=None
+    financing_totals_usd:tuple[tuple[str,Decimal],...]=()
     @property
     def settlement_pl_usd(self): return sum((x.settlement_pl_usd for x in self.settlements),Decimal("0"))
     @property
@@ -55,13 +58,21 @@ def oid(s):
     s=s.strip(); return s[2:-1] if s.startswith('="') and s.endswith('"') else s.strip('"=')
 def read_forex_transaction_report(source:str|Path):
     with Path(source).open(newline="",encoding="utf-8-sig",errors="replace") as f: rows=list(csv.reader(f))
-    period=""; pl=fee=None; settlements=[]; financing=[]; new_transactions=[]
+    period=""; pl=fee=ytd_pl=ytd_fee=pl_total=commission_total=None; settlements=[]; financing=[]; new_transactions=[]; financing_totals=[]
     for row in rows:
         if not row: continue
         c=[x.strip() for x in row]; first=c[0] if c else ""
         if first.lower().startswith("transaction report since"): period=" | ".join(x for x in c if x)
         elif first.upper().startswith("MTD SETTLED PL"): pl=usd(c[1])
+        elif first.upper().startswith("YTD SETTLED PL"): ytd_pl=usd(c[1])
         elif first.upper().startswith("MTD FEE"): fee=usd(c[1])
+        elif first.upper().startswith("YTD FEE"): ytd_fee=usd(c[1])
+        elif first.upper().startswith("TOTAL FINANCING"):
+            financing_totals.append((c[1],usd(c[2])))
+        elif not first and len(c)>=3 and c[1] and c[2] and financing_totals:
+            financing_totals.append((c[1],usd(c[2])))
+        elif first.upper().startswith("PL TOTAL"): pl_total=usd(c[2])
+        elif first.upper().startswith("COMMISSION TOTAL"): commission_total=usd(c[2])
         if len(c)<4 or not(first.startswith('="') or first.strip('"=').isdigit()): continue
         kind=c[3].lower()
         if kind=="settlement":
@@ -82,4 +93,4 @@ def read_forex_transaction_report(source:str|Path):
     period_start,period_end=report_period(period)
     if pl is None: raise ValueError("FOREX report lacks MTD Settled PL")
     if fee is None: raise ValueError("FOREX report lacks MTD fee")
-    return SchwabForexTransactionReport(period,period_start,period_end,pl,fee,tuple(settlements),tuple(financing),tuple(new_transactions))
+    return SchwabForexTransactionReport(period,period_start,period_end,pl,fee,tuple(settlements),tuple(financing),tuple(new_transactions),ytd_pl,ytd_fee,pl_total,commission_total,tuple(financing_totals))

@@ -96,3 +96,40 @@ def test_rejects_incomplete_new_forex_transaction(tmp_path):
     )
     with pytest.raises(ValueError, match="Incomplete new FOREX transaction"):
         read_forex_transaction_report(put(tmp_path, text))
+
+
+def test_reads_report_level_ytd_and_transaction_section_controls(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",+3.00\n'
+        '"YTD Settled PL, USD:","+1,242.85"\n'
+        '"MTD fee, USD:",0.00\n'
+        '"YTD fee, USD:",0.00\n'
+        '"Total Financing, USD:",US$,+479.53,,,,,,,,,,,,\n'
+        ',USD$FX,-6.67,,,,,,,,,,,,\n'
+        '"PL Total*, USD:",,+3.00,,,,,,,,,,,,\n'
+        '"Commission Total, USD:",,0.00,,,,,,,,,,,,\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.ytd_settled_pl_usd == Decimal("1242.85")
+    assert report.ytd_fee_usd == Decimal("0.00")
+    assert report.pl_total_usd == Decimal("3.00")
+    assert report.commission_total_usd == Decimal("0.00")
+    assert report.financing_totals_usd == (
+        ("US$", Decimal("479.53")),
+        ("USD$FX", Decimal("-6.67")),
+    )
+
+
+def test_report_controls_remain_optional_for_legacy_minimal_fixtures(tmp_path):
+    text = (
+        '"Transaction Report since Jul 31, 2026 through Aug 31, 2026"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+    )
+    report = read_forex_transaction_report(put(tmp_path, text))
+    assert report.ytd_settled_pl_usd is None
+    assert report.ytd_fee_usd is None
+    assert report.pl_total_usd is None
+    assert report.commission_total_usd is None
+    assert report.financing_totals_usd == ()
