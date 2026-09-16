@@ -56,6 +56,36 @@ class MonthlyImportExecution:
         report = self.result.forex_transaction_report
         return report.settlement_control_reconciled if report is not None else None
 
+    @property
+    def forex_pl_total_control_delta_usd(self):
+        report = self.result.forex_transaction_report
+        return report.pl_total_control_delta_usd if report is not None else None
+
+    @property
+    def forex_pl_total_control_reconciled(self):
+        report = self.result.forex_transaction_report
+        return report.pl_total_control_reconciled if report is not None else None
+
+    @property
+    def forex_commission_control_delta_usd(self):
+        report = self.result.forex_transaction_report
+        return report.commission_control_delta_usd if report is not None else None
+
+    @property
+    def forex_commission_control_reconciled(self):
+        report = self.result.forex_transaction_report
+        return report.commission_control_reconciled if report is not None else None
+
+    @property
+    def forex_financing_control_deltas_usd(self):
+        report = self.result.forex_transaction_report
+        return report.financing_control_deltas_usd if report is not None else ()
+
+    @property
+    def forex_financing_control_reconciled(self):
+        report = self.result.forex_transaction_report
+        return report.financing_control_reconciled if report is not None else None
+
 
 def execute_monthly_import(
     preflight: MonthlyImportPreflight,

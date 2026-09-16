@@ -378,6 +378,43 @@ def render_monthly_import_wizard():
                     "monthly finalization."
                 )
 
+            if execution.forex_pl_total_control_reconciled is not None:
+                st.write(f"Report PL Total: ${forex_report.pl_total_usd:,.2f}")
+                if execution.forex_pl_total_control_reconciled:
+                    st.success("FOREX PL Total control reconciled exactly.")
+                else:
+                    st.warning(
+                        "FOREX PL Total control difference: "
+                        f"${execution.forex_pl_total_control_delta_usd:,.2f}. "
+                        "This difference is reported for review and did not block monthly finalization."
+                    )
+
+            if execution.forex_commission_control_reconciled is not None:
+                st.write(f"Report Commission Total: ${forex_report.commission_total_usd:,.2f}")
+                st.write(f"Parsed transaction fees: ${forex_report.transaction_fee_usd:,.2f}")
+                if execution.forex_commission_control_reconciled:
+                    st.success("FOREX commission control reconciled exactly.")
+                else:
+                    st.warning(
+                        "FOREX commission control difference: "
+                        f"${execution.forex_commission_control_delta_usd:,.2f}. "
+                        "This difference is reported for review and did not block monthly finalization."
+                    )
+
+            if execution.forex_financing_control_reconciled is not None:
+                if execution.forex_financing_control_reconciled:
+                    st.success("FOREX financing controls reconciled exactly.")
+                else:
+                    differences = ", ".join(
+                        f"{instrument}: ${delta:,.2f}"
+                        for instrument, delta in execution.forex_financing_control_deltas_usd
+                        if delta != 0
+                    )
+                    st.warning(
+                        "FOREX financing control differences: "
+                        f"{differences}. This difference is reported for review and did not block monthly finalization."
+                    )
+
         st.success(
             "Closing inventory reconciled and authoritative month-end state "
             f"was persisted to {execution.authoritative_state_path}."

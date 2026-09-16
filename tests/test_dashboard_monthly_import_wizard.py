@@ -147,3 +147,14 @@ def test_wizard_reports_forex_settlement_control_after_execution() -> None:
     assert '"monthly finalization."' in text
     assert "execution.forex_settlement_control_delta_usd" in text
     assert "execution.forex_settlement_control_reconciled" in text
+
+
+def test_wizard_reports_additional_forex_controls_as_nonfatal() -> None:
+    text = source()
+    assert '"FOREX PL Total control reconciled exactly."' in text
+    assert '"FOREX commission control reconciled exactly."' in text
+    assert '"FOREX financing controls reconciled exactly."' in text
+    assert "execution.forex_pl_total_control_reconciled" in text
+    assert "execution.forex_commission_control_reconciled" in text
+    assert "execution.forex_financing_control_reconciled" in text
+    assert "did not block monthly finalization." in text
