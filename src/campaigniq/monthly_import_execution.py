@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import tempfile
 from typing import Mapping
 
 from campaigniq.closing_inventory_reconciliation import (
@@ -24,23 +23,23 @@ from campaigniq.importers.schwab.pending_activity_reader import (
 from campaigniq.importers.schwab.position_snapshot_reader import (
     read_position_snapshot_section,
 )
-from campaigniq.persistence.authoritative_lot_state import (
-    save_authoritative_lot_state,
-)
+from campaigniq.persistence.artifact_storage import ArtifactStorage, LocalFilesystemArtifactStorage
+from campaigniq.persistence.authoritative_lot_state import lot_state_key
+from campaigniq.persistence.lot_book_store import serialize_lot_book
 from campaigniq.persistence.forex_settlement_attribution_store import (
-    save_forex_settlement_attributions,
+    serialize_forex_settlement_attributions,
 )
 from campaigniq.persistence.realized_attribution_store import (
-    save_realized_attributions,
+    serialize_realized_attributions,
 )
 from campaigniq.persistence.import_provenance import (
     capture_monthly_input_provenance,
-    save_monthly_import_provenance,
+    serialize_monthly_import_provenance,
 )
 from campaigniq.persistence.monthly_publication import (
-    ensure_publication_protocol,
-    finalized_month_marker_path,
-    publish_finalized_month_marker,
+    ensure_publication_protocol_in_storage,
+    publish_finalized_month_marker_to_storage,
+    unpublish_finalized_month_marker_from_storage,
 )
 
 
@@ -103,6 +102,7 @@ def execute_monthly_import(
     authoritative_state_root: str | Path,
     supplied_inputs: Mapping[MonthlyInputRole, str | Path],
     historical_source_root: str | Path | None = None,
+    artifact_storage: ArtifactStorage | None = None,
 ) -> MonthlyImportExecution:
     """Run a ready import and persist ending state only after reconciliation."""
     if not preflight.ready:
@@ -177,72 +177,54 @@ def execute_monthly_import(
         )
 
     state_root = Path(authoritative_state_root)
-    state_root.mkdir(parents=True, exist_ok=True)
+    storage = artifact_storage or LocalFilesystemArtifactStorage(state_root)
     realized_attributions = attribute_period_realized_pnl(result)
     input_provenance = capture_monthly_input_provenance(supplied_inputs)
 
     realized_name = f"{contract.period_end:%Y-%m}-realized-attributions.json"
     forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
-    lot_name = f"{contract.period_end:%Y-%m}-lot-book.json"
+    lot_name = lot_state_key(period_end=contract.period_end)
     provenance_name = f"{contract.period_end:%Y-%m}-import-provenance.json"
 
-    # Establish the marker protocol before any protected canonical payload can
-    # become visible. Older months retain their pre-marker discovery semantics.
-    ensure_publication_protocol(
-        state_root,
-        first_period_end=contract.period_end,
+    ensure_publication_protocol_in_storage(
+        storage, first_period_end=contract.period_end
     )
 
-    # Build the complete finalized artifact set away from its canonical names.
-    # A serialization/write failure therefore cannot expose a partially
-    # finalized month to predecessor discovery or dashboard globbing.
-    with tempfile.TemporaryDirectory(
-        prefix=".campaigniq-finalize-",
-        dir=state_root,
-    ) as staging_dir:
-        staging_root = Path(staging_dir)
-        save_realized_attributions(
-            staging_root / realized_name,
-            period_start=contract.period_start,
-            period_end=contract.period_end,
-            attributions=realized_attributions,
-        )
-        save_forex_settlement_attributions(
-            staging_root / forex_name,
-            period_start=contract.period_start,
-            period_end=contract.period_end,
-            attributions=result.forex_settlement_attributions,
-        )
-        staged_state_path = save_authoritative_lot_state(
-            staging_root,
-            period_end=contract.period_end,
-            lot_book=result.ending_lot_book,
-        )
-        save_monthly_import_provenance(
-            staging_root / provenance_name,
-            period_start=contract.period_start,
-            period_end=contract.period_end,
-            inputs=input_provenance,
-        )
+    # Build the complete replacement generation in memory before unpublishing.
+    realized_text = serialize_realized_attributions(
+        period_start=contract.period_start,
+        period_end=contract.period_end,
+        attributions=realized_attributions,
+    )
+    forex_text = serialize_forex_settlement_attributions(
+        period_start=contract.period_start,
+        period_end=contract.period_end,
+        attributions=result.forex_settlement_attributions,
+    )
+    lot_text = serialize_lot_book(
+        period_end=contract.period_end, lot_book=result.ending_lot_book
+    )
+    provenance_text = serialize_monthly_import_provenance(
+        period_start=contract.period_start,
+        period_end=contract.period_end,
+        inputs=input_provenance,
+    )
 
-        # A rerun may be replacing an already-published month. Unpublish the
-        # old generation only after the complete replacement generation has
-        # staged successfully, then republish only after every payload rename.
-        finalized_month_marker_path(
-            state_root,
-            period_end=contract.period_end,
-        ).unlink(missing_ok=True)
+    # A rerun becomes invisible before any canonical payload is replaced.
+    unpublish_finalized_month_marker_from_storage(
+        storage, period_end=contract.period_end
+    )
+    storage.write_text(realized_name, realized_text)
+    storage.write_text(forex_name, forex_text)
+    storage.write_text(lot_name, lot_text)
+    storage.write_text(provenance_name, provenance_text)
 
-        (staging_root / realized_name).replace(state_root / realized_name)
-        (staging_root / forex_name).replace(state_root / forex_name)
-        state_path = staged_state_path.replace(state_root / lot_name)
-        (staging_root / provenance_name).replace(state_root / provenance_name)
+    # The marker is the multi-object visibility boundary and is written last.
+    publish_finalized_month_marker_to_storage(
+        storage, period_end=contract.period_end
+    )
+    state_path = state_root / lot_name
 
-        # This marker is the publication boundary and must be published last.
-        publish_finalized_month_marker(
-            state_root,
-            period_end=contract.period_end,
-        )
     return MonthlyImportExecution(
         result=result,
         closing_reconciliation=reconciliation,

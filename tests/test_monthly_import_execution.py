@@ -507,16 +507,19 @@ def test_persistence_write_failure_does_not_publish_partial_month(
         lambda **_: ClosingInventoryReconciliation(()),
     )
 
-    def fail_forex_persistence(*args, **kwargs):
-        raise OSError("simulated FOREX attribution write failure")
+    def fail_forex_serialization(*args, **kwargs):
+        raise OSError("simulated FOREX attribution serialization failure")
 
     monkeypatch.setattr(
         execution_module,
-        "save_forex_settlement_attributions",
-        fail_forex_persistence,
+        "serialize_forex_settlement_attributions",
+        fail_forex_serialization,
     )
 
-    with pytest.raises(OSError, match="simulated FOREX attribution write failure"):
+    with pytest.raises(
+        OSError,
+        match="simulated FOREX attribution serialization failure",
+    ):
         execution_module.execute_monthly_import(
             preflight,
             authoritative_state_root=tmp_path,

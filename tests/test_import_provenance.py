@@ -88,14 +88,18 @@ def test_monthly_execution_publishes_provenance_inside_finalized_artifact_set():
         .read_text(encoding="utf-8")
     )
     assert "capture_monthly_input_provenance(supplied_inputs)" in source
-    assert "save_monthly_import_provenance(" in source
-    assert "(staging_root / provenance_name).replace(state_root / provenance_name)" in source
+    assert "serialize_monthly_import_provenance(" in source
+    assert "storage.write_text(provenance_name, provenance_text)" in source
 
-    stage = source.index("save_monthly_import_provenance(")
-    unpublish = source.index("finalized_month_marker_path(", stage)
+    stage = source.index("serialize_monthly_import_provenance(")
+    unpublish = source.index(
+        "unpublish_finalized_month_marker_from_storage(", stage
+    )
     replace = source.index(
-        "(staging_root / provenance_name).replace(state_root / provenance_name)",
+        "storage.write_text(provenance_name, provenance_text)",
         unpublish,
     )
-    publish = source.index("publish_finalized_month_marker(", replace)
+    publish = source.index(
+        "publish_finalized_month_marker_to_storage(", replace
+    )
     assert stage < unpublish < replace < publish
