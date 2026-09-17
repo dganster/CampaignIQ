@@ -16,6 +16,7 @@ class SchwabPendingOptionActivity:
     instrument: OptionContract
     quantity_change: Decimal
     activity_date: date | None
+    settlement_date: date | None = None
 
 def read_pending_option_activity(lines: list[str]) -> tuple[SchwabPendingOptionActivity,...]:
     out=[]; inside=False; current_date=None
@@ -35,15 +36,27 @@ def read_pending_option_activity(lines: list[str]) -> tuple[SchwabPendingOptionA
         if not em or not sm:
             raise ValueError(f"Missing pending option details for {m.group('symbol')}")
         expiration=datetime.strptime(em.group("x"),"%m/%d/%Y").date()
-        # Only text before the action can contain the Activity Date.
-        # This prevents the 09/01 payable date from becoming the trade date.
+        # The first MM/DD before the action is the Activity Date. Schwab
+        # carries it across continuation rows. The MM/DD after the action is
+        # the Settle/Payable Date and is preserved separately.
         prefix = line[: line.find(m.group("action"))]
         dm=re.search(r"\b(\d{2})/(\d{2})\b",prefix)
         if dm:
             current_date=date(expiration.year,int(dm.group(1)),int(dm.group(2)))
+        suffix = line[line.find(m.group("action")):]
+        settlement_match = re.search(r"\b(\d{2})/(\d{2})\b", suffix)
+        settlement_date = (
+            date(
+                expiration.year,
+                int(settlement_match.group(1)),
+                int(settlement_match.group(2)),
+            )
+            if settlement_match
+            else None
+        )
         qty=Decimal(m.group("qty").replace(",",""))
         change=qty if m.group("action")=="Cover Short" else -qty
         out.append(SchwabPendingOptionActivity(
             OptionContract(m.group("symbol"),expiration,Decimal(sm.group("x").replace(",","")),OptionType[m.group("type")]),
-            change,current_date))
+            change,current_date,settlement_date))
     return tuple(out)
