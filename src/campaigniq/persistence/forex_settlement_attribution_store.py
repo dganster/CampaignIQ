@@ -11,6 +11,7 @@ from typing import Iterable
 
 from campaigniq.domain.forex_settlement_attribution import ForexSettlementAttribution
 from campaigniq.importers.schwab.forex_transaction_reader import SchwabForexSettlement
+from campaigniq.persistence.artifact_storage import ArtifactStorage
 
 _FORMAT = "campaigniq.forex_settlement_attributions"
 _VERSION = 1
@@ -29,19 +30,17 @@ class PersistedForexSettlementAttributions:
             raise ValueError("period_end must be on or after period_start")
 
 
-def save_forex_settlement_attributions(
-    path: str | Path,
+def serialize_forex_settlement_attributions(
     *,
     period_start: date,
     period_end: date,
     attributions: Iterable[ForexSettlementAttribution],
-) -> None:
+) -> str:
     persisted = PersistedForexSettlementAttributions(
         period_start=period_start,
         period_end=period_end,
         attributions=tuple(attributions),
     )
-    destination = Path(path)
     payload = {
         "format": _FORMAT,
         "version": _VERSION,
@@ -65,17 +64,13 @@ def save_forex_settlement_attributions(
             for item in persisted.attributions
         ],
     }
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
-def load_forex_settlement_attributions(
-    path: str | Path,
+def deserialize_forex_settlement_attributions(
+    text: str,
 ) -> PersistedForexSettlementAttributions:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = json.loads(text)
 
     if payload.get("format") != _FORMAT:
         raise ValueError("Unsupported FOREX settlement attribution persistence format.")
@@ -97,6 +92,58 @@ def load_forex_settlement_attributions(
         period_start=date.fromisoformat(period_start_raw),
         period_end=date.fromisoformat(period_end_raw),
         attributions=tuple(_deserialize_attribution(item) for item in items),
+    )
+
+
+def save_forex_settlement_attributions_to_storage(
+    storage: ArtifactStorage,
+    key: str,
+    *,
+    period_start: date,
+    period_end: date,
+    attributions: Iterable[ForexSettlementAttribution],
+) -> None:
+    storage.write_text(
+        key,
+        serialize_forex_settlement_attributions(
+            period_start=period_start,
+            period_end=period_end,
+            attributions=attributions,
+        ),
+    )
+
+
+def load_forex_settlement_attributions_from_storage(
+    storage: ArtifactStorage,
+    key: str,
+) -> PersistedForexSettlementAttributions:
+    return deserialize_forex_settlement_attributions(storage.read_text(key))
+
+
+def save_forex_settlement_attributions(
+    path: str | Path,
+    *,
+    period_start: date,
+    period_end: date,
+    attributions: Iterable[ForexSettlementAttribution],
+) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        serialize_forex_settlement_attributions(
+            period_start=period_start,
+            period_end=period_end,
+            attributions=attributions,
+        ),
+        encoding="utf-8",
+    )
+
+
+def load_forex_settlement_attributions(
+    path: str | Path,
+) -> PersistedForexSettlementAttributions:
+    return deserialize_forex_settlement_attributions(
+        Path(path).read_text(encoding="utf-8")
     )
 
 
