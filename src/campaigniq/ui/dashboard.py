@@ -24,6 +24,9 @@ from campaigniq.analytics.multi_month_campaign_performance import (
 from campaigniq.analytics.campaign_outcome_distribution import (
     summarize_campaign_outcomes,
 )
+from campaigniq.analytics.underlying_performance import (
+    summarize_underlying_performance,
+)
 from campaigniq.ui.dashboard_campaigns import (
     aggregate_period_qualified_campaigns,
 )
@@ -514,6 +517,7 @@ campaign_results, campaign_drilldowns = (
     )
 )
 campaign_outcomes = summarize_campaign_outcomes(campaign_results)
+underlying_performance = summarize_underlying_performance(monthly_attributions)
 
 rows = []
 
@@ -780,6 +784,50 @@ tail3.metric(
 tail4.metric(
     "Bottom 3 Losers",
     money(campaign_outcomes.bottom_3_loser_pnl),
+)
+
+st.subheader("Underlying Performance")
+
+underlying_rows = [
+    {
+        "Underlying": summary.underlying,
+        "Realized P&L": float(summary.realized_pnl),
+        "Campaigns": summary.campaign_count,
+        "Wins": summary.winning_campaign_count,
+        "Losses": summary.losing_campaign_count,
+        "Breakeven": summary.breakeven_campaign_count,
+        "Win Rate": float(summary.win_rate) if summary.win_rate is not None else None,
+        "Average Campaign P&L": float(summary.average_campaign_pnl) if summary.average_campaign_pnl is not None else None,
+        "Median Campaign P&L": float(summary.median_campaign_pnl) if summary.median_campaign_pnl is not None else None,
+        "Best Campaign": summary.best_campaign_id,
+        "Best Campaign P&L": float(summary.best_campaign_pnl) if summary.best_campaign_pnl is not None else None,
+        "Worst Campaign": summary.worst_campaign_id,
+        "Worst Campaign P&L": float(summary.worst_campaign_pnl) if summary.worst_campaign_pnl is not None else None,
+    }
+    for summary in underlying_performance
+]
+underlying_df = pd.DataFrame(underlying_rows)
+if not underlying_df.empty:
+    underlying_df = underlying_df.sort_values("Realized P&L", ascending=True).reset_index(drop=True)
+
+st.dataframe(
+    underlying_df,
+    use_container_width=True,
+    hide_index=True,
+    height=420,
+    column_config={
+        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
+        "Win Rate": st.column_config.NumberColumn("Win Rate", format="%.1f%%"),
+        "Average Campaign P&L": st.column_config.NumberColumn("Average Campaign P&L", format="$%0,.2f"),
+        "Median Campaign P&L": st.column_config.NumberColumn("Median Campaign P&L", format="$%0,.2f"),
+        "Best Campaign P&L": st.column_config.NumberColumn("Best Campaign P&L", format="$%0,.2f"),
+        "Worst Campaign P&L": st.column_config.NumberColumn("Worst Campaign P&L", format="$%0,.2f"),
+    },
+)
+st.caption(
+    "Equity/options only. FOREX is excluded from Underlying Performance v1. "
+    "Only fully reconciled, unambiguous realized records are included. "
+    "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
 )
 
 st.subheader("Campaign Drill-Down")
