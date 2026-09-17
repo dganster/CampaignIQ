@@ -33,6 +33,10 @@ from campaigniq.persistence.forex_settlement_attribution_store import (
 from campaigniq.persistence.realized_attribution_store import (
     save_realized_attributions,
 )
+from campaigniq.persistence.import_provenance import (
+    capture_monthly_input_provenance,
+    save_monthly_import_provenance,
+)
 from campaigniq.persistence.monthly_publication import (
     ensure_publication_protocol,
     finalized_month_marker_path,
@@ -175,10 +179,12 @@ def execute_monthly_import(
     state_root = Path(authoritative_state_root)
     state_root.mkdir(parents=True, exist_ok=True)
     realized_attributions = attribute_period_realized_pnl(result)
+    input_provenance = capture_monthly_input_provenance(supplied_inputs)
 
     realized_name = f"{contract.period_end:%Y-%m}-realized-attributions.json"
     forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
     lot_name = f"{contract.period_end:%Y-%m}-lot-book.json"
+    provenance_name = f"{contract.period_end:%Y-%m}-import-provenance.json"
 
     # Establish the marker protocol before any protected canonical payload can
     # become visible. Older months retain their pre-marker discovery semantics.
@@ -212,6 +218,12 @@ def execute_monthly_import(
             period_end=contract.period_end,
             lot_book=result.ending_lot_book,
         )
+        save_monthly_import_provenance(
+            staging_root / provenance_name,
+            period_start=contract.period_start,
+            period_end=contract.period_end,
+            inputs=input_provenance,
+        )
 
         # A rerun may be replacing an already-published month. Unpublish the
         # old generation only after the complete replacement generation has
@@ -224,6 +236,7 @@ def execute_monthly_import(
         (staging_root / realized_name).replace(state_root / realized_name)
         (staging_root / forex_name).replace(state_root / forex_name)
         state_path = staged_state_path.replace(state_root / lot_name)
+        (staging_root / provenance_name).replace(state_root / provenance_name)
 
         # This marker is the publication boundary and must be published last.
         publish_finalized_month_marker(
