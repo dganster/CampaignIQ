@@ -30,6 +30,7 @@ from campaigniq.ui.dashboard_campaigns import (
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions,
 )
+from campaigniq.persistence.monthly_publication import is_month_published
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
@@ -422,10 +423,30 @@ def render_monthly_import_wizard():
 
 
 
+def _published_artifact_paths(pattern: str, suffix: str):
+    paths = []
+    for path in sorted(AUTHORITATIVE_STATE_DIR.glob(pattern)):
+        period_end = date.fromisoformat(f"{path.name.removesuffix(suffix)}-01")
+        if period_end.month == 12:
+            next_month = date(period_end.year + 1, 1, 1)
+        else:
+            next_month = date(period_end.year, period_end.month + 1, 1)
+        period_end = next_month - date.resolution
+        if is_month_published(AUTHORITATIVE_STATE_DIR, period_end=period_end):
+            paths.append(path)
+    return paths
+
+
 def load_summaries():
     """Load authoritative persisted periods and calculate monthly analytics."""
-    realized_paths = sorted(AUTHORITATIVE_STATE_DIR.glob("*-realized-attributions.json"))
-    forex_paths = sorted(AUTHORITATIVE_STATE_DIR.glob("*-forex-settlement-attributions.json"))
+    realized_paths = _published_artifact_paths(
+        "*-realized-attributions.json",
+        "-realized-attributions.json",
+    )
+    forex_paths = _published_artifact_paths(
+        "*-forex-settlement-attributions.json",
+        "-forex-settlement-attributions.json",
+    )
 
     if not realized_paths:
         raise FileNotFoundError(

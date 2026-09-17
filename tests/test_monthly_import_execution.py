@@ -526,4 +526,66 @@ def test_persistence_write_failure_does_not_publish_partial_month(
     assert not (tmp_path / "2026-08-realized-attributions.json").exists()
     assert not (tmp_path / "2026-08-forex-settlement-attributions.json").exists()
     assert not (tmp_path / "2026-08-lot-book.json").exists()
+    assert not (tmp_path / "2026-08-finalized.json").exists()
     assert not list(tmp_path.glob(".campaigniq-finalize-*"))
+
+
+def test_republication_unpublishes_old_generation_before_payload_replacement(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt").read_text().splitlines()
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026, 8, authoritative_state_root=tmp_path, supplied_inputs=inputs
+    )
+    assert preflight.ready
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    first = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+    assert first.finalized
+    marker = tmp_path / "2026-08-finalized.json"
+    assert marker.is_file()
+
+    original_replace = Path.replace
+
+    def fail_first_payload_replace(self, target):
+        target_path = Path(target)
+        if target_path == tmp_path / "2026-08-realized-attributions.json":
+            raise OSError("simulated canonical replacement failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_first_payload_replace)
+
+    with pytest.raises(OSError, match="simulated canonical replacement failure"):
+        execution_module.execute_monthly_import(
+            preflight,
+            authoritative_state_root=tmp_path,
+            supplied_inputs=inputs,
+        )
+
+    assert not marker.exists()

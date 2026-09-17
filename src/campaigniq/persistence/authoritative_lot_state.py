@@ -8,6 +8,7 @@ from pathlib import Path
 
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.persistence.lot_book_store import load_lot_book, save_lot_book
+from campaigniq.persistence.monthly_publication import is_month_published
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,8 @@ def load_preceding_authoritative_state(
     path = lot_state_path(root, period_end=expected_period_end)
 
     if not path.is_file():
+        return None
+    if not is_month_published(root, period_end=expected_period_end):
         return None
 
     persisted = load_lot_book(path)

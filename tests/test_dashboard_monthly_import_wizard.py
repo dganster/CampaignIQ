@@ -158,3 +158,11 @@ def test_wizard_reports_additional_forex_controls_as_nonfatal() -> None:
     assert "execution.forex_commission_control_reconciled" in text
     assert "execution.forex_financing_control_reconciled" in text
     assert "did not block monthly finalization." in text
+
+
+def test_analytics_loading_filters_artifacts_through_publication_boundary() -> None:
+    text = source()
+    assert "def _published_artifact_paths(" in text
+    assert "is_month_published(AUTHORITATIVE_STATE_DIR" in text
+    assert '"*-realized-attributions.json"' in text
+    assert '"*-forex-settlement-attributions.json"' in text

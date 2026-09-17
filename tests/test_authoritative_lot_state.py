@@ -10,6 +10,10 @@ from campaigniq.persistence.authoritative_lot_state import (
     lot_state_path,
     save_authoritative_lot_state,
 )
+from campaigniq.persistence.monthly_publication import (
+    ensure_publication_protocol,
+    publish_finalized_month_marker,
+)
 
 
 def _book() -> LotBook:
@@ -102,3 +106,46 @@ def test_saved_artifact_uses_existing_lot_book_format(tmp_path) -> None:
     assert payload["format"] == "campaigniq.lot_book"
     assert payload["version"] == 1
     assert payload["period_end"] == "2026-08-31"
+
+
+def test_protected_predecessor_requires_finalization_marker(tmp_path) -> None:
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 8, 31),
+        lot_book=_book(),
+    )
+    ensure_publication_protocol(
+        tmp_path,
+        first_period_end=date(2026, 8, 31),
+    )
+
+    assert load_preceding_authoritative_state(
+        tmp_path,
+        period_start=date(2026, 9, 1),
+    ) is None
+
+    publish_finalized_month_marker(
+        tmp_path,
+        period_end=date(2026, 8, 31),
+    )
+    assert load_preceding_authoritative_state(
+        tmp_path,
+        period_start=date(2026, 9, 1),
+    ) is not None
+
+
+def test_pre_cutover_predecessor_retains_legacy_discovery(tmp_path) -> None:
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=_book(),
+    )
+    ensure_publication_protocol(
+        tmp_path,
+        first_period_end=date(2026, 8, 31),
+    )
+
+    assert load_preceding_authoritative_state(
+        tmp_path,
+        period_start=date(2026, 8, 1),
+    ) is not None

@@ -33,6 +33,11 @@ from campaigniq.persistence.forex_settlement_attribution_store import (
 from campaigniq.persistence.realized_attribution_store import (
     save_realized_attributions,
 )
+from campaigniq.persistence.monthly_publication import (
+    ensure_publication_protocol,
+    finalized_month_marker_path,
+    publish_finalized_month_marker,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +180,13 @@ def execute_monthly_import(
     forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
     lot_name = f"{contract.period_end:%Y-%m}-lot-book.json"
 
+    # Establish the marker protocol before any protected canonical payload can
+    # become visible. Older months retain their pre-marker discovery semantics.
+    ensure_publication_protocol(
+        state_root,
+        first_period_end=contract.period_end,
+    )
+
     # Build the complete finalized artifact set away from its canonical names.
     # A serialization/write failure therefore cannot expose a partially
     # finalized month to predecessor discovery or dashboard globbing.
@@ -201,9 +213,23 @@ def execute_monthly_import(
             lot_book=result.ending_lot_book,
         )
 
+        # A rerun may be replacing an already-published month. Unpublish the
+        # old generation only after the complete replacement generation has
+        # staged successfully, then republish only after every payload rename.
+        finalized_month_marker_path(
+            state_root,
+            period_end=contract.period_end,
+        ).unlink(missing_ok=True)
+
         (staging_root / realized_name).replace(state_root / realized_name)
         (staging_root / forex_name).replace(state_root / forex_name)
         state_path = staged_state_path.replace(state_root / lot_name)
+
+        # This marker is the publication boundary and must be published last.
+        publish_finalized_month_marker(
+            state_root,
+            period_end=contract.period_end,
+        )
     return MonthlyImportExecution(
         result=result,
         closing_reconciliation=reconciliation,
