@@ -473,3 +473,57 @@ def test_monthly_execution_reports_nonzero_forex_control_delta_without_blocking_
     assert outcome.forex_settlement_control_reconciled is False
     assert len(outcome.result.forex_settlement_attributions) == 1
     assert outcome.result.forex_settlement_attributions[0].gain_loss == Decimal("3.00")
+
+
+def test_persistence_write_failure_does_not_publish_partial_month(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt").read_text().splitlines()
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026, 8, authoritative_state_root=tmp_path, supplied_inputs=inputs
+    )
+    assert preflight.ready
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    def fail_forex_persistence(*args, **kwargs):
+        raise OSError("simulated FOREX attribution write failure")
+
+    monkeypatch.setattr(
+        execution_module,
+        "save_forex_settlement_attributions",
+        fail_forex_persistence,
+    )
+
+    with pytest.raises(OSError, match="simulated FOREX attribution write failure"):
+        execution_module.execute_monthly_import(
+            preflight,
+            authoritative_state_root=tmp_path,
+            supplied_inputs=inputs,
+        )
+
+    assert not (tmp_path / "2026-08-realized-attributions.json").exists()
+    assert not (tmp_path / "2026-08-forex-settlement-attributions.json").exists()
+    assert not (tmp_path / "2026-08-lot-book.json").exists()
+    assert not list(tmp_path.glob(".campaigniq-finalize-*"))

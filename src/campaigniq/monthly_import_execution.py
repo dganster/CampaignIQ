@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import Mapping
 
 from campaigniq.closing_inventory_reconciliation import (
@@ -167,26 +168,42 @@ def execute_monthly_import(
         )
 
     state_root = Path(authoritative_state_root)
+    state_root.mkdir(parents=True, exist_ok=True)
     realized_attributions = attribute_period_realized_pnl(result)
 
-    save_realized_attributions(
-        state_root / f"{contract.period_end:%Y-%m}-realized-attributions.json",
-        period_start=contract.period_start,
-        period_end=contract.period_end,
-        attributions=realized_attributions,
-    )
-    save_forex_settlement_attributions(
-        state_root / f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json",
-        period_start=contract.period_start,
-        period_end=contract.period_end,
-        attributions=result.forex_settlement_attributions,
-    )
+    realized_name = f"{contract.period_end:%Y-%m}-realized-attributions.json"
+    forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
+    lot_name = f"{contract.period_end:%Y-%m}-lot-book.json"
 
-    state_path = save_authoritative_lot_state(
-        state_root,
-        period_end=contract.period_end,
-        lot_book=result.ending_lot_book,
-    )
+    # Build the complete finalized artifact set away from its canonical names.
+    # A serialization/write failure therefore cannot expose a partially
+    # finalized month to predecessor discovery or dashboard globbing.
+    with tempfile.TemporaryDirectory(
+        prefix=".campaigniq-finalize-",
+        dir=state_root,
+    ) as staging_dir:
+        staging_root = Path(staging_dir)
+        save_realized_attributions(
+            staging_root / realized_name,
+            period_start=contract.period_start,
+            period_end=contract.period_end,
+            attributions=realized_attributions,
+        )
+        save_forex_settlement_attributions(
+            staging_root / forex_name,
+            period_start=contract.period_start,
+            period_end=contract.period_end,
+            attributions=result.forex_settlement_attributions,
+        )
+        staged_state_path = save_authoritative_lot_state(
+            staging_root,
+            period_end=contract.period_end,
+            lot_book=result.ending_lot_book,
+        )
+
+        (staging_root / realized_name).replace(state_root / realized_name)
+        (staging_root / forex_name).replace(state_root / forex_name)
+        state_path = staged_state_path.replace(state_root / lot_name)
     return MonthlyImportExecution(
         result=result,
         closing_reconciliation=reconciliation,
