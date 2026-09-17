@@ -84,6 +84,20 @@ class PeriodImportResult:
 class PeriodImportPipeline:
     """Translate supported broker files into the CampaignIQ domain pipeline."""
 
+    @staticmethod
+    def _namespace_forex_campaigns(
+        campaigns: tuple[Campaign, ...],
+    ) -> tuple[Campaign, ...]:
+        """Give FOREX campaigns IDs independent of non-FOREX campaign counts."""
+        return tuple(
+            Campaign(
+                campaign_id=f"FX-CAMP-{index:06d}",
+                trades=campaign.trades,
+                started_before_data=campaign.started_before_data,
+            )
+            for index, campaign in enumerate(campaigns, start=1)
+        )
+
     def __init__(self) -> None:
         self._source_reader = ThinkorswimSourceReader()
         self._historical_forex_position_reader = (
@@ -346,16 +360,8 @@ class PeriodImportPipeline:
         raw_forex_campaigns = tuple(
             self._campaign_reconstructor.reconstruct(forex_trades)
         )
-        forex_campaigns = tuple(
-            Campaign(
-                campaign_id=f"CAMP-{index:06d}",
-                trades=campaign.trades,
-                started_before_data=campaign.started_before_data,
-            )
-            for index, campaign in enumerate(
-                raw_forex_campaigns,
-                start=len(non_forex_campaigns) + 1,
-            )
+        forex_campaigns = self._namespace_forex_campaigns(
+            raw_forex_campaigns
         )
         campaigns = (*non_forex_campaigns, *forex_campaigns)
 
