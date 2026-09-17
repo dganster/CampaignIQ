@@ -4,7 +4,9 @@ from decimal import Decimal
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.execution import Execution
 from campaigniq.domain.forex_settlement_attribution import (
+    FOREX_TRANSACTION_REPORT_CLOCK_OFFSET,
     attribute_forex_settlements,
+    forex_transaction_report_trade_time_on_statement_clock,
 )
 from campaigniq.domain.instrument_leg import InstrumentLeg
 from campaigniq.domain.position_effect import PositionEffect
@@ -66,3 +68,43 @@ def test_does_not_attribute_without_close_evidence():
     campaign = CampaignReconstructor().reconstruct([opened])[0]
 
     assert attribute_forex_settlements([campaign], [settlement()]) == ()
+
+
+def test_source_clock_normalization_handles_midnight_crossing() -> None:
+    report_trade_at = datetime(2026, 4, 14, 0, 27, 27)
+
+    assert FOREX_TRANSACTION_REPORT_CLOCK_OFFSET.total_seconds() == 2 * 60 * 60
+    assert forex_transaction_report_trade_time_on_statement_clock(
+        settlement(trade_at=report_trade_at)
+    ) == datetime(2026, 4, 13, 22, 27, 27)
+
+
+def test_midnight_crossing_settlement_attributes_to_statement_close() -> None:
+    opened = trade(
+        "EUR/USD",
+        Side.SELL,
+        PositionEffect.OPEN,
+        datetime(2026, 4, 13, 14, 13, 37),
+    )
+    closed = trade(
+        "EUR/USD",
+        Side.BUY,
+        PositionEffect.CLOSE,
+        datetime(2026, 4, 13, 22, 27, 27),
+    )
+    campaign = CampaignReconstructor().reconstruct([opened, closed])[0]
+
+    result = attribute_forex_settlements(
+        [campaign],
+        [
+            settlement(
+                pair="EUR/USD",
+                trade_at=datetime(2026, 4, 14, 0, 27, 27),
+                pnl="-186.00",
+            )
+        ],
+    )
+
+    assert len(result) == 1
+    assert result[0].campaign_id == campaign.campaign_id
+    assert result[0].gain_loss == Decimal("-186.00")

@@ -12,6 +12,20 @@ from campaigniq.domain.value_objects.forex_pair import ForexPair
 from campaigniq.importers.schwab.forex_transaction_reader import SchwabForexSettlement
 
 
+# Empirical cross-source clock normalization. Across the Jan-Aug 2026 broker
+# evidence, Thinkorswim Forex Transaction Report trade timestamps are exactly
+# two hours ahead of corresponding Thinkorswim Forex Statements execution
+# timestamps. Preserve both raw source timestamps and normalize only here,
+# where the two sources are compared. This is not asserted to be a timezone
+# conversion.
+FOREX_TRANSACTION_REPORT_CLOCK_OFFSET = timedelta(hours=2)
+
+
+def forex_transaction_report_trade_time_on_statement_clock(settlement):
+    """Map a Transaction Report trade timestamp onto the Statements clock."""
+    return settlement.trade_at - FOREX_TRANSACTION_REPORT_CLOCK_OFFSET
+
+
 @dataclass(frozen=True, slots=True)
 class ForexSettlementAttribution:
     settlement: SchwabForexSettlement
@@ -58,7 +72,8 @@ def attribute_forex_settlements(
             for candidate in candidates_by_pair.get(
                 settlement.instrument.upper(), []
             )
-            if candidate[0] <= settlement.trade_at - timedelta(hours=2)
+            if candidate[0]
+            <= forex_transaction_report_trade_time_on_statement_clock(settlement)
         ]
         if not eligible:
             continue
