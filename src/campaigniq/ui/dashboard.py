@@ -796,7 +796,7 @@ underlying_rows = [
         "Wins": summary.winning_campaign_count,
         "Losses": summary.losing_campaign_count,
         "Breakeven": summary.breakeven_campaign_count,
-        "Win Rate": float(summary.win_rate) if summary.win_rate is not None else None,
+        "Win Rate": float(summary.win_rate) * 100 if summary.win_rate is not None else None,
         "Average Campaign P&L": float(summary.average_campaign_pnl) if summary.average_campaign_pnl is not None else None,
         "Median Campaign P&L": float(summary.median_campaign_pnl) if summary.median_campaign_pnl is not None else None,
         "Best Campaign": summary.best_campaign_id,
