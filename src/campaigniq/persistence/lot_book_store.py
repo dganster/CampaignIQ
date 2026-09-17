@@ -5,22 +5,25 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+
 from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.value_objects.instrument import Instrument
+from campaigniq.persistence.artifact_storage import ArtifactStorage
 
 _FORMAT = "campaigniq.lot_book"
 _VERSION = 1
+
 
 @dataclass(frozen=True, slots=True)
 class PersistedLotBook:
     period_end: date
     lot_book: LotBook
 
-def save_lot_book(path: str | Path, *, period_end: date, lot_book: LotBook) -> None:
-    destination = Path(path)
+
+def serialize_lot_book(*, period_end: date, lot_book: LotBook) -> str:
     payload = {
         "format": _FORMAT,
         "version": _VERSION,
@@ -32,14 +35,11 @@ def save_lot_book(path: str | Path, *, period_end: date, lot_book: LotBook) -> N
             for lot in lot_book._lots[instrument]
         ],
     }
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
-def load_lot_book(path: str | Path) -> PersistedLotBook:
-    source = Path(path)
-    payload = json.loads(source.read_text(encoding="utf-8"))
+
+def deserialize_lot_book(text: str) -> PersistedLotBook:
+    payload = json.loads(text)
     if payload.get("format") != _FORMAT:
         raise ValueError("Unsupported lot book persistence format.")
     if payload.get("version") != _VERSION:
@@ -67,6 +67,35 @@ def load_lot_book(path: str | Path) -> PersistedLotBook:
         lot_book=lot_book,
     )
 
+
+def save_lot_book_to_storage(
+    storage: ArtifactStorage,
+    key: str,
+    *,
+    period_end: date,
+    lot_book: LotBook,
+) -> None:
+    storage.write_text(key, serialize_lot_book(period_end=period_end, lot_book=lot_book))
+
+
+def load_lot_book_from_storage(
+    storage: ArtifactStorage,
+    key: str,
+) -> PersistedLotBook:
+    return deserialize_lot_book(storage.read_text(key))
+
+
+def save_lot_book(path: str | Path, *, period_end: date, lot_book: LotBook) -> None:
+    Path(path).write_text(
+        serialize_lot_book(period_end=period_end, lot_book=lot_book),
+        encoding="utf-8",
+    )
+
+
+def load_lot_book(path: str | Path) -> PersistedLotBook:
+    return deserialize_lot_book(Path(path).read_text(encoding="utf-8"))
+
+
 def _serialize_lot(lot: Lot) -> dict[str, object]:
     return {
         "lot_id": lot.lot_id,
@@ -77,6 +106,7 @@ def _serialize_lot(lot: Lot) -> dict[str, object]:
         "basis_source": lot.basis_source,
         "campaign_id": lot.campaign_id,
     }
+
 
 def _deserialize_lot(payload: dict[str, object]) -> Lot:
     basis_total = payload["basis_total"]
@@ -89,6 +119,7 @@ def _deserialize_lot(payload: dict[str, object]) -> Lot:
         basis_source=None if payload["basis_source"] is None else str(payload["basis_source"]),
         campaign_id=None if payload["campaign_id"] is None else str(payload["campaign_id"]),
     )
+
 
 def _serialize_instrument(instrument: Instrument | OptionContract) -> dict[str, object]:
     if isinstance(instrument, OptionContract):
@@ -106,6 +137,7 @@ def _serialize_instrument(instrument: Instrument | OptionContract) -> dict[str, 
         f"{type(instrument).__name__}"
     )
 
+
 def _deserialize_instrument(payload: object) -> Instrument | OptionContract:
     if not isinstance(payload, dict):
         raise ValueError("Persisted lot instrument must be an object.")
@@ -120,6 +152,7 @@ def _deserialize_instrument(payload: object) -> Instrument | OptionContract:
             option_type=OptionType(str(payload["option_type"])),
         )
     raise ValueError(f"Unsupported lot book instrument type: {instrument_type!r}")
+
 
 def _instrument_sort_key(instrument: Instrument | OptionContract) -> tuple[str, ...]:
     if isinstance(instrument, OptionContract):
