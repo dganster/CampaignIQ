@@ -7,12 +7,75 @@ import json
 from pathlib import Path
 import tempfile
 
+from campaigniq.persistence.artifact_storage import ArtifactStorage
+
 
 PROTOCOL_FILE = ".campaigniq-monthly-publication-v1.json"
 
 
+def finalized_month_marker_key(*, period_end: date) -> str:
+    return f"{period_end:%Y-%m}-finalized.json"
+
+
+def _serialize_publication_protocol(*, first_period_end: date) -> str:
+    return json.dumps({
+        "format": "campaigniq.monthly_publication",
+        "version": 1,
+        "first_protected_period_end": first_period_end.isoformat(),
+    }, indent=2, sort_keys=True) + "\n"
+
+
+def _deserialize_publication_cutover(text: str) -> date:
+    payload = json.loads(text)
+    if payload.get("format") != "campaigniq.monthly_publication" or payload.get("version") != 1:
+        raise ValueError("Unsupported CampaignIQ monthly publication protocol.")
+    return date.fromisoformat(payload["first_protected_period_end"])
+
+
+def _serialize_finalized_month_marker(*, period_end: date) -> str:
+    return json.dumps({
+        "format": "campaigniq.finalized_month",
+        "version": 1,
+        "period_end": period_end.isoformat(),
+    }, indent=2, sort_keys=True) + "\n"
+
+
+def ensure_publication_protocol_in_storage(storage: ArtifactStorage, *, first_period_end: date) -> date:
+    if storage.exists(PROTOCOL_FILE):
+        return publication_cutover_from_storage(storage) or first_period_end
+    storage.write_text(PROTOCOL_FILE, _serialize_publication_protocol(first_period_end=first_period_end))
+    return first_period_end
+
+
+def publication_cutover_from_storage(storage: ArtifactStorage) -> date | None:
+    if not storage.exists(PROTOCOL_FILE):
+        return None
+    return _deserialize_publication_cutover(storage.read_text(PROTOCOL_FILE))
+
+
+def month_requires_finalization_marker_in_storage(storage: ArtifactStorage, *, period_end: date) -> bool:
+    cutover = publication_cutover_from_storage(storage)
+    return cutover is not None and period_end >= cutover
+
+
+def is_month_published_in_storage(storage: ArtifactStorage, *, period_end: date) -> bool:
+    if not month_requires_finalization_marker_in_storage(storage, period_end=period_end):
+        return True
+    return storage.exists(finalized_month_marker_key(period_end=period_end))
+
+
+def publish_finalized_month_marker_to_storage(storage: ArtifactStorage, *, period_end: date) -> str:
+    key = finalized_month_marker_key(period_end=period_end)
+    storage.write_text(key, _serialize_finalized_month_marker(period_end=period_end))
+    return key
+
+
+def unpublish_finalized_month_marker_from_storage(storage: ArtifactStorage, *, period_end: date) -> None:
+    storage.delete(finalized_month_marker_key(period_end=period_end))
+
+
 def finalized_month_marker_path(root: str | Path, *, period_end: date) -> Path:
-    return Path(root) / f"{period_end:%Y-%m}-finalized.json"
+    return Path(root) / finalized_month_marker_key(period_end=period_end)
 
 
 def ensure_publication_protocol(root: str | Path, *, first_period_end: date) -> date:
@@ -55,13 +118,9 @@ def publication_cutover(root: str | Path) -> date | None:
     protocol_path = Path(root) / PROTOCOL_FILE
     if not protocol_path.is_file():
         return None
-    payload = json.loads(protocol_path.read_text(encoding="utf-8"))
-    if (
-        payload.get("format") != "campaigniq.monthly_publication"
-        or payload.get("version") != 1
-    ):
-        raise ValueError("Unsupported CampaignIQ monthly publication protocol.")
-    return date.fromisoformat(payload["first_protected_period_end"])
+    return _deserialize_publication_cutover(
+        protocol_path.read_text(encoding="utf-8")
+    )
 
 
 def month_requires_finalization_marker(
