@@ -15,6 +15,7 @@ from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.domain.value_objects.instrument import Instrument
+from campaigniq.persistence.artifact_storage import ArtifactStorage
 
 _FORMAT = "campaigniq.realized_attributions"
 _VERSION = 1
@@ -35,22 +36,17 @@ class PersistedRealizedAttributions:
             )
 
 
-def save_realized_attributions(
-    path: str | Path,
+def serialize_realized_attributions(
     *,
     period_start: date,
     period_end: date,
     attributions: Iterable[RealizedAttribution],
-) -> None:
-    """Persist one period of realized attributions."""
-
+) -> str:
     persisted = PersistedRealizedAttributions(
         period_start=period_start,
         period_end=period_end,
         attributions=tuple(attributions),
     )
-
-    destination = Path(path)
     payload = {
         "format": _FORMAT,
         "version": _VERSION,
@@ -61,9 +57,83 @@ def save_realized_attributions(
             for attribution in persisted.attributions
         ],
     }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+
+def deserialize_realized_attributions(text: str) -> PersistedRealizedAttributions:
+    payload = json.loads(text)
+    if payload.get("format") != _FORMAT:
+        raise ValueError("Unsupported realized attribution persistence format.")
+    if payload.get("version") != _VERSION:
+        raise ValueError(
+            "Unsupported realized attribution persistence version: "
+            f"{payload.get('version')!r}"
+        )
+    serialized_attributions = payload.get("attributions")
+    if not isinstance(serialized_attributions, list):
+        raise ValueError(
+            "Realized attribution persistence payload must contain "
+            "an 'attributions' list."
+        )
+    period_start_raw = payload.get("period_start")
+    period_end_raw = payload.get("period_end")
+    if not isinstance(period_start_raw, str):
+        raise ValueError(
+            "Realized attribution persistence payload must contain "
+            "a 'period_start' date."
+        )
+    if not isinstance(period_end_raw, str):
+        raise ValueError(
+            "Realized attribution persistence payload must contain "
+            "a 'period_end' date."
+        )
+    return PersistedRealizedAttributions(
+        period_start=date.fromisoformat(period_start_raw),
+        period_end=date.fromisoformat(period_end_raw),
+        attributions=tuple(
+            _deserialize_attribution(item) for item in serialized_attributions
+        ),
+    )
+
+
+def save_realized_attributions_to_storage(
+    storage: ArtifactStorage,
+    key: str,
+    *,
+    period_start: date,
+    period_end: date,
+    attributions: Iterable[RealizedAttribution],
+) -> None:
+    storage.write_text(
+        key,
+        serialize_realized_attributions(
+            period_start=period_start,
+            period_end=period_end,
+            attributions=attributions,
+        ),
+    )
+
+
+def load_realized_attributions_from_storage(
+    storage: ArtifactStorage,
+    key: str,
+) -> PersistedRealizedAttributions:
+    return deserialize_realized_attributions(storage.read_text(key))
+
+
+def save_realized_attributions(
+    path: str | Path,
+    *,
+    period_start: date,
+    period_end: date,
+    attributions: Iterable[RealizedAttribution],
+) -> None:
+    Path(path).write_text(
+        serialize_realized_attributions(
+            period_start=period_start,
+            period_end=period_end,
+            attributions=attributions,
+        ),
         encoding="utf-8",
     )
 
@@ -71,52 +141,7 @@ def save_realized_attributions(
 def load_realized_attributions(
     path: str | Path,
 ) -> PersistedRealizedAttributions:
-    """Load one persisted period of realized attributions."""
-
-    source = Path(path)
-    payload = json.loads(source.read_text(encoding="utf-8"))
-
-    if payload.get("format") != _FORMAT:
-        raise ValueError(
-            "Unsupported realized attribution persistence format."
-        )
-
-    if payload.get("version") != _VERSION:
-        raise ValueError(
-            "Unsupported realized attribution persistence version: "
-            f"{payload.get('version')!r}"
-        )
-
-    serialized_attributions = payload.get("attributions")
-    if not isinstance(serialized_attributions, list):
-        raise ValueError(
-            "Realized attribution persistence payload must contain "
-            "an 'attributions' list."
-        )
-
-    period_start_raw = payload.get("period_start")
-    period_end_raw = payload.get("period_end")
-
-    if not isinstance(period_start_raw, str):
-        raise ValueError(
-            "Realized attribution persistence payload must contain "
-            "a 'period_start' date."
-        )
-
-    if not isinstance(period_end_raw, str):
-        raise ValueError(
-            "Realized attribution persistence payload must contain "
-            "a 'period_end' date."
-        )
-
-    return PersistedRealizedAttributions(
-        period_start=date.fromisoformat(period_start_raw),
-        period_end=date.fromisoformat(period_end_raw),
-        attributions=tuple(
-            _deserialize_attribution(item)
-            for item in serialized_attributions
-        ),
-    )
+    return deserialize_realized_attributions(Path(path).read_text(encoding="utf-8"))
 
 
 def _serialize_attribution(
