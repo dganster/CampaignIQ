@@ -162,7 +162,8 @@ def test_wizard_reports_additional_forex_controls_as_nonfatal() -> None:
 
 def test_analytics_loading_filters_artifacts_through_publication_boundary() -> None:
     text = source()
-    assert "def _published_artifact_paths(" in text
-    assert "is_month_published(AUTHORITATIVE_STATE_DIR" in text
-    assert '"*-realized-attributions.json"' in text
-    assert '"*-forex-settlement-attributions.json"' in text
+    assert "def _published_artifact_keys(" in text
+    assert "ARTIFACT_STORAGE.list_keys(" in text
+    assert "is_month_published_in_storage(" in text
+    assert '"-realized-attributions.json"' in text
+    assert '"-forex-settlement-attributions.json"' in text

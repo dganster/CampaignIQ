@@ -14,7 +14,10 @@ from campaigniq.persistence.lot_book_store import (
     save_lot_book,
     save_lot_book_to_storage,
 )
-from campaigniq.persistence.monthly_publication import is_month_published
+from campaigniq.persistence.monthly_publication import (
+    is_month_published,
+    is_month_published_in_storage,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,14 +61,12 @@ def load_preceding_authoritative_state_from_storage(
     *,
     period_start: date,
 ) -> tuple[date, str, LotBook] | None:
-    """Load only the exact predecessor artifact from storage.
-
-    Publication visibility is intentionally not decided here; Slice 6 migrates
-    the publication protocol itself to the storage boundary.
-    """
+    """Load the exact published predecessor artifact from storage."""
     expected_period_end = period_start - date.resolution
     key = lot_state_key(period_end=expected_period_end)
     if not storage.exists(key):
+        return None
+    if not is_month_published_in_storage(storage, period_end=expected_period_end):
         return None
 
     persisted = load_lot_book_from_storage(storage, key)

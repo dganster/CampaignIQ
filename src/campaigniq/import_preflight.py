@@ -16,9 +16,12 @@ from campaigniq.import_validation import (
     MonthlyInputValidation,
     validate_monthly_input,
 )
+from campaigniq.persistence.artifact_storage import ArtifactStorage
 from campaigniq.persistence.authoritative_lot_state import (
     AuthoritativeOpeningState,
     load_preceding_authoritative_state,
+    load_preceding_authoritative_state_from_storage,
+    lot_state_path,
 )
 
 
@@ -69,13 +72,28 @@ def prepare_monthly_import(
     *,
     authoritative_state_root: str | Path,
     supplied_inputs: Mapping[MonthlyInputRole, str | Path],
+    artifact_storage: ArtifactStorage | None = None,
 ) -> MonthlyImportPreflight:
     """Combine the monthly contract, file validation, and predecessor discovery."""
     contract = monthly_import_contract(year, month)
-    opening_state = load_preceding_authoritative_state(
-        authoritative_state_root,
-        period_start=contract.period_start,
-    )
+    if artifact_storage is None:
+        opening_state = load_preceding_authoritative_state(
+            authoritative_state_root,
+            period_start=contract.period_start,
+        )
+    else:
+        stored = load_preceding_authoritative_state_from_storage(
+            artifact_storage,
+            period_start=contract.period_start,
+        )
+        opening_state = None
+        if stored is not None:
+            period_end, _key, lot_book = stored
+            opening_state = AuthoritativeOpeningState(
+                period_end=period_end,
+                path=lot_state_path(authoritative_state_root, period_end=period_end),
+                lot_book=lot_book,
+            )
 
     validations: list[MonthlyInputValidation] = []
 

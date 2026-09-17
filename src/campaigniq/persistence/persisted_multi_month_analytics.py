@@ -7,8 +7,10 @@ from datetime import date
 from pathlib import Path
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
+from campaigniq.persistence.artifact_storage import ArtifactStorage
 from campaigniq.persistence.realized_attribution_store import (
     load_realized_attributions,
+    load_realized_attributions_from_storage,
 )
 
 
@@ -85,4 +87,50 @@ def load_persisted_monthly_campaign_attributions(
             )
         forex[key] = persisted.attributions
 
+    return realized, dict(sorted(forex.items()))
+
+
+def load_persisted_monthly_attributions_from_storage(
+    storage: ArtifactStorage,
+    keys: Iterable[str],
+) -> Mapping[tuple[date, date], tuple[RealizedAttribution, ...]]:
+    periods = {}
+    for key_name in keys:
+        persisted = load_realized_attributions_from_storage(storage, key_name)
+        period = (persisted.period_start, persisted.period_end)
+        if period in periods:
+            raise ValueError(
+                "Duplicate persisted realized attribution period: "
+                f"{persisted.period_start.isoformat()} through {persisted.period_end.isoformat()}"
+            )
+        periods[period] = persisted.attributions
+    return dict(sorted(periods.items()))
+
+
+def load_persisted_monthly_campaign_attributions_from_storage(
+    storage: ArtifactStorage,
+    *,
+    realized_keys: Iterable[str],
+    forex_keys: Iterable[str],
+):
+    from campaigniq.persistence.forex_settlement_attribution_store import (
+        load_forex_settlement_attributions_from_storage,
+    )
+    realized = load_persisted_monthly_attributions_from_storage(storage, realized_keys)
+    forex = {}
+    for key_name in forex_keys:
+        persisted = load_forex_settlement_attributions_from_storage(storage, key_name)
+        period = (persisted.period_start, persisted.period_end)
+        if period in forex:
+            raise ValueError(
+                "Duplicate persisted FOREX settlement attribution period: "
+                f"{persisted.period_start.isoformat()} through {persisted.period_end.isoformat()}"
+            )
+        if period not in realized:
+            raise ValueError(
+                "Persisted FOREX settlement attribution period has no matching "
+                "realized attribution period: "
+                f"{persisted.period_start.isoformat()} through {persisted.period_end.isoformat()}"
+            )
+        forex[period] = persisted.attributions
     return realized, dict(sorted(forex.items()))

@@ -28,9 +28,10 @@ from campaigniq.ui.dashboard_campaigns import (
     aggregate_period_qualified_campaigns,
 )
 from campaigniq.persistence.persisted_multi_month_analytics import (
-    load_persisted_monthly_campaign_attributions,
+    load_persisted_monthly_campaign_attributions_from_storage,
 )
-from campaigniq.persistence.monthly_publication import is_month_published
+from campaigniq.persistence.artifact_storage import LocalFilesystemArtifactStorage
+from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
@@ -45,6 +46,7 @@ HISTORICAL_SOURCE_ROOT = RUNTIME_DATA_DIR / "thinkorswim_history"
 
 AUTHORITATIVE_STATE_DIR.mkdir(parents=True, exist_ok=True)
 HISTORICAL_SOURCE_ROOT.mkdir(parents=True, exist_ok=True)
+ARTIFACT_STORAGE = LocalFilesystemArtifactStorage(AUTHORITATIVE_STATE_DIR)
 
 MONTHLY_UPLOAD_ROLES = (
     (
@@ -284,6 +286,7 @@ def render_monthly_import_wizard():
                 int(month),
                 authoritative_state_root=AUTHORITATIVE_STATE_DIR,
                 supplied_inputs=supplied,
+                artifact_storage=ARTIFACT_STORAGE,
             )
         except Exception as exc:
             st.error(f"Unable to validate monthly import: {exc}")
@@ -335,6 +338,7 @@ def render_monthly_import_wizard():
                 preflight,
                 authoritative_state_root=AUTHORITATIVE_STATE_DIR,
                 supplied_inputs=supplied,
+                artifact_storage=ARTIFACT_STORAGE,
                 historical_source_root=HISTORICAL_SOURCE_ROOT,
             )
         except Exception as exc:
@@ -423,40 +427,39 @@ def render_monthly_import_wizard():
 
 
 
-def _published_artifact_paths(pattern: str, suffix: str):
-    paths = []
-    for path in sorted(AUTHORITATIVE_STATE_DIR.glob(pattern)):
-        period_end = date.fromisoformat(f"{path.name.removesuffix(suffix)}-01")
-        if period_end.month == 12:
-            next_month = date(period_end.year + 1, 1, 1)
+def _published_artifact_keys(*, suffix: str):
+    keys = []
+    for key in ARTIFACT_STORAGE.list_keys(suffix=suffix):
+        month_text = key.removesuffix(suffix)
+        try:
+            month_start = date.fromisoformat(f"{month_text}-01")
+        except ValueError:
+            continue
+        if month_start.month == 12:
+            next_month = date(month_start.year + 1, 1, 1)
         else:
-            next_month = date(period_end.year, period_end.month + 1, 1)
+            next_month = date(month_start.year, month_start.month + 1, 1)
         period_end = next_month - date.resolution
-        if is_month_published(AUTHORITATIVE_STATE_DIR, period_end=period_end):
-            paths.append(path)
-    return paths
+        if is_month_published_in_storage(ARTIFACT_STORAGE, period_end=period_end):
+            keys.append(key)
+    return tuple(keys)
 
 
 def load_summaries():
     """Load authoritative persisted periods and calculate monthly analytics."""
-    realized_paths = _published_artifact_paths(
-        "*-realized-attributions.json",
-        "-realized-attributions.json",
-    )
-    forex_paths = _published_artifact_paths(
-        "*-forex-settlement-attributions.json",
-        "-forex-settlement-attributions.json",
-    )
+    realized_keys = _published_artifact_keys(suffix="-realized-attributions.json")
+    forex_keys = _published_artifact_keys(suffix="-forex-settlement-attributions.json")
 
-    if not realized_paths:
+    if not realized_keys:
         raise FileNotFoundError(
             f"No persisted attribution files found in {AUTHORITATIVE_STATE_DIR}"
         )
 
     monthly_attributions, monthly_forex_attributions = (
-        load_persisted_monthly_campaign_attributions(
-            realized_paths=realized_paths,
-            forex_paths=forex_paths,
+        load_persisted_monthly_campaign_attributions_from_storage(
+            ARTIFACT_STORAGE,
+            realized_keys=realized_keys,
+            forex_keys=forex_keys,
         )
     )
 
