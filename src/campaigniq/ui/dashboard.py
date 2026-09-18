@@ -27,6 +27,9 @@ from campaigniq.analytics.campaign_outcome_distribution import (
 from campaigniq.analytics.underlying_performance import (
     summarize_underlying_performance,
 )
+from campaigniq.analytics.repeated_campaign_performance import (
+    summarize_repeated_campaign_performance,
+)
 from campaigniq.ui.dashboard_campaigns import (
     aggregate_period_qualified_campaigns,
 )
@@ -518,6 +521,9 @@ campaign_results, campaign_drilldowns = (
 )
 campaign_outcomes = summarize_campaign_outcomes(campaign_results)
 underlying_performance = summarize_underlying_performance(monthly_attributions)
+repeated_campaign_performance = summarize_repeated_campaign_performance(
+    monthly_attributions
+)
 
 rows = []
 
@@ -828,6 +834,52 @@ st.caption(
     "Equity/options only. FOREX is excluded from Underlying Performance v1. "
     "Only fully reconciled, unambiguous realized records are included. "
     "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
+)
+
+st.subheader("Repeated-Campaign Performance")
+
+repeated_campaign_rows = [
+    {
+        "Underlying": summary.underlying,
+        "Campaigns": summary.campaign_count,
+        "First Realized Campaign": summary.first_campaign_id,
+        "First Realized Date": summary.first_realized_date,
+        "First Campaign P&L": float(summary.first_campaign_pnl),
+        "Subsequent Campaigns": summary.subsequent_campaign_count,
+        "Subsequent Realized P&L": float(summary.subsequent_realized_pnl),
+        "Subsequent Wins": summary.subsequent_winning_campaign_count,
+        "Subsequent Losses": summary.subsequent_losing_campaign_count,
+        "Subsequent Breakeven": summary.subsequent_breakeven_campaign_count,
+        "Subsequent Win Rate": float(summary.subsequent_win_rate) * 100 if summary.subsequent_win_rate is not None else None,
+        "Subsequent Average Campaign P&L": float(summary.subsequent_average_campaign_pnl) if summary.subsequent_average_campaign_pnl is not None else None,
+        "Subsequent Median Campaign P&L": float(summary.subsequent_median_campaign_pnl) if summary.subsequent_median_campaign_pnl is not None else None,
+    }
+    for summary in repeated_campaign_performance
+]
+repeated_campaign_df = pd.DataFrame(repeated_campaign_rows)
+if not repeated_campaign_df.empty:
+    repeated_campaign_df = repeated_campaign_df.sort_values("Subsequent Realized P&L", ascending=True).reset_index(drop=True)
+
+st.dataframe(
+    repeated_campaign_df,
+    use_container_width=True,
+    hide_index=True,
+    height=420,
+    column_config={
+        "First Realized Date": st.column_config.DateColumn("First Realized Date", format="MMM D, YYYY"),
+        "First Campaign P&L": st.column_config.NumberColumn("First Campaign P&L", format="$%0,.2f"),
+        "Subsequent Realized P&L": st.column_config.NumberColumn("Subsequent Realized P&L", format="$%0,.2f"),
+        "Subsequent Win Rate": st.column_config.NumberColumn("Subsequent Win Rate", format="%.1f%%"),
+        "Subsequent Average Campaign P&L": st.column_config.NumberColumn("Subsequent Average Campaign P&L", format="$%0,.2f"),
+        "Subsequent Median Campaign P&L": st.column_config.NumberColumn("Subsequent Median Campaign P&L", format="$%0,.2f"),
+    },
+)
+st.caption(
+    "Equity/options only; underlyings with at least two qualifying campaigns are shown. "
+    "This is realized-campaign chronology, not true campaign-start chronology: campaigns "
+    "are ordered by earliest realized close date, with period-qualified campaign ID as a "
+    "same-date tie-breaker. Only fully reconciled, unambiguous realized records are included. "
+    "Rows are sorted by subsequent realized P&L, worst first; click column headers to re-sort."
 )
 
 st.subheader("Campaign Drill-Down")
