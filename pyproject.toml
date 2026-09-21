@@ -18,8 +18,14 @@ dependencies = []
 
 [project.optional-dependencies]
 ui = [
-    "streamlit>=1.63,<2",
+    "altair>=6,<7",
     "pandas>=3,<4",
+    "streamlit>=1.63,<2",
+]
+
+dev = [
+    "pytest>=9,<10",
+    "ruff>=0.13,<1",
 ]
 
 [project.scripts]
