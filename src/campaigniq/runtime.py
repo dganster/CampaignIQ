@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 from campaigniq.persistence.artifact_storage import (
     ArtifactStorage,
     LocalFilesystemArtifactStorage,
 )
+
+
+CAMPAIGNIQ_DATA_ROOT_ENV = "CAMPAIGNIQ_DATA_ROOT"
 
 
 @dataclass(frozen=True)
@@ -21,18 +25,25 @@ class CampaignIQRuntime:
 
 
 def build_local_runtime(*, project_root: str | Path | None = None) -> CampaignIQRuntime:
-    """Build the current local-filesystem runtime.
+    """Build a filesystem-backed CampaignIQ runtime.
 
-    Keeping construction here gives the UI one composition boundary. A future
-    cloud runtime can provide durable storage without changing analytics or
-    import behavior.
+    CAMPAIGNIQ_DATA_ROOT can place runtime state on durable infrastructure
+    such as a mounted cloud disk. When it is unset, CampaignIQ preserves the
+    existing local behavior of storing runtime state under
+    <project_root>/.campaigniq.
     """
-    root = (
-        Path(project_root)
-        if project_root is not None
-        else Path(__file__).resolve().parents[2]
-    )
-    runtime_data_root = root / ".campaigniq"
+    configured_data_root = os.environ.get(CAMPAIGNIQ_DATA_ROOT_ENV)
+
+    if configured_data_root:
+        runtime_data_root = Path(configured_data_root).expanduser()
+    else:
+        root = (
+            Path(project_root)
+            if project_root is not None
+            else Path(__file__).resolve().parents[2]
+        )
+        runtime_data_root = root / ".campaigniq"
+
     authoritative_state_root = runtime_data_root / "authoritative_state"
     historical_source_root = runtime_data_root / "thinkorswim_history"
 
