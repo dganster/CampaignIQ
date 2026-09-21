@@ -36,7 +36,7 @@ from campaigniq.ui.dashboard_campaigns import (
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
-from campaigniq.persistence.artifact_storage import LocalFilesystemArtifactStorage
+from campaigniq.runtime import build_local_runtime
 from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
@@ -46,13 +46,10 @@ from campaigniq.monthly_import_execution import execute_monthly_import
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RECONCILED_DIR = PROJECT_ROOT / "tests" / "data" / "reconciled"
 
-RUNTIME_DATA_DIR = PROJECT_ROOT / ".campaigniq"
-AUTHORITATIVE_STATE_DIR = RUNTIME_DATA_DIR / "authoritative_state"
-HISTORICAL_SOURCE_ROOT = RUNTIME_DATA_DIR / "thinkorswim_history"
-
-AUTHORITATIVE_STATE_DIR.mkdir(parents=True, exist_ok=True)
-HISTORICAL_SOURCE_ROOT.mkdir(parents=True, exist_ok=True)
-ARTIFACT_STORAGE = LocalFilesystemArtifactStorage(AUTHORITATIVE_STATE_DIR)
+RUNTIME = build_local_runtime(project_root=PROJECT_ROOT)
+AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
+HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
+ARTIFACT_STORAGE = RUNTIME.artifact_storage
 
 MONTHLY_UPLOAD_ROLES = (
     (

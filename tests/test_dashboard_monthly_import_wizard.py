@@ -103,21 +103,19 @@ def test_monthly_import_view_stops_before_analytics_loading() -> None:
 
 def test_monthly_import_runtime_state_is_separate_from_test_fixtures() -> None:
     text = source()
-    assert 'RUNTIME_DATA_DIR = PROJECT_ROOT / ".campaigniq"' in text
-    assert (
-        'AUTHORITATIVE_STATE_DIR = RUNTIME_DATA_DIR / "authoritative_state"'
-        in text
-    )
-    assert (
-        'HISTORICAL_SOURCE_ROOT = RUNTIME_DATA_DIR / "thinkorswim_history"'
-        in text
-    )
-    assert "AUTHORITATIVE_STATE_DIR = RECONCILED_DIR" not in text
-    assert (
-        'HISTORICAL_SOURCE_ROOT = PROJECT_ROOT / "tests" / "data" / "thinkorswim"'
-        not in text
-    )
 
+    assert "from campaigniq.runtime import build_local_runtime" in text
+    assert "RUNTIME = build_local_runtime(project_root=PROJECT_ROOT)" in text
+    assert (
+        "AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root"
+        in text
+    )
+    assert "HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root" in text
+    assert "ARTIFACT_STORAGE = RUNTIME.artifact_storage" in text
+
+    # The dashboard consumes runtime infrastructure rather than constructing
+    # the local filesystem storage adapter itself.
+    assert "LocalFilesystemArtifactStorage" not in text
 
 def test_forex_transaction_report_uses_its_own_uploaded_report() -> None:
     text = source()
