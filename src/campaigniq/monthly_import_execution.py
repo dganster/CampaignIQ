@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from shutil import copyfile
 from typing import Mapping
 
 from campaigniq.closing_inventory_reconciliation import (
@@ -96,6 +97,23 @@ class MonthlyImportExecution:
         return report.financing_control_reconciled if report is not None else None
 
 
+def _archive_thinkorswim_trade_history(
+    source: str | Path,
+    *,
+    historical_source_root: str | Path,
+    period_end,
+) -> Path:
+    """Archive finalized monthly Thinkorswim evidence for future reconstruction."""
+    root = Path(historical_source_root)
+    root.mkdir(parents=True, exist_ok=True)
+
+    destination = root / (
+        f"Account Trade History {period_end:%B %Y}.csv"
+    )
+    copyfile(Path(source), destination)
+    return destination
+
+
 def execute_monthly_import(
     preflight: MonthlyImportPreflight,
     *,
@@ -178,6 +196,14 @@ def execute_monthly_import(
 
     state_root = Path(authoritative_state_root)
     storage = artifact_storage or LocalFilesystemArtifactStorage(state_root)
+
+    if historical_source_root is not None:
+        _archive_thinkorswim_trade_history(
+            tos_path,
+            historical_source_root=historical_source_root,
+            period_end=contract.period_end,
+        )
+
     realized_attributions = attribute_period_realized_pnl(result)
     input_provenance = capture_monthly_input_provenance(supplied_inputs)
 

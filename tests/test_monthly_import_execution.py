@@ -592,3 +592,147 @@ def test_republication_unpublishes_old_generation_before_payload_replacement(
         )
 
     assert not marker.exists()
+
+
+def test_successful_reconciliation_archives_thinkorswim_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt").read_text().splitlines(),
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026,
+        8,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+    assert preflight.ready
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    history_root = tmp_path / "history"
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+        historical_source_root=history_root,
+    )
+
+    assert outcome.finalized
+
+    archived = history_root / "Account Trade History August 2026.csv"
+    assert archived.exists()
+    assert archived.read_bytes() == inputs[
+        MonthlyInputRole.THINKORSWIM_TRADE_HISTORY
+    ].read_bytes()
+
+
+def test_failed_reconciliation_does_not_archive_thinkorswim_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt").read_text().splitlines(),
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026,
+        8,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+    assert preflight.ready
+
+    mismatch = ClosingInventoryReconciliation(
+        (
+            ClosingInventoryMismatch(
+                instrument=Instrument("IBM"),
+                computed_quantity=Decimal("1"),
+                snapshot_quantity=Decimal("2"),
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: mismatch,
+    )
+
+    history_root = tmp_path / "history"
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+        historical_source_root=history_root,
+    )
+
+    assert not outcome.finalized
+    assert not history_root.exists()
+
+
+def test_thinkorswim_history_archive_replaces_same_month(
+    tmp_path,
+) -> None:
+    history_root = tmp_path / "history"
+    first = tmp_path / "first.csv"
+    replacement = tmp_path / "replacement.csv"
+
+    first.write_text("first generation", encoding="utf-8")
+    replacement.write_text("replacement generation", encoding="utf-8")
+
+    first_path = execution_module._archive_thinkorswim_trade_history(
+        first,
+        historical_source_root=history_root,
+        period_end=date(2026, 8, 31),
+    )
+    replacement_path = execution_module._archive_thinkorswim_trade_history(
+        replacement,
+        historical_source_root=history_root,
+        period_end=date(2026, 8, 31),
+    )
+
+    expected = history_root / "Account Trade History August 2026.csv"
+
+    assert first_path == expected
+    assert replacement_path == expected
+    assert expected.read_text(encoding="utf-8") == "replacement generation"
+    assert list(history_root.glob("*.csv")) == [expected]
