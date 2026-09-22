@@ -28,6 +28,7 @@ def test_ui_extra_declares_direct_dashboard_dependencies() -> None:
     extras = optional_dependencies()
 
     assert package_names(extras["ui"]) == {
+        "Authlib",
         "altair",
         "pandas",
         "streamlit",
