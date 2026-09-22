@@ -65,6 +65,7 @@ def require_dashboard_access() -> None:
     candidate = st.text_input(
         "Password",
         type="password",
+        autocomplete="current-password",
         key="campaigniq_access_password",
     )
 
