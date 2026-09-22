@@ -24,7 +24,11 @@ class CampaignIQRuntime:
     historical_source_root: Path
 
 
-def build_local_runtime(*, project_root: str | Path | None = None) -> CampaignIQRuntime:
+def build_local_runtime(
+    *,
+    project_root: str | Path | None = None,
+    workspace_id: str | None = None,
+) -> CampaignIQRuntime:
     """Build a filesystem-backed CampaignIQ runtime.
 
     CAMPAIGNIQ_DATA_ROOT can place runtime state on durable infrastructure
@@ -43,6 +47,18 @@ def build_local_runtime(*, project_root: str | Path | None = None) -> CampaignIQ
             else Path(__file__).resolve().parents[2]
         )
         runtime_data_root = root / ".campaigniq"
+
+    if workspace_id is not None:
+        workspace_path = Path(workspace_id)
+        if (
+            not workspace_id
+            or workspace_path.is_absolute()
+            or len(workspace_path.parts) != 1
+            or workspace_id in {".", ".."}
+        ):
+            raise ValueError(f"Invalid workspace ID: {workspace_id!r}")
+
+        runtime_data_root = runtime_data_root / "workspaces" / workspace_id
 
     authoritative_state_root = runtime_data_root / "authoritative_state"
     historical_source_root = runtime_data_root / "thinkorswim_history"

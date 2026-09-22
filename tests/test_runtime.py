@@ -73,3 +73,91 @@ def test_configured_data_root_artifact_storage_is_operational(
         runtime.artifact_storage.read_text("probe/cloud.txt")
         == "durable-cloud-state"
     )
+
+
+def test_build_local_runtime_scopes_workspace_to_its_own_directories(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    configured_root = tmp_path / "mounted-cloud-storage"
+    monkeypatch.setenv("CAMPAIGNIQ_DATA_ROOT", str(configured_root))
+
+    runtime = build_local_runtime(
+        project_root=tmp_path / "ignored-project-root",
+        workspace_id="workspace-dennis",
+    )
+
+    expected_workspace = (
+        configured_root / "workspaces" / "workspace-dennis"
+    )
+    expected_state = expected_workspace / "authoritative_state"
+    expected_history = expected_workspace / "thinkorswim_history"
+
+    assert runtime.authoritative_state_root == expected_state
+    assert runtime.historical_source_root == expected_history
+    assert expected_state.is_dir()
+    assert expected_history.is_dir()
+    assert runtime.artifact_storage.root == expected_state
+
+
+def test_workspace_runtimes_isolate_artifact_storage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    configured_root = tmp_path / "mounted-cloud-storage"
+    monkeypatch.setenv("CAMPAIGNIQ_DATA_ROOT", str(configured_root))
+
+    dennis = build_local_runtime(
+        workspace_id="workspace-dennis",
+    )
+    andrew = build_local_runtime(
+        workspace_id="workspace-andrew",
+    )
+
+    dennis.artifact_storage.write_text(
+        "2026-08-realized-attributions.json",
+        "dennis-data",
+    )
+    andrew.artifact_storage.write_text(
+        "2026-08-realized-attributions.json",
+        "andrew-data",
+    )
+
+    assert dennis.artifact_storage.read_text(
+        "2026-08-realized-attributions.json"
+    ) == "dennis-data"
+    assert andrew.artifact_storage.read_text(
+        "2026-08-realized-attributions.json"
+    ) == "andrew-data"
+
+    assert dennis.authoritative_state_root != andrew.authoritative_state_root
+    assert dennis.historical_source_root != andrew.historical_source_root
+
+
+def test_workspace_runtime_rejects_unsafe_workspace_ids(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "CAMPAIGNIQ_DATA_ROOT",
+        str(tmp_path / "mounted-cloud-storage"),
+    )
+
+    invalid_ids = (
+        "",
+        ".",
+        "..",
+        "../andrew",
+        "dennis/andrew",
+        "/andrew",
+    )
+
+    for workspace_id in invalid_ids:
+        try:
+            build_local_runtime(workspace_id=workspace_id)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(
+                f"Unsafe workspace ID was accepted: {workspace_id!r}"
+            )
