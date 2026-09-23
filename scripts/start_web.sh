@@ -3,6 +3,8 @@ set -euo pipefail
 
 : "${PORT:=8501}"
 
+python scripts/configure_streamlit_auth.py
+
 exec python -m streamlit run src/campaigniq/ui/dashboard.py \
     --server.address=0.0.0.0 \
     --server.port="${PORT}" \
