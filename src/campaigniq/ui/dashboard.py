@@ -69,30 +69,36 @@ def require_dashboard_access() -> None:
         st.caption("Private access")
 
         claims = st.user.to_dict()
-        if claims:
-            st.error("This Google account is not authorized for CampaignIQ.")
+        is_logged_in = claims.get("is_logged_in") is True
 
+        if not is_logged_in:
+            st.info("Google authentication is not active for this session.")
+            if st.button("Sign in with Google", type="primary"):
+                st.login()
+        else:
             subject = claims.get("sub")
             if isinstance(subject, str) and subject.strip():
+                st.error("This Google account is not authorized for CampaignIQ.")
+                st.caption("OIDC subject:")
                 st.code(subject.strip(), language=None)
             else:
-                st.caption("Available token names:")
-                tokens = st.user.tokens
-                token_names = (
-                    sorted(str(key) for key in tokens.keys())
-                    if hasattr(tokens, "keys")
-                    else []
+                st.error(
+                    "Google authentication succeeded, but the OIDC subject "
+                    "claim is unavailable."
+                )
+                st.caption("Available user claim names:")
+                claim_names = sorted(
+                    str(key)
+                    for key in claims.keys()
+                    if key != "is_logged_in"
                 )
                 st.code(
-                    "\n".join(token_names) if token_names else "(none)",
+                    "\n".join(claim_names) if claim_names else "(none)",
                     language=None,
                 )
 
             if st.button("Sign out"):
                 st.logout()
-        else:
-            if st.button("Sign in with Google", type="primary"):
-                st.login()
 
         st.stop()
 
