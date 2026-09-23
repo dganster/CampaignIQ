@@ -76,13 +76,17 @@ def require_dashboard_access() -> None:
             if isinstance(subject, str) and subject.strip():
                 st.code(subject.strip(), language=None)
             else:
-                st.caption("Available st.user names:")
-                user_names = sorted(
-                    name
-                    for name in dir(st.user)
-                    if not name.startswith("_")
+                st.caption("Available token names:")
+                tokens = st.user.tokens
+                token_names = (
+                    sorted(str(key) for key in tokens.keys())
+                    if hasattr(tokens, "keys")
+                    else []
                 )
-                st.code("\n".join(user_names), language=None)
+                st.code(
+                    "\n".join(token_names) if token_names else "(none)",
+                    language=None,
+                )
 
             if st.button("Sign out"):
                 st.logout()
