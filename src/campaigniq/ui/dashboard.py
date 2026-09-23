@@ -38,6 +38,7 @@ from campaigniq.persistence.persisted_multi_month_analytics import (
 )
 from campaigniq.access import AccessContext
 from campaigniq.runtime import build_local_runtime
+from campaigniq.ui.access_audit import audit_unauthorized_oidc_identity
 from campaigniq.ui.access_gate import (
     AUTH_MODE_OIDC,
     access_password,
@@ -77,6 +78,7 @@ def require_dashboard_access() -> AccessContext | None:
             if st.button("Sign in with Google", type="primary"):
                 st.login()
         else:
+            audit_unauthorized_oidc_identity(claims)
             st.error("This Google account is not authorized for CampaignIQ.")
 
             if st.button("Sign out"):
