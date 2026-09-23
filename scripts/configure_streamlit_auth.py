@@ -63,8 +63,6 @@ def configure_streamlit_auth(
         "[auth]\n"
         f"redirect_uri = {_toml_string(values['redirect_uri'])}\n"
         f"cookie_secret = {_toml_string(values['cookie_secret'])}\n"
-        "\n"
-        "[auth.google]\n"
         f"client_id = {_toml_string(values['client_id'])}\n"
         f"client_secret = {_toml_string(values['client_secret'])}\n"
         f"server_metadata_url = {_toml_string(GOOGLE_METADATA_URL)}\n"

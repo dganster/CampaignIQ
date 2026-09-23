@@ -65,7 +65,7 @@ def test_oidc_mode_writes_streamlit_google_configuration(
     assert "[auth]" in content
     assert 'redirect_uri = "https://example.test/oauth2callback"' in content
     assert 'cookie_secret = "cookie-\\\"secret\\\""' in content
-    assert "[auth.google]" in content
+    assert "[auth.google]" not in content
     assert 'client_id = "client-id"' in content
     assert 'client_secret = "client-secret"' in content
     assert (

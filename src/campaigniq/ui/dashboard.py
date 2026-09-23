@@ -92,7 +92,7 @@ def require_dashboard_access() -> None:
                 st.logout()
         else:
             if st.button("Sign in with Google", type="primary"):
-                st.login("google")
+                st.login()
 
         st.stop()
 
