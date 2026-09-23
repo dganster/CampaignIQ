@@ -37,7 +37,14 @@ from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
 from campaigniq.runtime import build_local_runtime
-from campaigniq.ui.access_gate import access_password, password_matches
+from campaigniq.ui.access_gate import (
+    AUTH_MODE_OIDC,
+    access_password,
+    authentication_mode,
+    password_matches,
+)
+from campaigniq.ui.oidc_access_gate import authorized_streamlit_access
+from campaigniq.ui.workspace_authorization import workspace_authorization
 from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
@@ -49,7 +56,29 @@ RECONCILED_DIR = PROJECT_ROOT / "tests" / "data" / "reconciled"
 
 
 def require_dashboard_access() -> None:
-    """Require the temporary cloud access password when configured."""
+    """Require the configured dashboard authentication mechanism."""
+    if authentication_mode() == AUTH_MODE_OIDC:
+        access = authorized_streamlit_access(
+            st.user,
+            workspace_authorization(),
+        )
+        if access is not None:
+            return
+
+        st.title("CampaignIQ")
+        st.caption("Private access")
+
+        claims = st.user.to_dict()
+        if claims:
+            st.error("This Google account is not authorized for CampaignIQ.")
+            if st.button("Sign out"):
+                st.logout()
+        else:
+            if st.button("Sign in with Google", type="primary"):
+                st.login("google")
+
+        st.stop()
+
     expected_password = access_password()
 
     # Preserve normal local development when no password is configured.
