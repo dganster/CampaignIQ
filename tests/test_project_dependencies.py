@@ -30,6 +30,7 @@ def test_ui_extra_declares_direct_dashboard_dependencies() -> None:
     assert package_names(extras["ui"]) == {
         "Authlib",
         "altair",
+        "httpx",
         "pandas",
         "streamlit",
     }
