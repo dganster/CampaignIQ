@@ -44,12 +44,14 @@ def test_dashboard_requires_access_before_runtime_construction() -> None:
         / "dashboard.py"
     ).read_text()
 
-    gate_position = dashboard.index("require_dashboard_access()")
-    runtime_position = dashboard.index(
-        "RUNTIME = build_local_runtime(project_root=PROJECT_ROOT)"
-    )
+    gate_position = dashboard.index("ACCESS = require_dashboard_access()")
+    runtime_position = dashboard.index("RUNTIME = build_local_runtime(")
 
     assert gate_position < runtime_position
+    assert (
+        "workspace_id=ACCESS.workspace_id if ACCESS is not None else None"
+        in dashboard
+    )
 
 
 def test_authentication_mode_defaults_to_password(monkeypatch) -> None:

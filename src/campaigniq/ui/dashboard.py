@@ -36,6 +36,7 @@ from campaigniq.ui.dashboard_campaigns import (
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
+from campaigniq.access import AccessContext
 from campaigniq.runtime import build_local_runtime
 from campaigniq.ui.access_gate import (
     AUTH_MODE_OIDC,
@@ -55,15 +56,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RECONCILED_DIR = PROJECT_ROOT / "tests" / "data" / "reconciled"
 
 
-def require_dashboard_access() -> None:
-    """Require the configured dashboard authentication mechanism."""
+def require_dashboard_access() -> AccessContext | None:
+    """Require dashboard access and return authorized workspace context."""
     if authentication_mode() == AUTH_MODE_OIDC:
         access = authorized_streamlit_access(
             st.user,
             workspace_authorization(),
         )
         if access is not None:
-            return
+            return access
 
         st.title("CampaignIQ")
         st.caption("Private access")
@@ -131,9 +132,12 @@ def require_dashboard_access() -> None:
     st.stop()
 
 
-require_dashboard_access()
+ACCESS = require_dashboard_access()
 
-RUNTIME = build_local_runtime(project_root=PROJECT_ROOT)
+RUNTIME = build_local_runtime(
+    project_root=PROJECT_ROOT,
+    workspace_id=ACCESS.workspace_id if ACCESS is not None else None,
+)
 AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
 HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
 ARTIFACT_STORAGE = RUNTIME.artifact_storage

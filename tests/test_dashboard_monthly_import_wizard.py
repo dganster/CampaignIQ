@@ -105,7 +105,11 @@ def test_monthly_import_runtime_state_is_separate_from_test_fixtures() -> None:
     text = source()
 
     assert "from campaigniq.runtime import build_local_runtime" in text
-    assert "RUNTIME = build_local_runtime(project_root=PROJECT_ROOT)" in text
+    assert "RUNTIME = build_local_runtime(" in text
+    assert (
+        "workspace_id=ACCESS.workspace_id if ACCESS is not None else None"
+        in text
+    )
     assert (
         "AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root"
         in text
