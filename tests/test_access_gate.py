@@ -1,4 +1,10 @@
-from campaigniq.ui.access_gate import access_password, password_matches
+from campaigniq.ui.access_gate import (
+    AUTH_MODE_OIDC,
+    AUTH_MODE_PASSWORD,
+    access_password,
+    authentication_mode,
+    password_matches,
+)
 
 
 def test_access_password_is_none_when_unconfigured(monkeypatch) -> None:
@@ -44,3 +50,27 @@ def test_dashboard_requires_access_before_runtime_construction() -> None:
     )
 
     assert gate_position < runtime_position
+
+
+def test_authentication_mode_defaults_to_password(monkeypatch) -> None:
+    monkeypatch.delenv("CAMPAIGNIQ_AUTH_MODE", raising=False)
+
+    assert authentication_mode() == AUTH_MODE_PASSWORD
+
+
+def test_authentication_mode_accepts_oidc(monkeypatch) -> None:
+    monkeypatch.setenv("CAMPAIGNIQ_AUTH_MODE", "oidc")
+
+    assert authentication_mode() == AUTH_MODE_OIDC
+
+
+def test_authentication_mode_normalizes_whitespace_and_case(monkeypatch) -> None:
+    monkeypatch.setenv("CAMPAIGNIQ_AUTH_MODE", "  OIDC  ")
+
+    assert authentication_mode() == AUTH_MODE_OIDC
+
+
+def test_unknown_authentication_mode_falls_back_to_password(monkeypatch) -> None:
+    monkeypatch.setenv("CAMPAIGNIQ_AUTH_MODE", "something-else")
+
+    assert authentication_mode() == AUTH_MODE_PASSWORD
