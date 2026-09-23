@@ -77,26 +77,7 @@ def require_dashboard_access() -> AccessContext | None:
             if st.button("Sign in with Google", type="primary"):
                 st.login()
         else:
-            subject = claims.get("sub")
-            if isinstance(subject, str) and subject.strip():
-                st.error("This Google account is not authorized for CampaignIQ.")
-                st.caption("OIDC subject:")
-                st.code(subject.strip(), language=None)
-            else:
-                st.error(
-                    "Google authentication succeeded, but the OIDC subject "
-                    "claim is unavailable."
-                )
-                st.caption("Available user claim names:")
-                claim_names = sorted(
-                    str(key)
-                    for key in claims.keys()
-                    if key != "is_logged_in"
-                )
-                st.code(
-                    "\n".join(claim_names) if claim_names else "(none)",
-                    language=None,
-                )
+            st.error("This Google account is not authorized for CampaignIQ.")
 
             if st.button("Sign out"):
                 st.logout()
