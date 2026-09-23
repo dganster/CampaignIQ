@@ -76,11 +76,13 @@ def require_dashboard_access() -> None:
             if isinstance(subject, str) and subject.strip():
                 st.code(subject.strip(), language=None)
             else:
-                st.caption("Available identity claim names:")
-                st.code(
-                    "\n".join(sorted(str(key) for key in claims.keys())),
-                    language=None,
+                st.caption("Available st.user names:")
+                user_names = sorted(
+                    name
+                    for name in dir(st.user)
+                    if not name.startswith("_")
                 )
+                st.code("\n".join(user_names), language=None)
 
             if st.button("Sign out"):
                 st.logout()
