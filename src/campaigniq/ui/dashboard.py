@@ -71,6 +71,11 @@ def require_dashboard_access() -> None:
         claims = st.user.to_dict()
         if claims:
             st.error("This Google account is not authorized for CampaignIQ.")
+
+            subject = claims.get("sub")
+            if isinstance(subject, str) and subject.strip():
+                st.code(subject.strip(), language=None)
+
             if st.button("Sign out"):
                 st.logout()
         else:
