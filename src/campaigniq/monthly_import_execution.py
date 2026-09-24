@@ -37,6 +37,9 @@ from campaigniq.persistence.import_provenance import (
     capture_monthly_input_provenance,
     serialize_monthly_import_provenance,
 )
+from campaigniq.persistence.boundary_completeness_store import (
+    serialize_boundary_completeness,
+)
 from campaigniq.persistence.monthly_publication import (
     ensure_publication_protocol_in_storage,
     publish_finalized_month_marker_to_storage,
@@ -211,6 +214,7 @@ def execute_monthly_import(
     forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
     lot_name = lot_state_key(period_end=contract.period_end)
     provenance_name = f"{contract.period_end:%Y-%m}-import-provenance.json"
+    completeness_name = f"{contract.period_end:%Y-%m}-boundary-completeness.json"
 
     ensure_publication_protocol_in_storage(
         storage, first_period_end=contract.period_end
@@ -235,6 +239,11 @@ def execute_monthly_import(
         period_end=contract.period_end,
         inputs=input_provenance,
     )
+    completeness_text = serialize_boundary_completeness(
+        period_start=contract.period_start,
+        period_end=contract.period_end,
+        reconstruction=result.boundary_reconstruction,
+    )
 
     # A rerun becomes invisible before any canonical payload is replaced.
     unpublish_finalized_month_marker_from_storage(
@@ -244,6 +253,7 @@ def execute_monthly_import(
     storage.write_text(forex_name, forex_text)
     storage.write_text(lot_name, lot_text)
     storage.write_text(provenance_name, provenance_text)
+    storage.write_text(completeness_name, completeness_text)
 
     # The marker is the multi-object visibility boundary and is written last.
     publish_finalized_month_marker_to_storage(

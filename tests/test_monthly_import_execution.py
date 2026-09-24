@@ -159,6 +159,111 @@ def test_successful_reconciliation_persists_ending_state(
     assert expected.is_file()
 
 
+def test_partial_historical_ancestry_finalizes_and_is_persisted(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from dataclasses import replace
+
+    from campaigniq.domain.boundary_reconstruction import BoundaryReconstruction
+    from campaigniq.domain.boundary_validation import HistoricalRequirement
+    from campaigniq.persistence.boundary_completeness_store import (
+        deserialize_boundary_completeness,
+    )
+
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt").read_text().splitlines(),
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026,
+        8,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+    assert preflight.ready
+
+    real_pipeline_run = execution_module.PeriodImportPipeline.run
+
+    def run_with_partial_history(self, *args, **kwargs):
+        result = real_pipeline_run(self, *args, **kwargs)
+        return replace(
+            result,
+            boundary_reconstruction=BoundaryReconstruction(
+                unresolved_positions=("AMZN",),
+                unresolved_campaigns=("CAMP-000123",),
+                historical_requirements=(
+                    HistoricalRequirement(
+                        case_id="CAMP-000123",
+                        earliest_unresolved_date=date(2026, 7, 31),
+                        months=("2026-07",),
+                        document_types=(
+                            "Account Trade History",
+                            "Brokerage Statement",
+                        ),
+                        reason=(
+                            "The opening position is known, but the supplied "
+                            "history does not establish when the campaign began "
+                            "for AMZN."
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(
+        execution_module.PeriodImportPipeline,
+        "run",
+        run_with_partial_history,
+    )
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+
+    assert outcome.finalized is True
+    assert outcome.authoritative_state_path is not None
+    assert outcome.authoritative_state_path.is_file()
+
+    completeness_path = (
+        tmp_path / "2026-08-boundary-completeness.json"
+    )
+    assert completeness_path.is_file()
+
+    persisted = deserialize_boundary_completeness(
+        completeness_path.read_text(encoding="utf-8")
+    )
+    assert persisted.status == "PARTIAL"
+    assert not persisted.complete
+    assert persisted.unresolved_positions == ("AMZN",)
+    assert persisted.unresolved_campaigns == ("CAMP-000123",)
+    assert len(persisted.historical_requirements) == 1
+    assert persisted.historical_requirements[0].case_id == "CAMP-000123"
+    assert persisted.historical_requirements[0].months == ("2026-07",)
+
+
 def test_assignment_evidence_is_sent_to_period_and_boundary_channels(
     tmp_path,
     monkeypatch,
@@ -280,10 +385,12 @@ def test_successful_reconciliation_persists_realized_and_forex_attributions(
 
     realized_path = tmp_path / "2026-08-realized-attributions.json"
     forex_path = tmp_path / "2026-08-forex-settlement-attributions.json"
+    completeness_path = tmp_path / "2026-08-boundary-completeness.json"
 
     assert outcome.finalized is True
     assert realized_path.is_file()
     assert forex_path.is_file()
+    assert completeness_path.is_file()
 
     from campaigniq.persistence.realized_attribution_store import (
         load_realized_attributions,
@@ -355,6 +462,7 @@ def test_failed_reconciliation_does_not_persist_attribution_artifacts(
     assert outcome.finalized is False
     assert not (tmp_path / "2026-08-realized-attributions.json").exists()
     assert not (tmp_path / "2026-08-forex-settlement-attributions.json").exists()
+    assert not (tmp_path / "2026-08-boundary-completeness.json").exists()
 
 def test_successful_monthly_execution_persists_nonempty_forex_attribution(
     tmp_path,

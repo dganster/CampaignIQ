@@ -462,6 +462,41 @@ def render_monthly_import_wizard():
             )
             return
 
+        boundary = execution.result.boundary_reconstruction
+        if (
+            boundary.unresolved_positions
+            or boundary.unresolved_campaigns
+            or boundary.historical_requirements
+        ):
+            st.warning(
+                "This month was finalized with incomplete historical ancestry. "
+                "The positions remain tracked, but unsupported campaign "
+                "attribution is excluded from campaign analytics."
+            )
+
+            if boundary.unresolved_positions:
+                st.write(
+                    "Unresolved positions: "
+                    + ", ".join(boundary.unresolved_positions)
+                )
+
+            if boundary.unresolved_campaigns:
+                st.write(
+                    f"Unresolved campaigns: {len(boundary.unresolved_campaigns)}"
+                )
+
+            if boundary.historical_requirements:
+                st.write(
+                    "Additional historical documents could improve these results:"
+                )
+                for requirement in boundary.historical_requirements:
+                    months = ", ".join(requirement.months)
+                    documents = ", ".join(requirement.document_types)
+                    st.write(
+                        f"- {requirement.case_id}: {months} — "
+                        f"{documents}. {requirement.reason}"
+                    )
+
         forex_report = execution.result.forex_transaction_report
         if forex_report is not None:
             st.markdown("#### FOREX Settlement Control")
