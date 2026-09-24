@@ -647,6 +647,10 @@ st.set_page_config(
 
 st.title("CampaignIQ")
 
+if authentication_mode() == AUTH_MODE_OIDC:
+    if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
+        st.logout()
+
 view = st.sidebar.radio(
     "View",
     ("Realized Campaign Analytics", "Monthly Import"),

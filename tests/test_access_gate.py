@@ -76,3 +76,18 @@ def test_unknown_authentication_mode_falls_back_to_password(monkeypatch) -> None
     monkeypatch.setenv("CAMPAIGNIQ_AUTH_MODE", "something-else")
 
     assert authentication_mode() == AUTH_MODE_PASSWORD
+
+
+def test_authorized_oidc_dashboard_exposes_sign_out() -> None:
+    with open("src/campaigniq/ui/dashboard.py") as dashboard:
+        text = dashboard.read()
+
+    access = text.index("ACCESS = require_dashboard_access()")
+    sign_out = text.index(
+        'st.sidebar.button("Sign out", key="campaigniq_sign_out")'
+    )
+    view = text.index("view = st.sidebar.radio(")
+
+    assert access < sign_out < view
+    assert "if authentication_mode() == AUTH_MODE_OIDC:" in text[access:sign_out]
+    assert "st.logout()" in text[sign_out:view]
