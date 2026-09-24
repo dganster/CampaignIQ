@@ -31,11 +31,11 @@ def test_wizard_exposes_real_world_monthly_documents() -> None:
 def test_brokerage_statement_feeds_statement_roles_only() -> None:
     text = source()
     assert (
-        "supplied[MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT] = schwab_path"
+        "MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT\n        ] = schwab_source_path"
         in text
     )
     assert (
-        "supplied[MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE] = schwab_path"
+        "MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE\n        ] = schwab_source_path"
         in text
     )
     assert (
@@ -51,7 +51,7 @@ def test_realized_gain_loss_uses_its_own_uploaded_report() -> None:
         in text
     )
     assert (
-        "supplied[MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS] = realized_path"
+        "MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS\n        ] = realized_source_path"
         in text
     )
 
@@ -169,3 +169,19 @@ def test_analytics_loading_filters_artifacts_through_publication_boundary() -> N
     assert "is_month_published_in_storage(" in text
     assert '"-realized-attributions.json"' in text
     assert '"-forex-settlement-attributions.json"' in text
+
+def test_wizard_accepts_native_schwab_pdfs() -> None:
+    text = source()
+    assert '"Schwab Brokerage Statement",\n        ("pdf", "txt", "csv"),' in text
+    assert '"Schwab Realized Gain/Loss Report",\n        ("pdf", "txt", "csv"),' in text
+
+
+def test_wizard_extracts_schwab_pdfs_before_existing_readers() -> None:
+    text = source()
+    assert "from campaigniq.pdf_text import extract_pdf_text" in text
+    assert 'if suffix.lower() == ".pdf":' in text
+    assert 'upload_dir / "schwab_brokerage_statement.txt"' in text
+    assert 'upload_dir / "schwab_realized_gain_loss.txt"' in text
+    assert "SCHWAB_CLOSING_POSITION_SNAPSHOT" in text
+    assert "SCHWAB_REALIZED_GAIN_LOSS" in text
+

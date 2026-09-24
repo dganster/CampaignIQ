@@ -2,41 +2,43 @@
 
 from __future__ import annotations
 
-from datetime import date
 import hashlib
+import tempfile
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
-import tempfile
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
+from campaigniq.access import AccessContext
+from campaigniq.analytics.campaign_outcome_distribution import (
+    summarize_campaign_outcomes,
+)
 from campaigniq.analytics.multi_month_analytics_summary import (
     summarize_multi_month_analytics,
-)
-from campaigniq.analytics.multi_month_performance_summary import (
-    summarize_multi_month_performance,
 )
 from campaigniq.analytics.multi_month_campaign_performance import (
     summarize_multi_month_campaign_performance,
 )
-from campaigniq.analytics.campaign_outcome_distribution import (
-    summarize_campaign_outcomes,
-)
-from campaigniq.analytics.underlying_performance import (
-    summarize_underlying_performance,
+from campaigniq.analytics.multi_month_performance_summary import (
+    summarize_multi_month_performance,
 )
 from campaigniq.analytics.repeated_campaign_performance import (
     summarize_repeated_campaign_performance,
 )
-from campaigniq.ui.dashboard_campaigns import (
-    aggregate_period_qualified_campaigns,
+from campaigniq.analytics.underlying_performance import (
+    summarize_underlying_performance,
 )
+from campaigniq.import_contract import MonthlyInputRole
+from campaigniq.import_preflight import prepare_monthly_import
+from campaigniq.monthly_import_execution import execute_monthly_import
+from campaigniq.pdf_text import extract_pdf_text
+from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
-from campaigniq.access import AccessContext
 from campaigniq.runtime import build_local_runtime
 from campaigniq.ui.access_audit import audit_unauthorized_oidc_identity
 from campaigniq.ui.access_gate import (
@@ -45,13 +47,11 @@ from campaigniq.ui.access_gate import (
     authentication_mode,
     password_matches,
 )
+from campaigniq.ui.dashboard_campaigns import (
+    aggregate_period_qualified_campaigns,
+)
 from campaigniq.ui.oidc_access_gate import authorized_streamlit_access
 from campaigniq.ui.workspace_authorization import workspace_authorization
-from campaigniq.persistence.monthly_publication import is_month_published_in_storage
-from campaigniq.import_contract import MonthlyInputRole
-from campaigniq.import_preflight import prepare_monthly_import
-from campaigniq.monthly_import_execution import execute_monthly_import
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 RECONCILED_DIR = PROJECT_ROOT / "tests" / "data" / "reconciled"
@@ -134,12 +134,12 @@ MONTHLY_UPLOAD_ROLES = (
     (
         "schwab_brokerage_statement",
         "Schwab Brokerage Statement",
-        ("txt", "csv"),
+        ("pdf", "txt", "csv"),
     ),
     (
         MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
         "Schwab Realized Gain/Loss Report",
-        ("txt", "csv"),
+        ("pdf", "txt", "csv"),
     ),
     (
         MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
@@ -175,17 +175,38 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
         schwab_path = upload_dir / f"schwab_brokerage_statement{suffix}"
         schwab_path.write_bytes(schwab_upload.getvalue())
 
+        schwab_source_path = schwab_path
+        if suffix.lower() == ".pdf":
+            schwab_source_path = extract_pdf_text(
+                schwab_path,
+                upload_dir / "schwab_brokerage_statement.txt",
+            )
+
         # The Brokerage Statement supplies closing positions and any
         # assignment/exercise evidence needed by the existing Schwab readers.
-        supplied[MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT] = schwab_path
-        supplied[MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE] = schwab_path
+        supplied[
+            MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT
+        ] = schwab_source_path
+        supplied[
+            MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE
+        ] = schwab_source_path
 
     realized_upload = uploads.get(MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS)
     if realized_upload is not None:
         suffix = Path(realized_upload.name).suffix
         realized_path = upload_dir / f"schwab_realized_gain_loss{suffix}"
         realized_path.write_bytes(realized_upload.getvalue())
-        supplied[MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS] = realized_path
+
+        realized_source_path = realized_path
+        if suffix.lower() == ".pdf":
+            realized_source_path = extract_pdf_text(
+                realized_path,
+                upload_dir / "schwab_realized_gain_loss.txt",
+            )
+
+        supplied[
+            MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS
+        ] = realized_source_path
 
     forex_upload = uploads.get(MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT)
     if forex_upload is not None:
