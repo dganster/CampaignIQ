@@ -15,6 +15,7 @@ class MonthlyInputRole(str, Enum):
     SCHWAB_REALIZED_GAIN_LOSS = "schwab_realized_gain_loss"
     SCHWAB_FOREX_TRANSACTION_REPORT = "schwab_forex_transaction_report"
     SCHWAB_CLOSING_POSITION_SNAPSHOT = "schwab_closing_position_snapshot"
+    SCHWAB_OPENING_POSITION_SNAPSHOT = "schwab_opening_position_snapshot"
     OPENING_STATE = "opening_state"
     SCHWAB_ASSIGNMENT_EVIDENCE = "schwab_assignment_evidence"
     HISTORICAL_TRADE_EVIDENCE = "historical_trade_evidence"
@@ -63,8 +64,7 @@ def monthly_import_contract(year: int, month: int) -> MonthlyImportContract:
             required=True,
             user_supplied=True,
             description=(
-                "Thinkorswim trade history containing activity for the "
-                "requested month."
+                "Thinkorswim trade history containing activity for the requested month."
             ),
         ),
         MonthlyInputRequirement(
@@ -77,9 +77,7 @@ def monthly_import_contract(year: int, month: int) -> MonthlyImportContract:
             role=MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
             required=True,
             user_supplied=True,
-            description=(
-                "Schwab realized gain/loss report for the requested month."
-            ),
+            description=("Schwab realized gain/loss report for the requested month."),
         ),
         MonthlyInputRequirement(
             role=MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT,
@@ -88,6 +86,15 @@ def monthly_import_contract(year: int, month: int) -> MonthlyImportContract:
             description=(
                 "Schwab position snapshot for the requested month-end, used "
                 "to reconcile CampaignIQ's computed ending inventory."
+            ),
+        ),
+        MonthlyInputRequirement(
+            role=MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
+            required=False,
+            user_supplied=True,
+            description=(
+                "Prior month-end Schwab position snapshot used only when "
+                "CampaignIQ has no authoritative preceding state."
             ),
         ),
         MonthlyInputRequirement(

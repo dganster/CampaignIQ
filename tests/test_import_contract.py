@@ -21,6 +21,7 @@ def test_contract_uses_semantic_roles_not_filenames() -> None:
         MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
         MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
         MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT,
+        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
         MonthlyInputRole.OPENING_STATE,
         MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE,
         MonthlyInputRole.HISTORICAL_TRADE_EVIDENCE,
@@ -49,6 +50,7 @@ def test_contract_distinguishes_user_inputs_from_campaigniq_state() -> None:
         MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
         MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
         MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT,
+        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
         MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE,
     )
 

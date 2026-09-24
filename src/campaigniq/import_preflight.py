@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Mapping
 
@@ -15,6 +16,10 @@ from campaigniq.import_contract import (
 from campaigniq.import_validation import (
     MonthlyInputValidation,
     validate_monthly_input,
+)
+from campaigniq.importers.schwab.position_snapshot import to_lots
+from campaigniq.importers.schwab.position_snapshot_reader import (
+    read_position_snapshot_section,
 )
 from campaigniq.persistence.artifact_storage import ArtifactStorage
 from campaigniq.persistence.authoritative_lot_state import (
@@ -32,6 +37,7 @@ class MonthlyImportPreflight:
     contract: MonthlyImportContract
     validations: tuple[MonthlyInputValidation, ...]
     opening_state: AuthoritativeOpeningState | None
+    bootstrap_opening_lot_book: LotBook | None = None
 
     @property
     def ready(self) -> bool:
@@ -42,18 +48,16 @@ class MonthlyImportPreflight:
             if requirement.required
         }
         valid_roles = {
-            validation.role
-            for validation in self.validations
-            if validation.valid
+            validation.role for validation in self.validations if validation.valid
         }
         return required_roles <= valid_roles
 
     @property
     def opening_lot_book(self) -> LotBook | None:
-        """Return the discovered predecessor lot book for pipeline carry."""
-        if self.opening_state is None:
-            return None
-        return self.opening_state.lot_book
+        """Return the authoritative or validated bootstrap opening lot book."""
+        if self.opening_state is not None:
+            return self.opening_state.lot_book
+        return self.bootstrap_opening_lot_book
 
     def validation_for(
         self,
@@ -96,24 +100,37 @@ def prepare_monthly_import(
             )
 
     validations: list[MonthlyInputValidation] = []
+    bootstrap_opening_lot_book: LotBook | None = None
+
+    if opening_state is None:
+        bootstrap_path = supplied_inputs.get(
+            MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+        )
+        if bootstrap_path is not None:
+            bootstrap_validation = validate_monthly_input(
+                MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
+                bootstrap_path,
+                period_start=contract.period_start,
+                period_end=contract.period_end,
+            )
+            if bootstrap_validation.valid:
+                snapshot_end = contract.period_start - contract.period_start.resolution
+                rows = read_position_snapshot_section(
+                    Path(bootstrap_path).read_text(encoding="utf-8").splitlines(),
+                    snapshot_at=datetime.combine(
+                        snapshot_end,
+                        datetime.max.time(),
+                    ),
+                )
+                bootstrap_opening_lot_book = LotBook()
+                for lot in to_lots(list(rows)):
+                    bootstrap_opening_lot_book.seed(lot)
 
     for requirement in contract.requirements:
         role = requirement.role
 
         if role is MonthlyInputRole.OPENING_STATE:
-            if opening_state is None:
-                validations.append(
-                    MonthlyInputValidation(
-                        role=role,
-                        valid=False,
-                        message=(
-                            "No authoritative opening lot state is available for "
-                            f"{contract.period_start - contract.period_start.resolution}. "
-                            "A validated opening-state reconstruction is required."
-                        ),
-                    )
-                )
-            else:
+            if opening_state is not None:
                 validations.append(
                     MonthlyInputValidation(
                         role=role,
@@ -121,6 +138,31 @@ def prepare_monthly_import(
                         message=(
                             "Authoritative opening lot state available for "
                             f"{opening_state.period_end}."
+                        ),
+                    )
+                )
+            elif bootstrap_opening_lot_book is not None:
+                validations.append(
+                    MonthlyInputValidation(
+                        role=role,
+                        valid=True,
+                        message=(
+                            "Opening lot state reconstructed from the validated "
+                            "prior month-end Schwab position snapshot."
+                        ),
+                    )
+                )
+            else:
+                validations.append(
+                    MonthlyInputValidation(
+                        role=role,
+                        valid=False,
+                        message=(
+                            "No authoritative opening lot state is available for "
+                            f"{contract.period_start - contract.period_start.resolution}. "
+                            "A validated opening-state reconstruction is required. "
+                            "Supply the prior month-end Schwab Brokerage Statement "
+                            "to establish the opening inventory."
                         ),
                     )
                 )
@@ -140,6 +182,23 @@ def prepare_monthly_import(
             continue
 
         path = supplied_inputs.get(role)
+
+        if (
+            role is MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+            and opening_state is not None
+        ):
+            validations.append(
+                MonthlyInputValidation(
+                    role=role,
+                    valid=True,
+                    message=(
+                        "Prior month-end statement is not required because "
+                        "CampaignIQ has an authoritative preceding state."
+                    ),
+                )
+            )
+            continue
+
         if path is None:
             validations.append(
                 MonthlyInputValidation(
@@ -167,4 +226,5 @@ def prepare_monthly_import(
         contract=contract,
         validations=tuple(validations),
         opening_state=opening_state,
+        bootstrap_opening_lot_book=bootstrap_opening_lot_book,
     )

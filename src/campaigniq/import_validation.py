@@ -1,17 +1,31 @@
 """Content-based validation for monthly CampaignIQ broker inputs."""
+
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
 from campaigniq.import_contract import MonthlyInputRole
-from campaigniq.importers.schwab.forex_transaction_reader import read_forex_transaction_report
-from campaigniq.importers.schwab.option_assignment_flow import read_option_assignment_events
-from campaigniq.importers.schwab.position_snapshot_reader import read_position_snapshot_section
-from campaigniq.importers.schwab.realized_gain_loss_reader import read_realized_gain_loss_section
-from campaigniq.importers.thinkorswim.trade_history_reader import ThinkorswimTradeHistoryReader
+from campaigniq.importers.schwab.forex_transaction_reader import (
+    read_forex_transaction_report,
+)
+from campaigniq.importers.schwab.option_assignment_flow import (
+    read_option_assignment_events,
+)
+from campaigniq.importers.schwab.position_snapshot_reader import (
+    read_position_snapshot_section,
+)
+from campaigniq.importers.schwab.realized_gain_loss_reader import (
+    read_realized_gain_loss_section,
+)
+from campaigniq.importers.thinkorswim.trade_history_reader import (
+    ThinkorswimTradeHistoryReader,
+)
 from campaigniq.importers.thinkorswim.trade_reader import ThinkorswimTradeReader
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
+
 
 @dataclass(frozen=True, slots=True)
 class MonthlyInputValidation:
@@ -20,15 +34,18 @@ class MonthlyInputValidation:
     message: str
     record_count: int = 0
 
+
 _DATE_RANGE_RE = re.compile(
     r"From mm/dd/yyyy\s+(?P<start>\d{2}/\d{2}/\d{4}).*?"
     r"To mm/dd/yyyy\s+(?P<end>\d{2}/\d{2}/\d{4})",
     re.DOTALL,
 )
 
+
 def _mmddyyyy(value: str) -> date:
     month, day, year = (int(part) for part in value.split("/"))
     return date(year, month, day)
+
 
 def validate_monthly_input(
     role: MonthlyInputRole,
@@ -68,13 +85,15 @@ def validate_monthly_input(
 
             if not trades:
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     "Recognized Thinkorswim trade history, but it contains no trades in the requested month.",
                     len(orders),
                 )
 
             return MonthlyInputValidation(
-                role, True,
+                role,
+                True,
                 f"Recognized Thinkorswim trade history with {len(trades)} in-period trades.",
                 len(trades),
             )
@@ -82,45 +101,84 @@ def validate_monthly_input(
         text = source.read_text()
         lines = text.splitlines()
 
-        if role is MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT:
+        if role in (
+            MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT,
+            MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
+        ):
+            if role is MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT:
+                previous_day = period_start - timedelta(days=1)
+                snapshot_start = previous_day.replace(day=1)
+                snapshot_end = previous_day
+            else:
+                snapshot_start = period_start
+                snapshot_end = period_end
+
             period_label = (
-                f"{period_start.strftime('%B')} {period_start.day}-"
-                f"{period_end.day}, {period_end.year}"
+                f"{snapshot_start.strftime('%B')} {snapshot_start.day}-"
+                f"{snapshot_end.day}, {snapshot_end.year}"
             )
             if period_label not in text:
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     "Recognized file does not declare the requested Schwab "
                     f"statement period {period_label}.",
                 )
             rows = read_position_snapshot_section(
                 lines,
-                snapshot_at=datetime.combine(period_end, datetime.max.time()),
+                snapshot_at=datetime.combine(
+                    snapshot_end,
+                    datetime.max.time(),
+                ),
             )
             if not rows:
                 return MonthlyInputValidation(
-                    role, False,
-                    "Requested-month Schwab statement contains no recognized ending positions.",
+                    role,
+                    False,
+                    (
+                        "Prior-month Schwab statement contains no recognized "
+                        "opening positions."
+                        if role is MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+                        else "Requested-month Schwab statement contains no recognized ending positions."
+                    ),
                 )
             return MonthlyInputValidation(
-                role, True,
-                f"Recognized Schwab month-end position snapshot with {len(rows)} positions.",
+                role,
+                True,
+                (
+                    f"Recognized Schwab opening position snapshot with {len(rows)} positions."
+                    if role is MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+                    else f"Recognized Schwab month-end position snapshot with {len(rows)} positions."
+                ),
                 len(rows),
             )
 
         if role is MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
             report = read_forex_transaction_report(source)
             expected_report_start = period_start - period_start.resolution
-            if (report.period_start, report.period_end) != (expected_report_start, period_end):
+            if (report.period_start, report.period_end) != (
+                expected_report_start,
+                period_end,
+            ):
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     "Thinkorswim FOREX Transaction Report covers "
                     f"{report.period_start} through {report.period_end}; "
                     "requested monthly report must cover "
                     f"{expected_report_start} through {period_end}.",
                 )
-            count = len(report.settlements) + len(report.financing) + len(report.new_transactions)
-            return MonthlyInputValidation(role, True, f"Recognized Thinkorswim FOREX Transaction Report with {len(report.settlements)} settlement(s), {len(report.financing)} financing record(s), and {len(report.new_transactions)} new transaction(s).", count)
+            count = (
+                len(report.settlements)
+                + len(report.financing)
+                + len(report.new_transactions)
+            )
+            return MonthlyInputValidation(
+                role,
+                True,
+                f"Recognized Thinkorswim FOREX Transaction Report with {len(report.settlements)} settlement(s), {len(report.financing)} financing record(s), and {len(report.new_transactions)} new transaction(s).",
+                count,
+            )
 
         if role is MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS:
             if "Realized Gain / Loss" not in text:
@@ -130,19 +188,22 @@ def validate_monthly_input(
             match = _DATE_RANGE_RE.search(text)
             if match is None:
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     "Recognized Schwab realized gain/loss report, but its date range could not be determined.",
                 )
             report_start = _mmddyyyy(match.group("start"))
             report_end = _mmddyyyy(match.group("end"))
             if (report_start, report_end) != (period_start, period_end):
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     f"Schwab report covers {report_start} through {report_end}; requested period is {period_start} through {period_end}.",
                 )
             records = read_realized_gain_loss_section(lines)
             return MonthlyInputValidation(
-                role, True,
+                role,
+                True,
                 f"Recognized Schwab realized gain/loss report for the requested month with {len(records)} records.",
                 len(records),
             )
@@ -153,19 +214,18 @@ def validate_monthly_input(
             while boundary_date.weekday() >= 5:
                 boundary_date += timedelta(days=1)
             relevant = [
-                event for event in events
+                event
+                for event in events
                 if (
                     period_start <= event.occurred_at.date() <= period_end
                     or event.occurred_at.date() == boundary_date
                 )
             ]
             in_period = [
-                event for event in relevant
-                if event.occurred_at.date() <= period_end
+                event for event in relevant if event.occurred_at.date() <= period_end
             ]
             boundary = [
-                event for event in relevant
-                if event.occurred_at.date() == boundary_date
+                event for event in relevant if event.occurred_at.date() == boundary_date
             ]
             if not events:
                 return MonthlyInputValidation(
@@ -173,7 +233,8 @@ def validate_monthly_input(
                 )
             if not relevant:
                 return MonthlyInputValidation(
-                    role, False,
+                    role,
+                    False,
                     "Recognized Schwab assignment evidence, but it contains "
                     "no assignment events in the requested month or on the "
                     f"relevant boundary date {boundary_date}.",
@@ -185,7 +246,8 @@ def validate_monthly_input(
             if boundary:
                 parts.append(f"{len(boundary)} boundary-date")
             return MonthlyInputValidation(
-                role, True,
+                role,
+                True,
                 "Recognized Schwab assignment evidence with "
                 + " and ".join(parts)
                 + " assignment event(s).",
@@ -197,6 +259,7 @@ def validate_monthly_input(
         )
     except (AttributeError, KeyError, ValueError, IndexError) as exc:
         return MonthlyInputValidation(
-            role, False,
+            role,
+            False,
             f"File contents do not match the expected {role.value} format: {exc}",
         )
