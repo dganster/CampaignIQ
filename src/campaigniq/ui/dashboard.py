@@ -146,6 +146,11 @@ MONTHLY_UPLOAD_ROLES = (
         "Thinkorswim Forex Transaction Report",
         ("csv",),
     ),
+    (
+        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
+        "Prior month-end Schwab Brokerage Statement (first import only)",
+        ("pdf", "txt", "csv"),
+    ),
 )
 
 
@@ -190,6 +195,25 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
         supplied[
             MonthlyInputRole.SCHWAB_ASSIGNMENT_EVIDENCE
         ] = schwab_source_path
+
+    opening_upload = uploads.get(
+        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+    )
+    if opening_upload is not None:
+        suffix = Path(opening_upload.name).suffix
+        opening_path = upload_dir / f"schwab_opening_position_snapshot{suffix}"
+        opening_path.write_bytes(opening_upload.getvalue())
+
+        opening_source_path = opening_path
+        if suffix.lower() == ".pdf":
+            opening_source_path = extract_pdf_text(
+                opening_path,
+                upload_dir / "schwab_opening_position_snapshot.txt",
+            )
+
+        supplied[
+            MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+        ] = opening_source_path
 
     realized_upload = uploads.get(MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS)
     if realized_upload is not None:
@@ -297,9 +321,18 @@ def _show_monthly_preflight(preflight):
             "month. This evidence is optional."
         )
 
+    opening_snapshot_validation = preflight.validation_for(
+        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+    )
+    _show_validation(
+        opening_snapshot_validation,
+        label="Prior month-end Schwab Brokerage Statement",
+        required=False,
+    )
+
     _show_validation(
         preflight.validation_for(MonthlyInputRole.OPENING_STATE),
-        label="Authoritative opening state",
+        label="Opening inventory",
     )
 
 
@@ -307,9 +340,11 @@ def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
         "Choose the month and supply the four monthly brokerage documents. "
-        "CampaignIQ extracts the Schwab evidence it needs internally, carries "
-        "the preceding authoritative lot state, reconciles closing inventory, "
-        "and only then persists the new month-end state."
+        "For your first CampaignIQ import, also supply the prior month-end "
+        "Schwab Brokerage Statement so CampaignIQ can establish opening "
+        "inventory. Later months use the preceding authoritative lot state. "
+        "CampaignIQ reconciles closing inventory before persisting the new "
+        "month-end state."
     )
 
     today = date.today()
@@ -363,9 +398,9 @@ def render_monthly_import_wizard():
             )
         else:
             st.info(
-                "Choose the month, Thinkorswim trade history, Schwab Brokerage "
-                "Statement, Schwab Realized Gain/Loss Report, and Schwab Forex "
-                "Transaction Report, then validate before import."
+                "Choose the month and the four monthly documents, then validate "
+                "before import. For your first CampaignIQ import, also supply "
+                "the prior month-end Schwab Brokerage Statement."
             )
         return
 

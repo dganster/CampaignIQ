@@ -185,3 +185,48 @@ def test_wizard_extracts_schwab_pdfs_before_existing_readers() -> None:
     assert "SCHWAB_CLOSING_POSITION_SNAPSHOT" in text
     assert "SCHWAB_REALIZED_GAIN_LOSS" in text
 
+
+def test_wizard_exposes_first_import_opening_statement() -> None:
+    text = source()
+    assert '"Prior month-end Schwab Brokerage Statement (first import only)"' in text
+    assert "MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT" in text
+    assert (
+        '"Prior month-end Schwab Brokerage Statement",\n'
+        '        required=False,'
+    ) in text
+
+
+def test_opening_statement_feeds_opening_snapshot_role_only() -> None:
+    text = source()
+    assert (
+        "opening_upload = uploads.get(\n"
+        "        MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT"
+    ) in text
+    assert (
+        "MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT\n"
+        "        ] = opening_source_path"
+    ) in text
+    assert 'upload_dir / "schwab_opening_position_snapshot.txt"' in text
+
+
+def test_opening_statement_participates_in_validation_signature() -> None:
+    text = source()
+    roles = text[text.index("MONTHLY_UPLOAD_ROLES = ("):text.index(
+        "\n\n\ndef money", text.index("MONTHLY_UPLOAD_ROLES = (")
+    )]
+    assert "MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT" in roles
+
+    signature = text[text.index("def _monthly_import_signature("):text.index(
+        "\n\n\ndef _show_validation", text.index("def _monthly_import_signature(")
+    )]
+    assert "for role, _, _ in MONTHLY_UPLOAD_ROLES:" in signature
+    assert "digest.update(upload.getvalue())" in signature
+
+
+def test_wizard_explains_first_import_without_changing_four_document_workflow() -> None:
+    text = source()
+    assert "supply the four monthly brokerage documents" in text
+    assert "For your first CampaignIQ import" in text
+    assert "prior month-end Schwab Brokerage Statement" in text
+    assert "Later months use the preceding authoritative lot state." in text
+
