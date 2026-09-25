@@ -9,6 +9,7 @@ from enum import Enum
 from campaigniq.domain.corporate_action import CorporateActionEvidence
 from campaigniq.domain.position_event import PositionEvent
 from campaigniq.domain.position_event_kind import PositionEventKind
+from campaigniq.domain.position_exit import PositionExit
 
 
 class PositionLifecycleTransitionKind(str, Enum):
@@ -34,6 +35,7 @@ class PositionLifecycleTransition:
 
     * CORPORATE_ACTION -> CorporateActionEvidence
     * ASSIGNMENT       -> PositionEvent(kind=ASSIGNMENT)
+    * EXIT             -> PositionExit
 
     Other transition kinds intentionally carry no specialized evidence yet.
     Their evidence contracts will be added only when CampaignIQ can derive
@@ -45,6 +47,7 @@ class PositionLifecycleTransition:
     occurred_at: datetime
     corporate_action: CorporateActionEvidence | None = None
     position_event: PositionEvent | None = None
+    position_exit: PositionExit | None = None
 
     def __post_init__(self) -> None:
         normalized_symbol = self.symbol.strip().upper()
@@ -58,10 +61,13 @@ class PositionLifecycleTransition:
                     "CORPORATE_ACTION transition requires corporate-action "
                     "evidence."
                 )
-            if self.position_event is not None:
+            if (
+                self.position_event is not None
+                or self.position_exit is not None
+            ):
                 raise ValueError(
-                    "CORPORATE_ACTION transition must not contain a "
-                    "position event."
+                    "CORPORATE_ACTION transition must not contain other "
+                    "specialized evidence."
                 )
             if self.corporate_action.symbol != normalized_symbol:
                 raise ValueError(
@@ -80,10 +86,13 @@ class PositionLifecycleTransition:
                 raise ValueError(
                     "ASSIGNMENT transition requires a position event."
                 )
-            if self.corporate_action is not None:
+            if (
+                self.corporate_action is not None
+                or self.position_exit is not None
+            ):
                 raise ValueError(
-                    "ASSIGNMENT transition must not contain corporate-action "
-                    "evidence."
+                    "ASSIGNMENT transition must not contain other "
+                    "specialized evidence."
                 )
             if self.position_event.kind is not PositionEventKind.ASSIGNMENT:
                 raise ValueError(
@@ -110,7 +119,47 @@ class PositionLifecycleTransition:
                 )
             return
 
-        if self.corporate_action is not None or self.position_event is not None:
+        if self.kind is PositionLifecycleTransitionKind.EXIT:
+            if (
+                self.corporate_action is not None
+                or self.position_event is not None
+            ):
+                raise ValueError(
+                    "EXIT transition must not contain other specialized "
+                    "evidence."
+                )
+            if self.position_exit is None:
+                raise ValueError(
+                    "EXIT transition requires position-exit evidence."
+                )
+            if self.position_exit.underlying.upper() != normalized_symbol:
+                raise ValueError(
+                    "Position-exit evidence underlying must match lifecycle "
+                    "transition symbol."
+                )
+
+            exit_times = [
+                execution.executed_at
+                for leg in self.position_exit.trade.legs
+                for execution in leg.executions
+            ]
+            if not exit_times:
+                raise ValueError(
+                    "Position-exit evidence trade must contain executions."
+                )
+
+            if min(exit_times) != self.occurred_at:
+                raise ValueError(
+                    "Position-exit trade timestamp must match lifecycle "
+                    "transition timestamp."
+                )
+            return
+
+        if (
+            self.corporate_action is not None
+            or self.position_event is not None
+            or self.position_exit is not None
+        ):
             raise ValueError(
                 f"{self.kind.value} transition does not yet accept "
                 "specialized evidence."
@@ -131,6 +180,30 @@ class PositionLifecycleTransition:
                 datetime.min.time(),
             ),
             corporate_action=evidence,
+        )
+
+    @classmethod
+    def from_position_exit(
+        cls,
+        evidence: PositionExit,
+    ) -> "PositionLifecycleTransition":
+        """Classify an authoritative complete-position exit."""
+        execution_times = [
+            execution.executed_at
+            for leg in evidence.trade.legs
+            for execution in leg.executions
+        ]
+
+        if not execution_times:
+            raise ValueError(
+                "Position-exit evidence trade must contain executions."
+            )
+
+        return cls(
+            kind=PositionLifecycleTransitionKind.EXIT,
+            symbol=evidence.underlying,
+            occurred_at=min(execution_times),
+            position_exit=evidence,
         )
 
     @classmethod

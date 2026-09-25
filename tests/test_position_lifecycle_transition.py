@@ -184,8 +184,11 @@ def test_assignment_rejects_mismatched_timestamp() -> None:
         )
 
 
-def test_non_evidence_transition_rejects_assignment_event() -> None:
-    with pytest.raises(ValueError, match="does not yet accept"):
+def test_exit_rejects_assignment_event_evidence() -> None:
+    with pytest.raises(
+        ValueError,
+        match="must not contain other specialized evidence",
+    ):
         PositionLifecycleTransition(
             kind=PositionLifecycleTransitionKind.EXIT,
             symbol="NFLX",
@@ -200,4 +203,95 @@ def test_empty_symbol_is_rejected() -> None:
             kind=PositionLifecycleTransitionKind.EXIT,
             symbol=" ",
             occurred_at=datetime(2026, 4, 16),
+        )
+
+
+def nflx_exit():
+    from campaigniq.domain.execution import Execution
+    from campaigniq.domain.instrument_leg import InstrumentLeg
+    from campaigniq.domain.position_effect import PositionEffect
+    from campaigniq.domain.position_exit import PositionExit
+    from campaigniq.domain.side import Side
+    from campaigniq.domain.trade import Trade
+
+    stock = Instrument("NFLX")
+    occurred_at = datetime(2026, 4, 16, 10, 52, 1)
+
+    trade = Trade(
+        legs=(
+            InstrumentLeg(
+                instrument=stock,
+                side=Side.SELL,
+                position_effect=PositionEffect.CLOSE,
+                executions=(
+                    Execution(
+                        quantity=Decimal("-5000"),
+                        execution_price=Decimal("107.24"),
+                        executed_at=occurred_at,
+                    ),
+                ),
+            ),
+        )
+    )
+
+    return PositionExit(
+        underlying="NFLX",
+        trade=trade,
+        before_positions=((stock, Decimal("5000")),),
+        after_positions=(),
+    )
+
+
+def test_exit_transition_reuses_authoritative_exit_evidence() -> None:
+    evidence = nflx_exit()
+
+    transition = PositionLifecycleTransition.from_position_exit(
+        evidence
+    )
+
+    assert transition.kind is PositionLifecycleTransitionKind.EXIT
+    assert transition.symbol == "NFLX"
+    assert transition.occurred_at == datetime(
+        2026, 4, 16, 10, 52, 1
+    )
+    assert transition.position_exit is evidence
+    assert transition.corporate_action is None
+    assert transition.position_event is None
+
+
+def test_exit_requires_position_exit_evidence() -> None:
+    with pytest.raises(
+        ValueError,
+        match="requires position-exit evidence",
+    ):
+        PositionLifecycleTransition(
+            kind=PositionLifecycleTransitionKind.EXIT,
+            symbol="NFLX",
+            occurred_at=datetime(2026, 4, 16, 10, 52, 1),
+        )
+
+
+def test_exit_rejects_mismatched_symbol() -> None:
+    with pytest.raises(
+        ValueError,
+        match="underlying must match",
+    ):
+        PositionLifecycleTransition(
+            kind=PositionLifecycleTransitionKind.EXIT,
+            symbol="AAPL",
+            occurred_at=datetime(2026, 4, 16, 10, 52, 1),
+            position_exit=nflx_exit(),
+        )
+
+
+def test_exit_rejects_mismatched_timestamp() -> None:
+    with pytest.raises(
+        ValueError,
+        match="timestamp must match",
+    ):
+        PositionLifecycleTransition(
+            kind=PositionLifecycleTransitionKind.EXIT,
+            symbol="NFLX",
+            occurred_at=datetime(2026, 4, 16, 10, 53),
+            position_exit=nflx_exit(),
         )

@@ -37,6 +37,14 @@ class LotBook:
         """Return currently open lots for an instrument."""
         return tuple(self._lots.get(instrument, ()))
 
+    def instruments(self) -> tuple[Instrument, ...]:
+        """Return instruments that currently have open lots."""
+        return tuple(
+            instrument
+            for instrument, lots in self._lots.items()
+            if lots
+        )
+
     def clone(self) -> "LotBook":
         """Return an independent copy of the current lot state."""
 

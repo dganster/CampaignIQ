@@ -437,6 +437,20 @@ class PeriodImportPipeline:
                 )
             )
 
+            if (
+                opening_snapshot is not None
+                and opening_snapshot_at is not None
+                and opening_snapshot_at.date() < period_start
+            ):
+                opening_lot_book = (
+                    self._historical_lot_reconstructor
+                    .advance_snapshot_through_historical_trades(
+                        opening_lot_book,
+                        historical_trades,
+                        snapshot_at=opening_snapshot_at,
+                    )
+                )
+
             historical_expiration_events = (
                 [
                     event

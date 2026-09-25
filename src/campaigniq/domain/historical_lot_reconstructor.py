@@ -29,6 +29,129 @@ class HistoricalLotReconstructor:
         self._campaign_reconstructor = campaign_reconstructor
 
     @staticmethod
+    def advance_snapshot_through_historical_trades(
+        opening_lot_book: LotBook,
+        historical_trades: tuple[Trade, ...],
+        *,
+        snapshot_at: datetime,
+    ) -> LotBook:
+        """
+        Advance snapshot-anchored inventory through later historical trades.
+
+        A historical trade is replayed only when every CLOSE leg is supported
+        by inventory already present in the evolving snapshot book. This lets
+        authoritative snapshot positions advance through rolls while leaving
+        unrelated historical chains to the existing reconstruction machinery.
+
+        Trades at or before the snapshot timestamp are already represented by
+        the snapshot and are not replayed.
+        """
+        advanced = opening_lot_book.clone()
+
+        def trade_time(trade: Trade) -> datetime:
+            return min(
+                execution.executed_at
+                for leg in trade.legs
+                for execution in leg.executions
+            )
+
+        def close_quantity(leg) -> Decimal:
+            return abs(
+                sum(
+                    (
+                        execution.quantity
+                        for execution in leg.executions
+                    ),
+                    Decimal("0"),
+                )
+            )
+
+        def available_close_quantity(leg) -> Decimal:
+            lots = advanced.lots(leg.instrument)
+
+            if leg.side == Side.SELL:
+                return sum(
+                    (
+                        lot.quantity
+                        for lot in lots
+                        if lot.quantity > 0
+                    ),
+                    Decimal("0"),
+                )
+
+            return sum(
+                (
+                    -lot.quantity
+                    for lot in lots
+                    if lot.quantity < 0
+                ),
+                Decimal("0"),
+            )
+
+        def is_snapshot_anchored(trade: Trade) -> bool:
+            close_legs = [
+                leg
+                for leg in trade.legs
+                if leg.position_effect == PositionEffect.CLOSE
+            ]
+
+            if not close_legs:
+                return False
+
+            required: dict[tuple[object, Side], Decimal] = {}
+
+            for leg in close_legs:
+                key = (leg.instrument, leg.side)
+                required[key] = (
+                    required.get(key, Decimal("0"))
+                    + close_quantity(leg)
+                )
+
+            for (instrument, side), quantity in required.items():
+                lots = advanced.lots(instrument)
+
+                if side == Side.SELL:
+                    available = sum(
+                        (
+                            lot.quantity
+                            for lot in lots
+                            if lot.quantity > 0
+                        ),
+                        Decimal("0"),
+                    )
+                else:
+                    available = sum(
+                        (
+                            -lot.quantity
+                            for lot in lots
+                            if lot.quantity < 0
+                        ),
+                        Decimal("0"),
+                    )
+
+                if available < quantity:
+                    return False
+
+            return True
+
+        later_trades = sorted(
+            (
+                trade
+                for trade in historical_trades
+                if trade_time(trade) > snapshot_at
+            ),
+            key=trade_time,
+        )
+
+        for trade in later_trades:
+            if not is_snapshot_anchored(trade):
+                continue
+
+            advanced.apply_trade(trade)
+
+        return advanced
+
+    @staticmethod
     def seed_missing_option_lots(
         opening_lot_book: LotBook,
         historical_trades: tuple[Trade, ...],
