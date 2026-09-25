@@ -22,6 +22,9 @@ from campaigniq.domain.position_event_reconciler import (
     PositionEventReconciler,
 )
 from campaigniq.domain.position_history import PositionHistory
+from campaigniq.domain.position_lifecycle_transition import (
+    PositionLifecycleTransition,
+)
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.importers.schwab.option_assignment_flow import (
@@ -77,6 +80,7 @@ class PeriodImportResult:
     ending_lot_book: LotBook
     boundary_reconstruction: BoundaryReconstruction
     realized_gain_loss: tuple[RealizedGainLossRecord, ...]
+    lifecycle_transitions: tuple[PositionLifecycleTransition, ...] = ()
     forex_transaction_report: SchwabForexTransactionReport | None = None
     forex_settlement_attributions: tuple[ForexSettlementAttribution, ...] = ()
 
@@ -521,7 +525,10 @@ class PeriodImportPipeline:
             if not campaign.started_before_data:
                 opening_lot_book.resolve_boundary_campaign(campaign)
 
-        ending_lot_book = self._lot_book_period_applier.apply(
+        (
+            ending_lot_book,
+            lifecycle_transitions,
+        ) = self._lot_book_period_applier.apply_with_lifecycle(
             opening_lot_book=opening_lot_book,
             position_history=position_history,
             campaigns=campaigns,
@@ -551,6 +558,7 @@ class PeriodImportPipeline:
             ending_lot_book=ending_lot_book,
             boundary_reconstruction=boundary,
             realized_gain_loss=realized_gain_loss,
+            lifecycle_transitions=lifecycle_transitions,
             forex_transaction_report=parsed_forex_report,
             forex_settlement_attributions=forex_settlement_attributions,
         )
