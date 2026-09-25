@@ -16,6 +16,10 @@ from campaigniq.access import AccessContext
 from campaigniq.analytics.campaign_outcome_distribution import (
     summarize_campaign_outcomes,
 )
+from campaigniq.analytics.lifecycle_analytics import (
+    SymbolLifecycleSummary,
+    summarize_lifecycle_history,
+)
 from campaigniq.analytics.drawdown_contribution import (
     summarize_maximum_drawdown_contributions,
 )
@@ -41,6 +45,9 @@ from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
 from campaigniq.pdf_text import extract_pdf_text
+from campaigniq.persistence.lifecycle_history import (
+    load_lifecycle_history_from_storage,
+)
 from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
@@ -168,6 +175,21 @@ def money(value: Decimal) -> str:
     if amount < 0:
         return f"-${abs(amount):,.2f}"
     return "$0.00"
+
+
+def lifecycle_timeline_rows(
+    summary: SymbolLifecycleSummary,
+) -> list[dict[str, object]]:
+    """Build display rows from authoritative lifecycle transitions."""
+
+    return [
+        {
+            "Date": transition.occurred_at.date(),
+            "Time": transition.occurred_at.time(),
+            "Transition": transition.kind.value.replace("_", " "),
+        }
+        for transition in summary.transitions
+    ]
 
 
 def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
@@ -671,6 +693,8 @@ st.caption("Realized campaign analytics")
 
 try:
     summaries, monthly_attributions, monthly_forex_attributions = load_summaries()
+    lifecycle_history = load_lifecycle_history_from_storage(ARTIFACT_STORAGE)
+    lifecycle_summary = summarize_lifecycle_history(lifecycle_history)
 except Exception as exc:
     st.error(f"Unable to load CampaignIQ analytics: {exc}")
     st.stop()
@@ -969,6 +993,95 @@ tail4.metric(
     "Bottom 3 Losers",
     money(campaign_outcomes.bottom_3_loser_pnl),
 )
+
+st.subheader("Position Lifecycle")
+
+if lifecycle_summary.transition_count == 0:
+    st.info(
+        "No published lifecycle transitions are available yet."
+    )
+else:
+    lifecycle_metric_columns = st.columns(5)
+
+    lifecycle_metric_columns[0].metric(
+        "Transitions",
+        f"{lifecycle_summary.transition_count:,}",
+    )
+    lifecycle_metric_columns[1].metric(
+        "Symbols",
+        f"{lifecycle_summary.symbol_count:,}",
+    )
+    lifecycle_metric_columns[2].metric(
+        "Rolls",
+        f"{lifecycle_summary.roll_count:,}",
+    )
+    lifecycle_metric_columns[3].metric(
+        "Exits",
+        f"{lifecycle_summary.exit_count:,}",
+    )
+    lifecycle_metric_columns[4].metric(
+        "Assignments",
+        f"{lifecycle_summary.assignment_count:,}",
+    )
+
+    lifecycle_by_symbol = {
+        summary.symbol: summary
+        for summary in lifecycle_summary.symbols
+    }
+
+    lifecycle_symbol = st.selectbox(
+        "Underlying",
+        options=tuple(lifecycle_by_symbol),
+        key="campaigniq_lifecycle_symbol",
+    )
+    selected_lifecycle = lifecycle_by_symbol[lifecycle_symbol]
+
+    st.markdown(f"#### {selected_lifecycle.symbol}")
+
+    symbol_metric_columns = st.columns(4)
+    symbol_metric_columns[0].metric(
+        "Transitions",
+        f"{selected_lifecycle.transition_count:,}",
+    )
+    symbol_metric_columns[1].metric(
+        "Covered Positions",
+        f"{selected_lifecycle.covered_position_count:,}",
+    )
+    symbol_metric_columns[2].metric(
+        "Rolls",
+        f"{selected_lifecycle.roll_count:,}",
+    )
+    symbol_metric_columns[3].metric(
+        "Exits",
+        f"{selected_lifecycle.exit_count:,}",
+    )
+
+    lifecycle_timeline_df = pd.DataFrame(
+        lifecycle_timeline_rows(selected_lifecycle)
+    )
+
+    st.dataframe(
+        lifecycle_timeline_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Date": st.column_config.DateColumn(
+                "Date",
+                format="MMM D, YYYY",
+            ),
+            "Time": st.column_config.TimeColumn(
+                "Time",
+                format="HH:mm:ss",
+            ),
+        },
+    )
+
+    st.caption(
+        "Authoritative lifecycle evidence from published monthly artifacts. "
+        "This view summarizes observed corporate actions, assignments, "
+        "covered positions, option rolls, and exits; it does not infer "
+        "strategy intent or realized P&L."
+    )
 
 st.subheader("Underlying Performance")
 
