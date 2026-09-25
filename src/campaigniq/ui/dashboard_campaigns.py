@@ -35,8 +35,9 @@ def aggregate_period_qualified_campaigns(
 ) -> tuple[tuple[CampaignRealizedPnl, ...], tuple[CampaignDrilldownSummary, ...]]:
     qualified = [
         _qualified(a, start)
-        for (start, _end), attrs in sorted(monthly_attributions.items())
+        for (start, end), attrs in sorted(monthly_attributions.items())
         for a in attrs
+        if start <= a.record.closed_date <= end
     ]
     qualified_forex = [
         _qualified_forex(a, start)

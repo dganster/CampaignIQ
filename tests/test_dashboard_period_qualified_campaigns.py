@@ -63,3 +63,81 @@ def test_same_forex_local_id_in_two_periods_stays_two_campaigns():
         "2026-01/CAMP-000001",
         "2026-02/CAMP-000001",
     }
+
+
+def test_equity_option_records_are_qualified_by_closed_date():
+    monthly = {
+        (date(2026, 8, 1), date(2026, 8, 31)): (
+            attr(
+                "CAMP-000001",
+                "AAPL",
+                date(2026, 8, 15),
+                "75",
+            ),
+            attr(
+                "CAMP-000002",
+                "AAPL",
+                date(2026, 9, 1),
+                "467.32",
+            ),
+            attr(
+                "CAMP-000003",
+                "CVX",
+                date(2026, 9, 1),
+                "285.32",
+            ),
+            attr(
+                "CAMP-000004",
+                "IBM",
+                date(2026, 9, 1),
+                "447.32",
+            ),
+        ),
+    }
+
+    results, drilldowns = aggregate_period_qualified_campaigns(monthly)
+
+    assert len(results) == 1
+    assert results[0].campaign_id == "2026-08/CAMP-000001"
+    assert results[0].gain_loss == Decimal("75")
+
+    assert len(drilldowns) == 1
+    assert drilldowns[0].campaign_id == "2026-08/CAMP-000001"
+    assert drilldowns[0].realized_pnl == Decimal("75")
+
+
+def test_equity_option_period_qualification_is_inclusive():
+    monthly = {
+        (date(2026, 8, 1), date(2026, 8, 31)): (
+            attr(
+                "CAMP-START",
+                "AAPL",
+                date(2026, 8, 1),
+                "10",
+            ),
+            attr(
+                "CAMP-END",
+                "MSFT",
+                date(2026, 8, 31),
+                "20",
+            ),
+        ),
+    }
+
+    results, drilldowns = aggregate_period_qualified_campaigns(monthly)
+
+    assert {
+        result.campaign_id: result.gain_loss
+        for result in results
+    } == {
+        "2026-08/CAMP-START": Decimal("10"),
+        "2026-08/CAMP-END": Decimal("20"),
+    }
+
+    assert {
+        drilldown.campaign_id
+        for drilldown in drilldowns
+    } == {
+        "2026-08/CAMP-START",
+        "2026-08/CAMP-END",
+    }
