@@ -413,3 +413,145 @@ def test_rejects_transition_timestamp_tampering() -> None:
         match="timestamp does not match",
     ):
         deserialize_lifecycle_transitions(json.dumps(payload))
+
+def test_round_trip_preserves_option_leg_type_and_broker_strategy():
+    from campaigniq.domain.execution import Execution
+    from campaigniq.domain.option_contract import OptionContract
+    from campaigniq.domain.option_leg import OptionLeg
+    from campaigniq.domain.option_roll import OptionRoll
+    from campaigniq.domain.option_type import OptionType
+    from campaigniq.domain.position_effect import PositionEffect
+    from campaigniq.domain.position_lifecycle_transition import (
+        PositionLifecycleTransition,
+    )
+    from campaigniq.domain.side import Side
+
+    closed_contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 10, 2),
+        strike=Decimal("210"),
+        option_type=OptionType.PUT,
+    )
+    opened_contract = OptionContract(
+        underlying="IBM",
+        expiration=date(2026, 10, 16),
+        strike=Decimal("220"),
+        option_type=OptionType.PUT,
+    )
+    occurred_at = datetime(2026, 8, 31, 10, 22, 33)
+
+    closed_leg = OptionLeg(
+        contract=closed_contract,
+        side=Side.BUY,
+        position_effect=PositionEffect.CLOSE,
+        executions=(
+            Execution(
+                quantity=Decimal("2"),
+                execution_price=Decimal("1.45"),
+                executed_at=occurred_at,
+            ),
+        ),
+        broker_strategy="",
+    )
+    opened_leg = OptionLeg(
+        contract=opened_contract,
+        side=Side.SELL,
+        position_effect=PositionEffect.OPEN,
+        executions=(
+            Execution(
+                quantity=Decimal("-2"),
+                execution_price=Decimal("4.37"),
+                executed_at=occurred_at,
+            ),
+        ),
+        broker_strategy="DIAGONAL",
+    )
+
+    transition = PositionLifecycleTransition.from_option_roll(
+        OptionRoll(
+            underlying="IBM",
+            closed_contract=closed_contract,
+            opened_contract=opened_contract,
+            quantity=Decimal("2"),
+            closed_leg=closed_leg,
+            opened_leg=opened_leg,
+        )
+    )
+
+    serialized = serialize_lifecycle_transitions(
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 31),
+        transitions=(transition,),
+    )
+    persisted = deserialize_lifecycle_transitions(serialized)
+
+    restored = persisted.transitions[0].option_roll
+    assert restored is not None
+    assert isinstance(restored.closed_leg, OptionLeg)
+    assert isinstance(restored.opened_leg, OptionLeg)
+    assert restored.closed_leg.broker_strategy == ""
+    assert restored.opened_leg.broker_strategy == "DIAGONAL"
+    assert persisted.transitions == (transition,)
+
+
+def test_round_trip_preserves_forex_pair_and_instrument_leg():
+    from campaigniq.domain.execution import Execution
+    from campaigniq.domain.instrument_leg import InstrumentLeg
+    from campaigniq.domain.position_effect import PositionEffect
+    from campaigniq.domain.position_exit import PositionExit
+    from campaigniq.domain.position_lifecycle_transition import (
+        PositionLifecycleTransition,
+    )
+    from campaigniq.domain.side import Side
+    from campaigniq.domain.trade import Trade
+    from campaigniq.domain.value_objects.forex_pair import ForexPair
+
+    pair = ForexPair("EUR", "USD")
+    occurred_at = datetime(2026, 8, 27, 18, 19, 57)
+
+    leg = InstrumentLeg(
+        instrument=pair,
+        side=Side.SELL,
+        position_effect=PositionEffect.CLOSE,
+        executions=(
+            Execution(
+                quantity=Decimal("-100000"),
+                execution_price=Decimal("1.16508"),
+                executed_at=occurred_at,
+            ),
+        ),
+    )
+
+    transition = PositionLifecycleTransition.from_position_exit(
+        PositionExit(
+            underlying="EUR/USD",
+            trade=Trade(legs=(leg,)),
+            before_positions=(
+                (pair, Decimal("100000")),
+            ),
+            after_positions=(),
+        )
+    )
+
+    serialized = serialize_lifecycle_transitions(
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 31),
+        transitions=(transition,),
+    )
+    persisted = deserialize_lifecycle_transitions(serialized)
+
+    restored_exit = persisted.transitions[0].position_exit
+    assert restored_exit is not None
+
+    restored_leg = restored_exit.trade.legs[0]
+    assert isinstance(restored_leg, InstrumentLeg)
+    assert isinstance(restored_leg.instrument, ForexPair)
+    assert restored_leg.instrument.base_currency == "EUR"
+    assert restored_leg.instrument.quote_currency == "USD"
+
+    restored_before = restored_exit.before_positions[0][0]
+    assert isinstance(restored_before, ForexPair)
+    assert restored_before.base_currency == "EUR"
+    assert restored_before.quote_currency == "USD"
+
+    assert persisted.transitions == (transition,)

@@ -48,8 +48,14 @@ def test_storage_finalization_writes_marker_last(tmp_path,monkeypatch):
     assert outcome.finalized
     assert storage.events[-1]==("write","2026-08-finalized.json")
     delete_index=storage.events.index(("delete","2026-08-finalized.json"))
-    for key in ("2026-08-realized-attributions.json","2026-08-forex-settlement-attributions.json",
-                "2026-08-lot-book.json","2026-08-import-provenance.json"):
+    for key in (
+        "2026-08-realized-attributions.json",
+        "2026-08-forex-settlement-attributions.json",
+        "2026-08-lifecycle-transitions.json",
+        "2026-08-lot-book.json",
+        "2026-08-import-provenance.json",
+        "2026-08-boundary-completeness.json",
+    ):
         i=storage.events.index(("write",key))
         assert delete_index < i < len(storage.events)-1
 
@@ -62,3 +68,69 @@ def test_storage_payload_failure_leaves_month_unpublished(tmp_path,monkeypatch):
         execution_module.execute_monthly_import(
             preflight,authoritative_state_root=tmp_path,supplied_inputs=inputs,artifact_storage=storage)
     assert "2026-08-finalized.json" not in storage.values
+
+
+def test_storage_lifecycle_failure_leaves_month_unpublished(
+    tmp_path,
+    monkeypatch,
+):
+    preflight, inputs = ready(tmp_path, monkeypatch)
+    storage = RecordingStorage()
+    storage.values["2026-08-finalized.json"] = "old marker"
+    storage.fail_key = "2026-08-lifecycle-transitions.json"
+
+    with pytest.raises(
+        OSError,
+        match="simulated storage payload write failure",
+    ):
+        execution_module.execute_monthly_import(
+            preflight,
+            authoritative_state_root=tmp_path,
+            supplied_inputs=inputs,
+            artifact_storage=storage,
+        )
+
+    assert "2026-08-finalized.json" not in storage.values
+    assert (
+        "write",
+        "2026-08-lifecycle-transitions.json",
+    ) in storage.events
+    assert (
+        "write",
+        "2026-08-lot-book.json",
+    ) not in storage.events
+
+
+def test_storage_publishes_serialized_lifecycle_artifact(
+    tmp_path,
+    monkeypatch,
+):
+    preflight, inputs = ready(tmp_path, monkeypatch)
+    storage = RecordingStorage()
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+        artifact_storage=storage,
+    )
+
+    assert outcome.finalized
+
+    key = "2026-08-lifecycle-transitions.json"
+    assert key in storage.values
+
+    from campaigniq.persistence.lifecycle_transition_store import (
+        deserialize_lifecycle_transitions,
+    )
+
+    persisted = deserialize_lifecycle_transitions(
+        storage.values[key]
+    )
+
+    assert persisted.period_start == date(2026, 8, 1)
+    assert persisted.period_end == date(2026, 8, 31)
+    assert (
+        persisted.transitions
+        == outcome.result.lifecycle_transitions
+    )

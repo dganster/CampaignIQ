@@ -33,6 +33,9 @@ from campaigniq.persistence.forex_settlement_attribution_store import (
 from campaigniq.persistence.realized_attribution_store import (
     serialize_realized_attributions,
 )
+from campaigniq.persistence.lifecycle_transition_store import (
+    serialize_lifecycle_transitions,
+)
 from campaigniq.persistence.import_provenance import (
     capture_monthly_input_provenance,
     serialize_monthly_import_provenance,
@@ -212,6 +215,7 @@ def execute_monthly_import(
 
     realized_name = f"{contract.period_end:%Y-%m}-realized-attributions.json"
     forex_name = f"{contract.period_end:%Y-%m}-forex-settlement-attributions.json"
+    lifecycle_name = f"{contract.period_end:%Y-%m}-lifecycle-transitions.json"
     lot_name = lot_state_key(period_end=contract.period_end)
     provenance_name = f"{contract.period_end:%Y-%m}-import-provenance.json"
     completeness_name = f"{contract.period_end:%Y-%m}-boundary-completeness.json"
@@ -230,6 +234,11 @@ def execute_monthly_import(
         period_start=contract.period_start,
         period_end=contract.period_end,
         attributions=result.forex_settlement_attributions,
+    )
+    lifecycle_text = serialize_lifecycle_transitions(
+        period_start=contract.period_start,
+        period_end=contract.period_end,
+        transitions=result.lifecycle_transitions,
     )
     lot_text = serialize_lot_book(
         period_end=contract.period_end, lot_book=result.ending_lot_book
@@ -251,6 +260,7 @@ def execute_monthly_import(
     )
     storage.write_text(realized_name, realized_text)
     storage.write_text(forex_name, forex_text)
+    storage.write_text(lifecycle_name, lifecycle_text)
     storage.write_text(lot_name, lot_text)
     storage.write_text(provenance_name, provenance_text)
     storage.write_text(completeness_name, completeness_text)

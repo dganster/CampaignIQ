@@ -16,7 +16,9 @@ from campaigniq.domain.corporate_action import (
 from campaigniq.domain.covered_position import CoveredCallPosition
 from campaigniq.domain.execution import Execution
 from campaigniq.domain.leg import Leg
+from campaigniq.domain.instrument_leg import InstrumentLeg
 from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.option_leg import OptionLeg
 from campaigniq.domain.option_roll import OptionRoll
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.position_effect import PositionEffect
@@ -29,6 +31,7 @@ from campaigniq.domain.position_lifecycle_transition import (
 )
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
+from campaigniq.domain.value_objects.forex_pair import ForexPair
 from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.persistence.artifact_storage import ArtifactStorage
 
@@ -523,32 +526,101 @@ def _deserialize_trade(
 def _serialize_leg(
     leg,
 ) -> dict[str, object]:
-    return {
-        "instrument": _serialize_instrument(leg.instrument),
-        "side": leg.side.value,
-        "position_effect": leg.position_effect.value,
-        "executions": [
-            _serialize_execution(execution)
-            for execution in leg.executions
-        ],
-    }
+    if isinstance(leg, OptionLeg):
+        return {
+            "type": "option_leg",
+            "instrument": _serialize_instrument(leg.instrument),
+            "side": leg.side.value,
+            "position_effect": leg.position_effect.value,
+            "executions": [
+                _serialize_execution(execution)
+                for execution in leg.executions
+            ],
+            "broker_strategy": leg.broker_strategy,
+        }
+
+    if isinstance(leg, InstrumentLeg):
+        return {
+            "type": "instrument_leg",
+            "instrument": _serialize_instrument(leg.instrument),
+            "side": leg.side.value,
+            "position_effect": leg.position_effect.value,
+            "executions": [
+                _serialize_execution(execution)
+                for execution in leg.executions
+            ],
+        }
+
+    if isinstance(leg, Leg):
+        return {
+            "type": "leg",
+            "instrument": _serialize_instrument(leg.instrument),
+            "side": leg.side.value,
+            "position_effect": leg.position_effect.value,
+            "executions": [
+                _serialize_execution(execution)
+                for execution in leg.executions
+            ],
+        }
+
+    raise TypeError(
+        "Unsupported lifecycle leg type: "
+        f"{type(leg).__name__}"
+    )
 
 
 def _deserialize_leg(
     payload: dict[str, object],
-) -> Leg:
-    return Leg(
-        instrument=_deserialize_instrument(
-            payload["instrument"]
-        ),
-        side=Side(payload["side"]),
-        position_effect=PositionEffect(
-            payload["position_effect"]
-        ),
-        executions=tuple(
-            _deserialize_execution(item)
-            for item in payload["executions"]
-        ),
+):
+    leg_type = payload.get("type", "leg")
+    instrument = _deserialize_instrument(
+        payload["instrument"]
+    )
+    side = Side(payload["side"])
+    position_effect = PositionEffect(
+        payload["position_effect"]
+    )
+    executions = tuple(
+        _deserialize_execution(item)
+        for item in payload["executions"]
+    )
+
+    if leg_type == "option_leg":
+        if not isinstance(instrument, OptionContract):
+            raise ValueError(
+                "Persisted option leg must contain "
+                "an option contract."
+            )
+
+        return OptionLeg(
+            contract=instrument,
+            side=side,
+            position_effect=position_effect,
+            executions=executions,
+            broker_strategy=str(
+                payload.get("broker_strategy", "")
+            ),
+        )
+
+    if leg_type == "instrument_leg":
+        return InstrumentLeg(
+            instrument=instrument,
+            side=side,
+            position_effect=position_effect,
+            executions=executions,
+        )
+
+    if leg_type == "leg":
+        return Leg(
+            instrument=instrument,
+            side=side,
+            position_effect=position_effect,
+            executions=executions,
+        )
+
+    raise ValueError(
+        "Unsupported lifecycle leg type: "
+        f"{leg_type!r}"
     )
 
 
@@ -588,6 +660,14 @@ def _serialize_instrument(
             "option_type": instrument.option_type.value,
         }
 
+    if isinstance(instrument, ForexPair):
+        return {
+            "type": "forex_pair",
+            "symbol": instrument.symbol,
+            "base_currency": instrument.base_currency,
+            "quote_currency": instrument.quote_currency,
+        }
+
     if isinstance(instrument, Instrument):
         return {
             "type": "instrument",
@@ -607,6 +687,12 @@ def _deserialize_instrument(
 
     if instrument_type == "instrument":
         return Instrument(symbol=str(payload["symbol"]))
+
+    if instrument_type == "forex_pair":
+        return ForexPair(
+            base_currency=str(payload["base_currency"]),
+            quote_currency=str(payload["quote_currency"]),
+        )
 
     if instrument_type == "option":
         return OptionContract(
