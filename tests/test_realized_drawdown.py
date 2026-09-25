@@ -197,3 +197,91 @@ def test_accepts_generator_and_is_input_order_independent() -> None:
     assert result.maximum_drawdown == Decimal("-50.00")
     assert result.current_drawdown == Decimal("-25.00")
     assert result.total_realized_pnl == Decimal("75.00")
+
+
+def test_period_qualified_drawdown_excludes_adjacent_period_records() -> None:
+    from campaigniq.analytics.realized_drawdown import (
+        summarize_period_qualified_realized_drawdown,
+    )
+
+    monthly = {
+        (date(2026, 8, 1), date(2026, 8, 31)): (
+            attribution(date(2026, 8, 5), "100.00"),
+            attribution(date(2026, 8, 20), "-25.00"),
+            attribution(date(2026, 9, 1), "467.32"),
+            attribution(date(2026, 9, 1), "285.32"),
+            attribution(date(2026, 9, 1), "447.32"),
+        ),
+    }
+
+    result = summarize_period_qualified_realized_drawdown(monthly)
+
+    assert result.total_realized_pnl == Decimal("75.00")
+    assert [point.closed_date for point in result.points] == [
+        date(2026, 8, 5),
+        date(2026, 8, 20),
+    ]
+    assert result.maximum_drawdown == Decimal("-25.00")
+    assert result.current_drawdown == Decimal("-25.00")
+
+
+def test_period_qualified_drawdown_combines_multiple_periods() -> None:
+    from campaigniq.analytics.realized_drawdown import (
+        summarize_period_qualified_realized_drawdown,
+    )
+
+    monthly = {
+        (date(2026, 2, 1), date(2026, 2, 28)): (
+            attribution(date(2026, 2, 10), "-40.00"),
+        ),
+        (date(2026, 1, 1), date(2026, 1, 31)): (
+            attribution(date(2026, 1, 10), "100.00"),
+        ),
+    }
+
+    result = summarize_period_qualified_realized_drawdown(monthly)
+
+    assert result.total_realized_pnl == Decimal("60.00")
+    assert [point.closed_date for point in result.points] == [
+        date(2026, 1, 10),
+        date(2026, 2, 10),
+    ]
+    assert result.maximum_drawdown == Decimal("-40.00")
+    assert result.maximum_drawdown_peak_date == date(2026, 1, 10)
+
+
+def test_period_qualified_drawdown_rejects_invalid_period() -> None:
+    import pytest
+
+    from campaigniq.analytics.realized_drawdown import (
+        summarize_period_qualified_realized_drawdown,
+    )
+
+    monthly = {
+        (date(2026, 8, 31), date(2026, 8, 1)): (),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="period_end must be on or after period_start",
+    ):
+        summarize_period_qualified_realized_drawdown(monthly)
+
+
+def test_period_qualified_drawdown_rejects_overlapping_periods() -> None:
+    import pytest
+
+    from campaigniq.analytics.realized_drawdown import (
+        summarize_period_qualified_realized_drawdown,
+    )
+
+    monthly = {
+        (date(2026, 1, 1), date(2026, 1, 31)): (),
+        (date(2026, 1, 15), date(2026, 2, 15)): (),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="Realized drawdown periods must not overlap",
+    ):
+        summarize_period_qualified_realized_drawdown(monthly)

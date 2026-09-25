@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
 
@@ -146,3 +146,45 @@ def summarize_realized_drawdown(
         current_peak_date=running_peak_date,
         recovered=recovered,
     )
+
+def summarize_period_qualified_realized_drawdown(
+    monthly_attributions: Mapping[
+        tuple[date, date],
+        Iterable[RealizedAttribution],
+    ],
+) -> RealizedDrawdownSummary:
+    """Summarize drawdown across period-keyed realized attributions.
+
+    Only broker records whose ``closed_date`` falls within the period
+    containing the attribution are included. Persisted attribution
+    artifacts may contain adjacent-period records required for
+    reconciliation, so flattening their raw contents would overstate or
+    understate reporting-period realized P&L.
+
+    Period ranges must not overlap. Overlapping ranges would make ownership
+    of a broker close date ambiguous and could double-count realized P&L.
+    """
+
+    periods = sorted(monthly_attributions)
+
+    previous_end: date | None = None
+    for period_start, period_end in periods:
+        if period_end < period_start:
+            raise ValueError("period_end must be on or after period_start")
+
+        if previous_end is not None and period_start <= previous_end:
+            raise ValueError(
+                "Realized drawdown periods must not overlap"
+            )
+
+        previous_end = period_end
+
+    qualified = (
+        attribution
+        for period_start, period_end in periods
+        for attribution in monthly_attributions[(period_start, period_end)]
+        if period_start <= attribution.record.closed_date <= period_end
+    )
+
+    return summarize_realized_drawdown(qualified)
+
