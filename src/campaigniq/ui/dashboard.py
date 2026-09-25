@@ -16,6 +16,9 @@ from campaigniq.access import AccessContext
 from campaigniq.analytics.campaign_outcome_distribution import (
     summarize_campaign_outcomes,
 )
+from campaigniq.analytics.drawdown_contribution import (
+    summarize_maximum_drawdown_contributions,
+)
 from campaigniq.analytics.multi_month_analytics_summary import (
     summarize_multi_month_analytics,
 )
@@ -24,6 +27,9 @@ from campaigniq.analytics.multi_month_campaign_performance import (
 )
 from campaigniq.analytics.multi_month_performance_summary import (
     summarize_multi_month_performance,
+)
+from campaigniq.analytics.realized_drawdown import (
+    summarize_period_qualified_realized_drawdown,
 )
 from campaigniq.analytics.repeated_campaign_performance import (
     summarize_repeated_campaign_performance,
@@ -690,6 +696,12 @@ underlying_performance = summarize_underlying_performance(monthly_attributions)
 repeated_campaign_performance = summarize_repeated_campaign_performance(
     monthly_attributions
 )
+realized_drawdown = summarize_period_qualified_realized_drawdown(
+    monthly_attributions
+)
+maximum_drawdown_contributions = summarize_maximum_drawdown_contributions(
+    monthly_attributions
+)
 
 rows = []
 
@@ -1191,6 +1203,283 @@ with right:
     st.altair_chart(
         cumulative_pnl_chart,
         width="stretch",
+    )
+
+st.divider()
+
+st.subheader("Realized Drawdown")
+
+drawdown1, drawdown2, drawdown3, drawdown4 = st.columns(4)
+
+drawdown1.metric(
+    "Maximum Drawdown",
+    money(realized_drawdown.maximum_drawdown),
+)
+
+drawdown2.metric(
+    "Current Drawdown",
+    money(realized_drawdown.current_drawdown),
+)
+
+drawdown3.metric(
+    "Drawdown Peak",
+    (
+        realized_drawdown.maximum_drawdown_peak_date.strftime("%b %d, %Y")
+        if realized_drawdown.maximum_drawdown_peak_date is not None
+        else "Starting baseline"
+    ),
+)
+
+drawdown4.metric(
+    "Drawdown Trough",
+    (
+        realized_drawdown.maximum_drawdown_trough_date.strftime("%b %d, %Y")
+        if realized_drawdown.maximum_drawdown_trough_date is not None
+        else "—"
+    ),
+)
+
+if realized_drawdown.maximum_drawdown < Decimal("0"):
+    if realized_drawdown.recovery_date is not None:
+        st.caption(
+            "Maximum drawdown recovered on "
+            f"{realized_drawdown.recovery_date:%b %d, %Y}. "
+            "Equity/options realized P&L only."
+        )
+    else:
+        st.caption(
+            "Maximum drawdown has not recovered through the latest "
+            "period-qualified realized close. Equity/options realized P&L only."
+        )
+else:
+    st.caption(
+        "No realized drawdown is present in the available "
+        "period-qualified equity/options history."
+    )
+
+drawdown_rows = [
+    {
+        "closed_date": point.closed_date,
+        "daily_realized_pnl": float(point.realized_pnl),
+        "cumulative_pnl": float(point.cumulative_pnl),
+        "running_peak_pnl": float(point.running_peak_pnl),
+        "drawdown": float(point.drawdown),
+    }
+    for point in realized_drawdown.points
+]
+
+drawdown_df = pd.DataFrame(drawdown_rows)
+
+if not drawdown_df.empty:
+    drawdown_df["closed_date"] = pd.to_datetime(
+        drawdown_df["closed_date"]
+    )
+
+    equity_base = alt.Chart(drawdown_df).encode(
+        x=alt.X(
+            "closed_date:T",
+            title="Realized Close Date",
+        ),
+    )
+
+    cumulative_line = equity_base.mark_line().encode(
+        y=alt.Y(
+            "cumulative_pnl:Q",
+            title="Cumulative Realized P&L ($)",
+        ),
+        tooltip=[
+            alt.Tooltip(
+                "closed_date:T",
+                title="Date",
+                format="%b %d, %Y",
+            ),
+            alt.Tooltip(
+                "cumulative_pnl:Q",
+                title="Cumulative P&L",
+                format="$,.2f",
+            ),
+        ],
+    )
+
+    peak_line = equity_base.mark_line(
+        strokeDash=[6, 4],
+    ).encode(
+        y=alt.Y(
+            "running_peak_pnl:Q",
+            title="Cumulative Realized P&L ($)",
+        ),
+        tooltip=[
+            alt.Tooltip(
+                "closed_date:T",
+                title="Date",
+                format="%b %d, %Y",
+            ),
+            alt.Tooltip(
+                "running_peak_pnl:Q",
+                title="High-Water Mark",
+                format="$,.2f",
+            ),
+        ],
+    )
+
+    drawdown_line = (
+        alt.Chart(drawdown_df)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(
+                "closed_date:T",
+                title="Realized Close Date",
+            ),
+            y=alt.Y(
+                "drawdown:Q",
+                title="Drawdown ($)",
+            ),
+            tooltip=[
+                alt.Tooltip(
+                    "closed_date:T",
+                    title="Date",
+                    format="%b %d, %Y",
+                ),
+                alt.Tooltip(
+                    "drawdown:Q",
+                    title="Drawdown",
+                    format="$,.2f",
+                ),
+                alt.Tooltip(
+                    "daily_realized_pnl:Q",
+                    title="Daily Realized P&L",
+                    format="$,.2f",
+                ),
+            ],
+        )
+    )
+
+    trough_df = drawdown_df[
+        drawdown_df["drawdown"]
+        == float(realized_drawdown.maximum_drawdown)
+    ]
+
+    trough_point = (
+        alt.Chart(trough_df)
+        .mark_point(
+            filled=True,
+            size=120,
+        )
+        .encode(
+            x=alt.X("closed_date:T"),
+            y=alt.Y("drawdown:Q"),
+            tooltip=[
+                alt.Tooltip(
+                    "closed_date:T",
+                    title="Maximum Drawdown Trough",
+                    format="%b %d, %Y",
+                ),
+                alt.Tooltip(
+                    "drawdown:Q",
+                    title="Maximum Drawdown",
+                    format="$,.2f",
+                ),
+            ],
+        )
+    )
+
+    drawdown_chart = drawdown_line + trough_point
+
+    equity_col, drawdown_col = st.columns(2)
+
+    with equity_col:
+        st.caption("Realized equity curve and high-water mark")
+        st.altair_chart(
+            cumulative_line + peak_line,
+            width="stretch",
+        )
+
+    with drawdown_col:
+        st.caption("Realized drawdown from high-water mark")
+        st.altair_chart(
+            drawdown_chart,
+            width="stretch",
+        )
+
+st.subheader("Maximum Drawdown Contribution")
+
+contribution_rows = [
+    {
+        "Underlying": item.underlying,
+        "Records": item.record_count,
+        "Wins": item.winning_record_count,
+        "Losses": item.losing_record_count,
+        "Breakeven": item.breakeven_record_count,
+        "Gross Gain": float(item.gross_gain),
+        "Gross Loss": float(item.gross_loss),
+        "Net P&L": float(item.net_realized_pnl),
+        "Largest Gain": (
+            float(item.largest_gain)
+            if item.largest_gain is not None
+            else None
+        ),
+        "Largest Loss": (
+            float(item.largest_loss)
+            if item.largest_loss is not None
+            else None
+        ),
+        "Contribution": float(item.drawdown_contribution) * 100,
+    }
+    for item in maximum_drawdown_contributions.contributions
+]
+
+contribution_df = pd.DataFrame(contribution_rows)
+
+if not contribution_df.empty:
+    contribution_df = contribution_df.sort_values(
+        ["Net P&L", "Underlying"],
+        ascending=[True, True],
+    ).reset_index(drop=True)
+
+st.dataframe(
+    contribution_df,
+    use_container_width=True,
+    hide_index=True,
+    height=420,
+    column_config={
+        "Gross Gain": st.column_config.NumberColumn(
+            "Gross Gain",
+            format="$%0,.2f",
+        ),
+        "Gross Loss": st.column_config.NumberColumn(
+            "Gross Loss",
+            format="$%0,.2f",
+        ),
+        "Net P&L": st.column_config.NumberColumn(
+            "Net P&L",
+            format="$%0,.2f",
+        ),
+        "Largest Gain": st.column_config.NumberColumn(
+            "Largest Gain",
+            format="$%0,.2f",
+        ),
+        "Largest Loss": st.column_config.NumberColumn(
+            "Largest Loss",
+            format="$%0,.2f",
+        ),
+        "Contribution": st.column_config.NumberColumn(
+            "Contribution",
+            format="%.1f%%",
+        ),
+    },
+)
+
+if maximum_drawdown_contributions.maximum_drawdown < Decimal("0"):
+    st.caption(
+        "Equity/options broker realized facts from the maximum-drawdown "
+        "interval only. Negative contribution increased drawdown; positive "
+        "contribution offset losses elsewhere. Unassigned, ambiguous, and "
+        "unreconciled campaign provenance remains included. FOREX is excluded."
+    )
+else:
+    st.caption(
+        "No maximum-drawdown contribution interval is present in the "
+        "available equity/options history."
     )
 
 st.divider()
