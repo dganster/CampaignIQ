@@ -7,6 +7,8 @@ from datetime import datetime
 from enum import Enum
 
 from campaigniq.domain.corporate_action import CorporateActionEvidence
+from campaigniq.domain.covered_position import CoveredCallPosition
+from campaigniq.domain.option_roll import OptionRoll
 from campaigniq.domain.position_event import PositionEvent
 from campaigniq.domain.position_event_kind import PositionEventKind
 from campaigniq.domain.position_exit import PositionExit
@@ -35,11 +37,9 @@ class PositionLifecycleTransition:
 
     * CORPORATE_ACTION -> CorporateActionEvidence
     * ASSIGNMENT       -> PositionEvent(kind=ASSIGNMENT)
+    * COVERED_POSITION -> CoveredCallPosition
+    * ROLL             -> OptionRoll
     * EXIT             -> PositionExit
-
-    Other transition kinds intentionally carry no specialized evidence yet.
-    Their evidence contracts will be added only when CampaignIQ can derive
-    them from authoritative source facts.
     """
 
     kind: PositionLifecycleTransitionKind
@@ -47,6 +47,8 @@ class PositionLifecycleTransition:
     occurred_at: datetime
     corporate_action: CorporateActionEvidence | None = None
     position_event: PositionEvent | None = None
+    covered_position: CoveredCallPosition | None = None
+    option_roll: OptionRoll | None = None
     position_exit: PositionExit | None = None
 
     def __post_init__(self) -> None:
@@ -63,6 +65,8 @@ class PositionLifecycleTransition:
                 )
             if (
                 self.position_event is not None
+                or self.covered_position is not None
+                or self.option_roll is not None
                 or self.position_exit is not None
             ):
                 raise ValueError(
@@ -88,6 +92,8 @@ class PositionLifecycleTransition:
                 )
             if (
                 self.corporate_action is not None
+                or self.covered_position is not None
+                or self.option_roll is not None
                 or self.position_exit is not None
             ):
                 raise ValueError(
@@ -119,10 +125,75 @@ class PositionLifecycleTransition:
                 )
             return
 
+        if self.kind is PositionLifecycleTransitionKind.COVERED_POSITION:
+            if self.covered_position is None:
+                raise ValueError(
+                    "COVERED_POSITION transition requires covered-position "
+                    "evidence."
+                )
+            if (
+                self.corporate_action is not None
+                or self.position_event is not None
+                or self.option_roll is not None
+                or self.position_exit is not None
+            ):
+                raise ValueError(
+                    "COVERED_POSITION transition must not contain other "
+                    "specialized evidence."
+                )
+            if self.covered_position.underlying.upper() != normalized_symbol:
+                raise ValueError(
+                    "Covered-position evidence underlying must match "
+                    "lifecycle transition symbol."
+                )
+            return
+
+        if self.kind is PositionLifecycleTransitionKind.ROLL:
+            if self.option_roll is None:
+                raise ValueError(
+                    "ROLL transition requires option-roll evidence."
+                )
+            if (
+                self.corporate_action is not None
+                or self.position_event is not None
+                or self.covered_position is not None
+                or self.position_exit is not None
+            ):
+                raise ValueError(
+                    "ROLL transition must not contain other specialized "
+                    "evidence."
+                )
+            if self.option_roll.underlying.upper() != normalized_symbol:
+                raise ValueError(
+                    "Option-roll evidence underlying must match lifecycle "
+                    "transition symbol."
+                )
+
+            roll_times = [
+                execution.executed_at
+                for leg in (
+                    self.option_roll.closed_leg,
+                    self.option_roll.opened_leg,
+                )
+                for execution in leg.executions
+            ]
+            if not roll_times:
+                raise ValueError(
+                    "Option-roll evidence must contain executions."
+                )
+            if min(roll_times) != self.occurred_at:
+                raise ValueError(
+                    "Option-roll timestamp must match lifecycle transition "
+                    "timestamp."
+                )
+            return
+
         if self.kind is PositionLifecycleTransitionKind.EXIT:
             if (
                 self.corporate_action is not None
                 or self.position_event is not None
+                or self.covered_position is not None
+                or self.option_roll is not None
             ):
                 raise ValueError(
                     "EXIT transition must not contain other specialized "
@@ -158,6 +229,8 @@ class PositionLifecycleTransition:
         if (
             self.corporate_action is not None
             or self.position_event is not None
+            or self.covered_position is not None
+            or self.option_roll is not None
             or self.position_exit is not None
         ):
             raise ValueError(
@@ -180,6 +253,44 @@ class PositionLifecycleTransition:
                 datetime.min.time(),
             ),
             corporate_action=evidence,
+        )
+
+    @classmethod
+    def from_covered_position(
+        cls,
+        *,
+        evidence: CoveredCallPosition,
+        occurred_at: datetime,
+    ) -> "PositionLifecycleTransition":
+        """Classify authoritative covered-position state."""
+        return cls(
+            kind=PositionLifecycleTransitionKind.COVERED_POSITION,
+            symbol=evidence.underlying,
+            occurred_at=occurred_at,
+            covered_position=evidence,
+        )
+
+    @classmethod
+    def from_option_roll(
+        cls,
+        evidence: OptionRoll,
+    ) -> "PositionLifecycleTransition":
+        """Classify an authoritative same-trade option roll."""
+        execution_times = [
+            execution.executed_at
+            for leg in (evidence.closed_leg, evidence.opened_leg)
+            for execution in leg.executions
+        ]
+        if not execution_times:
+            raise ValueError(
+                "Option-roll evidence must contain executions."
+            )
+
+        return cls(
+            kind=PositionLifecycleTransitionKind.ROLL,
+            symbol=evidence.underlying,
+            occurred_at=min(execution_times),
+            option_roll=evidence,
         )
 
     @classmethod

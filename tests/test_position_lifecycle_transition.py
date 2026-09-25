@@ -295,3 +295,122 @@ def test_exit_rejects_mismatched_timestamp() -> None:
             occurred_at=datetime(2026, 4, 16, 10, 53),
             position_exit=nflx_exit(),
         )
+
+
+def test_covered_position_transition_reuses_evidence() -> None:
+    from campaigniq.domain.covered_position import CoveredCallPosition
+
+    evidence = CoveredCallPosition(
+        underlying="NFLX",
+        share_quantity=Decimal("5000"),
+        short_call_quantity=Decimal("50"),
+        required_share_quantity=Decimal("5000"),
+        covered_call_quantity=Decimal("50"),
+        uncovered_call_quantity=Decimal("0"),
+        excess_share_quantity=Decimal("0"),
+    )
+    occurred_at = datetime(2026, 3, 27, 11, 53, 38)
+
+    transition = PositionLifecycleTransition.from_covered_position(
+        evidence=evidence,
+        occurred_at=occurred_at,
+    )
+
+    assert transition.kind is PositionLifecycleTransitionKind.COVERED_POSITION
+    assert transition.symbol == "NFLX"
+    assert transition.occurred_at == occurred_at
+    assert transition.covered_position is evidence
+
+
+def test_covered_position_requires_evidence() -> None:
+    with pytest.raises(
+        ValueError,
+        match="requires covered-position evidence",
+    ):
+        PositionLifecycleTransition(
+            kind=PositionLifecycleTransitionKind.COVERED_POSITION,
+            symbol="NFLX",
+            occurred_at=datetime(2026, 3, 27),
+        )
+
+
+def test_roll_transition_reuses_evidence() -> None:
+    from datetime import date
+
+    from campaigniq.domain.execution import Execution
+    from campaigniq.domain.option_contract import OptionContract
+    from campaigniq.domain.option_leg import OptionLeg
+    from campaigniq.domain.option_roll import OptionRoll
+    from campaigniq.domain.option_type import OptionType
+    from campaigniq.domain.position_effect import PositionEffect
+    from campaigniq.domain.side import Side
+
+    occurred_at = datetime(2026, 3, 10, 12, 2, 32)
+
+    closed_contract = OptionContract(
+        underlying="NFLX",
+        expiration=date(2026, 3, 20),
+        strike=Decimal("74"),
+        option_type=OptionType.CALL,
+    )
+    opened_contract = OptionContract(
+        underlying="NFLX",
+        expiration=date(2026, 4, 17),
+        strike=Decimal("74"),
+        option_type=OptionType.CALL,
+    )
+
+    closed_leg = OptionLeg(
+        contract=closed_contract,
+        side=Side.BUY,
+        position_effect=PositionEffect.CLOSE,
+        executions=(
+            Execution(
+                quantity=Decimal("50"),
+                execution_price=Decimal("23.23"),
+                executed_at=occurred_at,
+            ),
+        ),
+        broker_strategy="CALENDAR",
+    )
+    opened_leg = OptionLeg(
+        contract=opened_contract,
+        side=Side.SELL,
+        position_effect=PositionEffect.OPEN,
+        executions=(
+            Execution(
+                quantity=Decimal("-50"),
+                execution_price=Decimal("23.63"),
+                executed_at=occurred_at,
+            ),
+        ),
+        broker_strategy="CALENDAR",
+    )
+
+    evidence = OptionRoll(
+        underlying="NFLX",
+        closed_contract=closed_contract,
+        opened_contract=opened_contract,
+        quantity=Decimal("50"),
+        closed_leg=closed_leg,
+        opened_leg=opened_leg,
+    )
+
+    transition = PositionLifecycleTransition.from_option_roll(evidence)
+
+    assert transition.kind is PositionLifecycleTransitionKind.ROLL
+    assert transition.symbol == "NFLX"
+    assert transition.occurred_at == occurred_at
+    assert transition.option_roll is evidence
+
+
+def test_roll_requires_evidence() -> None:
+    with pytest.raises(
+        ValueError,
+        match="requires option-roll evidence",
+    ):
+        PositionLifecycleTransition(
+            kind=PositionLifecycleTransitionKind.ROLL,
+            symbol="NFLX",
+            occurred_at=datetime(2026, 3, 10),
+        )
