@@ -396,7 +396,11 @@ def _show_validation(validation, *, label, required=True):
 
 
 def _show_monthly_preflight(preflight):
-    st.markdown("#### Preflight")
+    st.markdown("#### 3. Review")
+    st.caption(
+        "Review what CampaignIQ validated before finalization. "
+        "Nothing has been published yet."
+    )
 
     _show_validation(
         preflight.validation_for(
@@ -642,6 +646,24 @@ def _monthly_document_guidance(
 
     return ""
 
+def _display_instrument(instrument) -> str:
+    """Format an instrument for operator-facing reconciliation output."""
+
+    if isinstance(instrument, OptionContract):
+        strike = format(instrument.strike, "f").rstrip("0").rstrip(".")
+        option_type = instrument.option_type.value.title()
+        return (
+            f"{instrument.underlying} "
+            f"{instrument.expiration:%b %d %Y} "
+            f"${strike} {option_type}"
+        )
+
+    if isinstance(instrument, Instrument):
+        return instrument.symbol
+
+    return str(instrument)
+
+
 def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
@@ -807,19 +829,42 @@ def render_monthly_import_wizard():
             return
 
         st.success(
-            f"Preflight ready for {preflight.contract.period_start:%B %Y}."
+            f"{preflight.contract.period_start:%B %Y} is ready to process."
+        )
+
+        st.markdown("##### What happens during finalization")
+        st.write(
+            "CampaignIQ will reconstruct the selected month's activity, "
+            "compare the computed month-end positions with the Schwab "
+            "closing-position snapshot, and publish the month only if "
+            "closing inventory reconciles."
+        )
+        st.info(
+            "Nothing has been published yet. Validation and review are "
+            "read-only."
+        )
+
+        st.markdown(
+            f"#### 4. Finalize {preflight.contract.period_start:%B %Y}"
+        )
+        st.caption(
+            "Finalization runs the monthly import and may publish a new "
+            "authoritative CampaignIQ month. If closing inventory does not "
+            "reconcile, CampaignIQ will not publish the month."
         )
 
         confirm = st.checkbox(
-            "Run the import and persist the month-end state only if closing "
-            "inventory reconciles.",
+            f"I understand that finalizing "
+            f"{preflight.contract.period_start:%B %Y} may publish it as "
+            "authoritative CampaignIQ data.",
             key="monthly_import_confirm",
         )
         if not confirm:
             return
 
         if not st.button(
-            "Run reconciled import",
+            f"Finalize {preflight.contract.period_start:%B %Y}",
+            type="primary",
             key="monthly_import_execute",
         ):
             return
@@ -858,7 +903,7 @@ def render_monthly_import_wizard():
             st.dataframe(
                 [
                     {
-                        "Instrument": repr(item.instrument),
+                        "Instrument": _display_instrument(item.instrument),
                         "Computed": str(item.computed_quantity),
                         "Snapshot": str(item.snapshot_quantity),
                         "Difference": str(item.difference),
@@ -961,8 +1006,12 @@ def render_monthly_import_wizard():
                     )
 
         st.success(
-            "Closing inventory reconciled and authoritative month-end state "
-            f"was persisted to {execution.authoritative_state_path}."
+            f"{preflight.contract.period_start:%B %Y} finalized successfully. "
+            "Closing inventory reconciled and the authoritative month was "
+            "published."
+        )
+        st.caption(
+            f"Authoritative state: {execution.authoritative_state_path}"
         )
 
 

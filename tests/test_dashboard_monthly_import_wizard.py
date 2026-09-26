@@ -90,7 +90,7 @@ def test_wizard_requires_explicit_execution_confirmation() -> None:
     text = source()
     assert "confirm = st.checkbox(" in text
     assert "if not confirm:" in text
-    assert '"Run reconciled import"' in text
+    assert '"Finalize {preflight.contract.period_start:%B %Y}"' in text
 
 
 def test_monthly_import_view_stops_before_analytics_loading() -> None:
@@ -136,10 +136,16 @@ def test_wizard_reports_forex_settlement_control_after_execution() -> None:
     text = source()
     execute = text.index("execution = execute_monthly_import(")
     control = text.index('st.markdown("#### FOREX Settlement Control")', execute)
-    final_success = text.index(
-        '"Closing inventory reconciled and authoritative month-end state "',
+    final_success_text = text.index(
+        "finalized successfully",
         control,
     )
+    final_success = text.rfind(
+        "st.success(",
+        control,
+        final_success_text,
+    )
+    assert final_success != -1
 
     assert execute < control < final_success
     assert '"Broker MTD Settled P&L: $' in text
@@ -367,3 +373,79 @@ def test_monthly_uploaders_use_separate_guidance_labels() -> None:
     assert 'st.markdown(f"**{label}**")' in text
     assert '"Upload",' in text
     assert 'label_visibility="collapsed"' in text
+
+
+
+def test_review_explicitly_says_nothing_is_published() -> None:
+    text = source()
+
+    assert 'st.markdown("#### 3. Review")' in text
+    assert "Nothing has been published yet." in text
+    assert "Validation and review are" in text
+    assert '"read-only."' in text
+
+
+def test_review_explains_finalization_reconciliation_gate() -> None:
+    text = source()
+
+    assert 'st.markdown("##### What happens during finalization")' in text
+    assert "compare the computed month-end positions with the Schwab" in text
+    assert "publish the month only if" in text
+    assert "closing inventory reconciles." in text
+
+
+def test_finalize_action_is_named_for_selected_month() -> None:
+    text = source()
+
+    assert (
+        'f"#### 4. Finalize '
+        '{preflight.contract.period_start:%B %Y}"'
+    ) in text
+    assert (
+        'f"Finalize {preflight.contract.period_start:%B %Y}"'
+    ) in text
+    assert 'type="primary"' in text
+
+
+def test_finalize_requires_explicit_publication_acknowledgement() -> None:
+    text = source()
+
+    assert "I understand that finalizing " in text
+    assert "may publish it as " in text
+    assert '"authoritative CampaignIQ data."' in text
+    assert 'key="monthly_import_confirm"' in text
+
+
+def test_failed_closing_reconciliation_still_blocks_publication() -> None:
+    text = source()
+
+    assert "if not execution.closing_reconciliation.reconciled:" in text
+    assert "No authoritative month-end state was persisted." in text
+
+
+def test_success_message_says_authoritative_month_was_published() -> None:
+    text = source()
+
+    assert "finalized successfully." in text
+    assert "Closing inventory reconciled and the authoritative month was " in text
+    assert '"published."' in text
+
+
+
+def test_reconciliation_table_uses_operator_instrument_display() -> None:
+    text = source()
+
+    assert '"Instrument": _display_instrument(item.instrument)' in text
+    assert '"Instrument": repr(item.instrument)' not in text
+
+
+def test_operator_instrument_display_formats_options_and_symbols() -> None:
+    text = source()
+
+    assert "def _display_instrument(instrument) -> str:" in text
+    assert "if isinstance(instrument, OptionContract):" in text
+    assert 'f"{instrument.underlying} "' in text
+    assert 'f"{instrument.expiration:%b %d %Y} "' in text
+    assert 'f"${strike} {option_type}"' in text
+    assert "if isinstance(instrument, Instrument):" in text
+    assert "return instrument.symbol" in text
