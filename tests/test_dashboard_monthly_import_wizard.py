@@ -290,3 +290,80 @@ def test_wizard_separates_historical_backfill_from_normal_import() -> None:
         "Historical backfill should be handled separately from the "
         "normal monthly workflow."
     ) in text
+
+
+
+def test_wizard_provides_period_specific_document_guidance() -> None:
+    text = source()
+
+    assert "def _monthly_document_guidance(" in text
+    assert "selected_period_start = _month_start(int(year), int(month))" in text
+    assert "selected_period_end = selected_next_month - date.resolution" in text
+    assert "guidance = _monthly_document_guidance(" in text
+
+
+def test_trade_history_guidance_uses_selected_month() -> None:
+    text = source()
+
+    assert "role == MonthlyInputRole.THINKORSWIM_TRADE_HISTORY" in text
+    assert "_display_date_range(period_start, period_end)" in text
+
+
+def test_schwab_statement_guidance_explains_reconciliation_role() -> None:
+    text = source()
+
+    assert 'role == "schwab_brokerage_statement"' in text
+    assert "used to reconcile month-end positions" in text
+
+
+def test_realized_gain_loss_guidance_uses_selected_month() -> None:
+    text = source()
+
+    start = text.index(
+        "if role == MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS:"
+    )
+    end = text.index(
+        "if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:",
+        start,
+    )
+    section = text[start:end]
+
+    assert "_display_date_range(period_start, period_end)" in section
+
+
+def test_forex_guidance_includes_required_preceding_day() -> None:
+    text = source()
+
+    start = text.index(
+        "if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:"
+    )
+    end = text.index(
+        "if role == MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT:",
+        start,
+    )
+    section = text[start:end]
+
+    assert "forex_start = period_start - date.resolution" in section
+    assert "_display_date_range(forex_start, period_end)" in section
+
+
+def test_bootstrap_statement_guidance_uses_prior_month() -> None:
+    text = source()
+
+    start = text.index(
+        "if role == MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT:"
+    )
+    end = text.index('    return ""', start)
+    section = text[start:end]
+
+    assert "previous_day = period_start - date.resolution" in section
+    assert "opening_start = previous_day.replace(day=1)" in section
+    assert "_display_date_range(opening_start, previous_day)" in section
+
+
+def test_monthly_uploaders_use_separate_guidance_labels() -> None:
+    text = source()
+
+    assert 'st.markdown(f"**{label}**")' in text
+    assert '"Upload",' in text
+    assert 'label_visibility="collapsed"' in text

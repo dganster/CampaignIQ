@@ -579,6 +579,69 @@ def _render_monthly_import_operator_state(
 
     return predecessor
 
+
+def _display_date_range(start: date, end: date) -> str:
+    """Format a monthly document date range for an operator."""
+
+    if start.year == end.year and start.month == end.month:
+        return f"{start:%B} {start.day}–{end.day}, {end.year}"
+
+    if start.year == end.year:
+        return (
+            f"{start:%B} {start.day}–"
+            f"{end:%B} {end.day}, {end.year}"
+        )
+
+    return (
+        f"{start:%B} {start.day}, {start.year}–"
+        f"{end:%B} {end.day}, {end.year}"
+    )
+
+
+def _monthly_document_guidance(
+    role,
+    *,
+    period_start: date,
+    period_end: date,
+) -> str:
+    """Describe the period CampaignIQ expects for one monthly document."""
+
+    if role == MonthlyInputRole.THINKORSWIM_TRADE_HISTORY:
+        return (
+            "Required • "
+            + _display_date_range(period_start, period_end)
+        )
+
+    if role == "schwab_brokerage_statement":
+        return (
+            "Required • Schwab statement for "
+            + _display_date_range(period_start, period_end)
+            + "; used to reconcile month-end positions"
+        )
+
+    if role == MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS:
+        return (
+            "Required • "
+            + _display_date_range(period_start, period_end)
+        )
+
+    if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
+        forex_start = period_start - date.resolution
+        return (
+            "Required • "
+            + _display_date_range(forex_start, period_end)
+        )
+
+    if role == MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT:
+        previous_day = period_start - date.resolution
+        opening_start = previous_day.replace(day=1)
+        return (
+            "Required for bootstrap • "
+            + _display_date_range(opening_start, previous_day)
+        )
+
+    return ""
+
 def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
@@ -623,6 +686,21 @@ def render_monthly_import_wizard():
         "Supply the four brokerage documents for the selected month."
     )
 
+    selected_period_start = _month_start(int(year), int(month))
+    if selected_period_start.month == 12:
+        selected_next_month = date(
+            selected_period_start.year + 1,
+            1,
+            1,
+        )
+    else:
+        selected_next_month = date(
+            selected_period_start.year,
+            selected_period_start.month + 1,
+            1,
+        )
+    selected_period_end = selected_next_month - date.resolution
+
     uploads = {}
 
     for role, label, file_types in MONTHLY_UPLOAD_ROLES:
@@ -632,10 +710,20 @@ def render_monthly_import_wizard():
         ):
             continue
 
+        st.markdown(f"**{label}**")
+        guidance = _monthly_document_guidance(
+            role,
+            period_start=selected_period_start,
+            period_end=selected_period_end,
+        )
+        if guidance:
+            st.caption(guidance)
+
         uploads[role] = st.file_uploader(
-            label,
+            "Upload",
             type=list(file_types),
             key=f"monthly_import_{role}",
+            label_visibility="collapsed",
         )
 
     if predecessor is not None:
