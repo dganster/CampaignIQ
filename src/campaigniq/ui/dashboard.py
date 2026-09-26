@@ -41,6 +41,8 @@ from campaigniq.analytics.repeated_campaign_performance import (
 from campaigniq.analytics.underlying_performance import (
     summarize_underlying_performance,
 )
+from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
@@ -177,19 +179,113 @@ def money(value: Decimal) -> str:
     return "$0.00"
 
 
+def _display_decimal(value) -> str:
+    """Format a domain Decimal without unnecessary fractional zeros."""
+
+    text = format(value, "f")
+
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+
+    return text
+
+
+def _display_option_contract(contract: OptionContract) -> str:
+    """Format an option contract for lifecycle presentation."""
+
+    return (
+        f"{contract.expiration:%b %d, %Y} "
+        f"${_display_decimal(contract.strike)} "
+        f"{contract.option_type.value.title()}"
+    )
+
+
+def _display_position(instrument, quantity) -> str:
+    """Format one authoritative position snapshot entry."""
+
+    absolute_quantity = abs(quantity)
+    quantity_text = f"{absolute_quantity:,f}"
+
+    if "." in quantity_text:
+        quantity_text = quantity_text.rstrip("0").rstrip(".")
+
+    if isinstance(instrument, OptionContract):
+        direction = "short" if quantity < 0 else "long"
+        noun = "contract" if absolute_quantity == 1 else "contracts"
+        return (
+            f"{quantity_text} {direction} "
+            f"{_display_option_contract(instrument)} {noun}"
+        )
+
+    if isinstance(instrument, Instrument):
+        direction = "short" if quantity < 0 else ""
+        noun = "share" if absolute_quantity == 1 else "shares"
+        prefix = f"{direction} " if direction else ""
+        return f"{quantity_text} {prefix}{instrument.symbol} {noun}"
+
+    return f"{quantity_text} {instrument}"
+
+
+def _lifecycle_transition_details(transition) -> tuple[str, object]:
+    """Describe existing lifecycle evidence without inferring intent."""
+
+    if transition.option_roll is not None:
+        roll = transition.option_roll
+        return (
+            (
+                f"{_display_option_contract(roll.closed_contract)} "
+                f"→ {_display_option_contract(roll.opened_contract)}"
+            ),
+            roll.quantity,
+        )
+
+    if transition.position_exit is not None:
+        before = transition.position_exit.before_positions
+
+        if before:
+            positions = " + ".join(
+                _display_position(instrument, quantity)
+                for instrument, quantity in before
+            )
+            return f"{positions} → zero exposure", None
+
+        return "Position → zero exposure", None
+
+    if transition.covered_position is not None:
+        covered = transition.covered_position
+        shares = _display_decimal(covered.share_quantity)
+        calls = _display_decimal(covered.covered_call_quantity)
+
+        return (
+            f"{shares} {covered.underlying} shares + "
+            f"{calls} covered calls",
+            None,
+        )
+
+    return "", None
+
+
 def lifecycle_timeline_rows(
     summary: SymbolLifecycleSummary,
 ) -> list[dict[str, object]]:
     """Build display rows from authoritative lifecycle transitions."""
 
-    return [
-        {
-            "Date": transition.occurred_at.date(),
-            "Time": transition.occurred_at.time(),
-            "Transition": transition.kind.value.replace("_", " "),
-        }
-        for transition in summary.transitions
-    ]
+    rows = []
+
+    for transition in summary.transitions:
+        details, quantity = _lifecycle_transition_details(transition)
+
+        rows.append(
+            {
+                "Date": transition.occurred_at.date(),
+                "Time": transition.occurred_at.time(),
+                "Transition": transition.kind.value.replace("_", " "),
+                "Details": details,
+                "Qty": quantity if quantity is not None else "",
+            }
+        )
+
+    return rows
 
 
 def _save_uploaded_monthly_inputs(*, upload_dir, uploads):

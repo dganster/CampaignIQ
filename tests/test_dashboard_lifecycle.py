@@ -1,63 +1,69 @@
-from datetime import datetime
-from decimal import Decimal
+from pathlib import Path
 
-from campaigniq.analytics.lifecycle_analytics import SymbolLifecycleSummary
-from campaigniq.domain.covered_position import CoveredCallPosition
-from campaigniq.domain.position_lifecycle_transition import (
-    PositionLifecycleTransition,
+from campaigniq.analytics.lifecycle_analytics import (
+    summarize_lifecycle_history,
+)
+from campaigniq.persistence.lifecycle_history import (
+    load_lifecycle_history_from_storage,
+)
+from campaigniq.persistence.artifact_storage import (
+    LocalFilesystemArtifactStorage,
 )
 from campaigniq.ui.dashboard import lifecycle_timeline_rows
 
 
-def test_lifecycle_timeline_rows_preserve_authoritative_order() -> None:
-    first = PositionLifecycleTransition.from_covered_position(
-        evidence=CoveredCallPosition(
-            underlying="NFLX",
-            share_quantity=Decimal("5000"),
-            short_call_quantity=Decimal("50"),
-            required_share_quantity=Decimal("5000"),
-            covered_call_quantity=Decimal("50"),
-            uncovered_call_quantity=Decimal("0"),
-            excess_share_quantity=Decimal("0"),
-        ),
-        occurred_at=datetime(2025, 12, 31),
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+STATE_ROOT = PROJECT_ROOT / ".campaigniq" / "authoritative_state"
+
+
+def test_lifecycle_timeline_rows_describe_authoritative_nflx_history() -> None:
+    storage = LocalFilesystemArtifactStorage(STATE_ROOT)
+    history = load_lifecycle_history_from_storage(storage)
+    analytics = summarize_lifecycle_history(history)
+
+    nflx = next(
+        summary
+        for summary in analytics.symbols
+        if summary.symbol == "NFLX"
     )
 
-    second = PositionLifecycleTransition.from_covered_position(
-        evidence=CoveredCallPosition(
-            underlying="NFLX",
-            share_quantity=Decimal("5000"),
-            short_call_quantity=Decimal("50"),
-            required_share_quantity=Decimal("5000"),
-            covered_call_quantity=Decimal("50"),
-            uncovered_call_quantity=Decimal("0"),
-            excess_share_quantity=Decimal("0"),
-        ),
-        occurred_at=datetime(2026, 1, 31, 15, 30),
-    )
+    rows = lifecycle_timeline_rows(nflx)
 
-    summary = SymbolLifecycleSummary(
-        symbol="NFLX",
-        transition_count=2,
-        corporate_action_count=0,
-        assignment_count=0,
-        covered_position_count=2,
-        roll_count=0,
-        exit_count=0,
-        first_transition_at=first.occurred_at,
-        last_transition_at=second.occurred_at,
-        transitions=(first, second),
-    )
+    assert len(rows) == 6
 
-    assert lifecycle_timeline_rows(summary) == [
-        {
-            "Date": first.occurred_at.date(),
-            "Time": first.occurred_at.time(),
-            "Transition": "COVERED POSITION",
-        },
-        {
-            "Date": second.occurred_at.date(),
-            "Time": second.occurred_at.time(),
-            "Transition": "COVERED POSITION",
-        },
+    assert [row["Transition"] for row in rows] == [
+        "ROLL",
+        "ROLL",
+        "ROLL",
+        "ROLL",
+        "ROLL",
+        "EXIT",
     ]
+
+    assert rows[0]["Details"] == (
+        "Feb 20, 2026 $86 Call → Feb 20, 2026 $82 Call"
+    )
+    assert str(rows[0]["Qty"]) == "50"
+
+    assert rows[1]["Details"] == (
+        "Feb 20, 2026 $82 Call → Feb 20, 2026 $78 Call"
+    )
+
+    assert rows[2]["Details"] == (
+        "Feb 20, 2026 $78 Call → Mar 20, 2026 $74 Call"
+    )
+
+    assert rows[3]["Details"] == (
+        "Mar 20, 2026 $74 Call → Apr 17, 2026 $74 Call"
+    )
+
+    assert rows[4]["Details"] == (
+        "Apr 17, 2026 $74 Call → May 15, 2026 $74 Call"
+    )
+
+    assert rows[5]["Details"] == (
+        "5,000 NFLX shares + "
+        "50 short May 15, 2026 $74 Call contracts "
+        "→ zero exposure"
+    )
+    assert rows[5]["Qty"] == ""
