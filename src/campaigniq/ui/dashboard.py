@@ -55,6 +55,9 @@ from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
 from campaigniq.runtime import build_local_runtime
+from campaigniq.persistence.authoritative_lot_state import (
+    load_preceding_authoritative_state_from_storage,
+)
 from campaigniq.ui.access_audit import audit_unauthorized_oidc_identity
 from campaigniq.ui.access_gate import (
     AUTH_MODE_OIDC,
@@ -460,42 +463,199 @@ def _show_monthly_preflight(preflight):
     )
 
 
+
+def _month_start(year: int, month: int) -> date:
+    return date(int(year), int(month), 1)
+
+
+def _next_month(period_end: date) -> date:
+    if period_end.month == 12:
+        return date(period_end.year + 1, 1, 1)
+    return date(period_end.year, period_end.month + 1, 1)
+
+
+def _authoritative_lot_period_ends() -> tuple[date, ...]:
+    """Return published authoritative lot-state period ends."""
+
+    period_ends = []
+
+    for key in ARTIFACT_STORAGE.list_keys(suffix="-lot-book.json"):
+        name = Path(key).name
+
+        try:
+            period_start = date.fromisoformat(name[:7] + "-01")
+        except (TypeError, ValueError):
+            continue
+
+        if name != f"{period_start:%Y-%m}-lot-book.json":
+            continue
+
+        if period_start.month == 12:
+            next_month = date(period_start.year + 1, 1, 1)
+        else:
+            next_month = date(period_start.year, period_start.month + 1, 1)
+
+        period_end = next_month - date.resolution
+
+        if is_month_published_in_storage(
+            ARTIFACT_STORAGE,
+            period_end=period_end,
+        ):
+            period_ends.append(period_end)
+
+    return tuple(sorted(period_ends))
+
+
+def _monthly_import_operator_state(
+    *,
+    year: int,
+    month: int,
+):
+    """Describe authoritative readiness for the selected import month."""
+
+    selected_start = _month_start(year, month)
+    predecessor = load_preceding_authoritative_state_from_storage(
+        ARTIFACT_STORAGE,
+        period_start=selected_start,
+    )
+
+    authoritative_periods = _authoritative_lot_period_ends()
+    latest = authoritative_periods[-1] if authoritative_periods else None
+    expected_start = _next_month(latest) if latest is not None else None
+
+    return latest, expected_start, predecessor
+
+
+def _render_monthly_import_operator_state(
+    *,
+    year: int,
+    month: int,
+):
+    """Render operator-facing authoritative-state readiness."""
+
+    selected_start = _month_start(year, month)
+    latest, expected_start, predecessor = _monthly_import_operator_state(
+        year=year,
+        month=month,
+    )
+
+    st.markdown("#### Current authoritative state")
+
+    if latest is None:
+        st.info(
+            "No authoritative month-end position state is available yet. "
+            "This will be a bootstrap import."
+        )
+    else:
+        st.write(f"Latest authoritative month: **{latest:%B %Y}**")
+
+        if expected_start is not None:
+            st.write(
+                f"Next month to process: **{expected_start:%B %Y}**"
+            )
+
+    if predecessor is not None:
+        predecessor_end, _, _ = predecessor
+        st.success(
+            f"Opening position state available from "
+            f"{predecessor_end:%B %Y}."
+        )
+    else:
+        st.warning(
+            f"No authoritative opening position state is available for "
+            f"{selected_start:%B %Y}."
+        )
+
+    if expected_start is not None and selected_start == expected_start:
+        st.success(
+            f"{selected_start:%B %Y} is the next expected monthly import."
+        )
+    elif expected_start is not None:
+        st.warning(
+            f"You selected {selected_start:%B %Y}; the next expected "
+            f"monthly import is {expected_start:%B %Y}. "
+            "Historical backfill should be handled separately from the normal monthly workflow."
+        )
+
+    return predecessor
+
 def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
         "Choose the month and supply the four monthly brokerage documents. "
-        "For your first CampaignIQ import, also supply the prior month-end "
-        "Schwab Brokerage Statement so CampaignIQ can establish opening "
-        "inventory. Later months use the preceding authoritative lot state. "
-        "CampaignIQ reconciles closing inventory before persisting the new "
-        "month-end state."
+        "CampaignIQ processes them against the authoritative position state. "
+        "Validation is read-only; authoritative data is persisted only after "
+        "successful preflight, explicit confirmation, execution, and "
+        "closing-inventory reconciliation."
     )
 
-    today = date.today()
+    authoritative_periods = _authoritative_lot_period_ends()
+
+    if authoritative_periods:
+        default_start = _next_month(authoritative_periods[-1])
+    else:
+        default_start = date.today().replace(day=1)
+
     year_col, month_col = st.columns(2)
     year = year_col.number_input(
         "Year",
         min_value=2020,
         max_value=2100,
-        value=today.year,
+        value=default_start.year,
         step=1,
         key="monthly_import_year",
     )
     month = month_col.selectbox(
         "Month",
         options=range(1, 13),
-        index=today.month - 1,
+        index=default_start.month - 1,
         format_func=lambda value: date(2000, value, 1).strftime("%B"),
         key="monthly_import_month",
     )
 
+    predecessor = _render_monthly_import_operator_state(
+        year=int(year),
+        month=int(month),
+    )
+
+    st.markdown("#### 1. Supply monthly documents")
+    st.caption(
+        "Supply the four brokerage documents for the selected month."
+    )
+
     uploads = {}
+
     for role, label, file_types in MONTHLY_UPLOAD_ROLES:
+        if (
+            role == MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+            and predecessor is not None
+        ):
+            continue
+
         uploads[role] = st.file_uploader(
             label,
             type=list(file_types),
             key=f"monthly_import_{role}",
         )
+
+    if predecessor is not None:
+        predecessor_end, _, _ = predecessor
+        st.info(
+            "Prior month-end Schwab Brokerage Statement: not required. "
+            f"CampaignIQ will use the authoritative "
+            f"{predecessor_end:%B %Y} opening state."
+        )
+    else:
+        st.info(
+            "A prior month-end Schwab Brokerage Statement is required when "
+            "CampaignIQ cannot load an authoritative predecessor state."
+        )
+
+    st.markdown("#### 2. Validate")
+    st.caption(
+        "Validation checks the supplied documents and opening state. "
+        "It does not persist authoritative monthly data."
+    )
 
     signature = _monthly_import_signature(
         year=year,
@@ -522,9 +682,9 @@ def render_monthly_import_wizard():
             )
         else:
             st.info(
-                "Choose the month and the four monthly documents, then validate "
-                "before import. For your first CampaignIQ import, also supply "
-                "the prior month-end Schwab Brokerage Statement."
+                "Supply the four monthly documents above, then validate. "
+                "CampaignIQ will use the authoritative predecessor state when "
+                "one is available."
             )
         return
 

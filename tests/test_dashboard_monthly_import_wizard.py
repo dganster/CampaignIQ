@@ -223,10 +223,70 @@ def test_opening_statement_participates_in_validation_signature() -> None:
     assert "digest.update(upload.getvalue())" in signature
 
 
-def test_wizard_explains_first_import_without_changing_four_document_workflow() -> None:
+def test_wizard_explains_bootstrap_without_changing_four_document_workflow() -> None:
     text = source()
     assert "supply the four monthly brokerage documents" in text
-    assert "For your first CampaignIQ import" in text
-    assert "prior month-end Schwab Brokerage Statement" in text
-    assert "Later months use the preceding authoritative lot state." in text
+    assert "No authoritative month-end position state is available yet." in text
+    assert "This will be a bootstrap import." in text
+    assert (
+        "A prior month-end Schwab Brokerage Statement is required when "
+        in text
+    )
+    assert (
+        "CampaignIQ cannot load an authoritative predecessor state."
+        in text
+    )
 
+
+
+
+def test_wizard_reports_authoritative_monthly_readiness() -> None:
+    text = source()
+
+    assert "#### Current authoritative state" in text
+    assert "Latest authoritative month:" in text
+    assert "Next month to process:" in text
+    assert "Opening position state available from" in text
+    assert "is the next expected monthly import." in text
+
+
+def test_wizard_uses_exact_authoritative_predecessor_api() -> None:
+    text = source()
+
+    assert "load_preceding_authoritative_state_from_storage" in text
+    assert "period_start=selected_start" in text
+
+
+def test_wizard_defaults_to_next_authoritative_month() -> None:
+    text = source()
+
+    assert "default_start = _next_month(authoritative_periods[-1])" in text
+    assert "value=default_start.year" in text
+    assert "index=default_start.month - 1" in text
+
+
+def test_wizard_hides_bootstrap_statement_when_predecessor_exists() -> None:
+    text = source()
+
+    assert (
+        "role == MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT"
+        in text
+    )
+    assert "and predecessor is not None" in text
+    assert "Prior month-end Schwab Brokerage Statement: not required." in text
+
+
+def test_wizard_explains_validation_is_read_only() -> None:
+    text = source()
+
+    assert "Validation is read-only" in text
+    assert "It does not persist authoritative monthly data." in text
+
+
+def test_wizard_separates_historical_backfill_from_normal_import() -> None:
+    text = source()
+
+    assert (
+        "Historical backfill should be handled separately from the "
+        "normal monthly workflow."
+    ) in text
