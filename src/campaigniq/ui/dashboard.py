@@ -516,6 +516,42 @@ def _authoritative_lot_period_ends() -> tuple[date, ...]:
     return tuple(sorted(period_ends))
 
 
+def _render_analytics_data_status(*, analytics_period_end: date) -> None:
+    """Render operator-facing analytics and authoritative-state currency."""
+
+    authoritative_periods = _authoritative_lot_period_ends()
+    latest_authoritative = (
+        authoritative_periods[-1] if authoritative_periods else None
+    )
+
+    st.markdown("#### Data Status")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Analytics through",
+        analytics_period_end.strftime("%B %Y"),
+    )
+
+    col2.metric(
+        "Latest authoritative month",
+        (
+            latest_authoritative.strftime("%B %Y")
+            if latest_authoritative is not None
+            else "Not available"
+        ),
+    )
+
+    col3.metric(
+        "Next expected monthly import",
+        (
+            _next_month(latest_authoritative).strftime("%B %Y")
+            if latest_authoritative is not None
+            else "Bootstrap required"
+        ),
+    )
+
+
 def _monthly_import_operator_state(
     *,
     year: int,
@@ -1325,6 +1361,10 @@ first_period = summaries[0].period_start.strftime("%B %Y")
 last_period = summaries[-1].period_end.strftime("%B %Y")
 
 st.subheader(f"{first_period} – {last_period}")
+
+_render_analytics_data_status(
+    analytics_period_end=summaries[-1].period_end,
+)
 
 metric1, metric2, metric3, metric4 = st.columns(4)
 

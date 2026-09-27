@@ -530,3 +530,50 @@ def test_success_message_distinguishes_exceptional_finalization() -> None:
     assert "Closing inventory reconciled and the authoritative month was" in text
     assert "finalized with a" in text
     assert "documented boundary timing exception and the authoritative" in text
+
+
+
+def test_analytics_dashboard_reports_data_currency() -> None:
+    text = source()
+
+    assert "def _render_analytics_data_status(" in text
+    assert 'st.markdown("#### Data Status")' in text
+    assert '"Analytics through"' in text
+    assert '"Latest authoritative month"' in text
+    assert '"Next expected monthly import"' in text
+
+
+def test_analytics_data_status_uses_published_authoritative_state() -> None:
+    text = source()
+
+    start = text.index("def _render_analytics_data_status(")
+    end = text.index(
+        "\n\n\ndef _monthly_import_operator_state(",
+        start,
+    )
+    section = text[start:end]
+
+    assert "_authoritative_lot_period_ends()" in section
+    assert "authoritative_periods[-1]" in section
+    assert "_next_month(latest_authoritative)" in section
+
+
+def test_analytics_data_status_uses_actual_analytics_period_end() -> None:
+    text = source()
+
+    heading = text.index(
+        'st.subheader(f"{first_period} – {last_period}")'
+    )
+    status = text.index(
+        "_render_analytics_data_status(",
+        heading,
+    )
+    metrics = text.index(
+        "metric1, metric2, metric3, metric4 = st.columns(4)",
+        heading,
+    )
+
+    assert heading < status < metrics
+    assert "analytics_period_end=summaries[-1].period_end" in text[
+        status:metrics
+    ]
