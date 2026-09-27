@@ -390,8 +390,10 @@ def test_review_explains_finalization_reconciliation_gate() -> None:
 
     assert 'st.markdown("##### What happens during finalization")' in text
     assert "compare the computed month-end positions with the Schwab" in text
-    assert "publish the month only if" in text
-    assert "closing inventory reconciles." in text
+    assert "Normally, the month is published" in text
+    assert "only when closing inventory reconciles." in text
+    assert "statement-boundary timing difference" in text
+    assert "missing economic event must be corrected" in text
 
 
 def test_finalize_action_is_named_for_selected_month() -> None:
@@ -416,11 +418,12 @@ def test_finalize_requires_explicit_publication_acknowledgement() -> None:
     assert 'key="monthly_import_confirm"' in text
 
 
-def test_failed_closing_reconciliation_still_blocks_publication() -> None:
+def test_failed_closing_reconciliation_still_blocks_ordinary_publication() -> None:
     text = source()
 
     assert "if not execution.closing_reconciliation.reconciled:" in text
-    assert "No authoritative month-end state was persisted." in text
+    assert "The ordinary finalization attempt did not publish the month." in text
+    assert "Document a boundary timing exception" in text
 
 
 def test_success_message_says_authoritative_month_was_published() -> None:
@@ -449,3 +452,81 @@ def test_operator_instrument_display_formats_options_and_symbols() -> None:
     assert 'f"${strike} {option_type}"' in text
     assert "if isinstance(instrument, Instrument):" in text
     assert "return instrument.symbol" in text
+
+
+
+def test_boundary_exception_is_explicit_second_pass_workflow() -> None:
+    text = source()
+
+    first_execution = text.index("execution = execute_monthly_import(")
+    failure = text.index(
+        "if not execution.closing_reconciliation.reconciled:",
+        first_execution,
+    )
+    exception_heading = text.index(
+        'st.markdown("##### Document a boundary timing exception")',
+        failure,
+    )
+    second_execution = text.index(
+        "execution = execute_monthly_import(",
+        exception_heading,
+    )
+
+    assert first_execution < failure < exception_heading < second_execution
+    assert "reconciliation_decision=decision" in text
+
+
+def test_boundary_exception_requires_reason_evidence_and_approval() -> None:
+    text = source()
+
+    assert '"Why is this a boundary timing difference?"' in text
+    assert '"Supporting evidence"' in text
+    assert "evidence_items = tuple(" in text
+    assert "bool(exception_reason.strip())" in text
+    assert "and bool(evidence_items)" in text
+    assert "and exception_approved" in text
+    assert "monthly_import_boundary_exception_approved" in text
+
+
+def test_boundary_exception_preserves_failed_reconciliation_semantics() -> None:
+    text = source()
+
+    assert "closing reconciliation itself remains failed." in text
+    assert "Closing inventory did not reconcile; the" in text
+    assert "transaction-derived closing state was carried forward under" in text
+
+
+def test_boundary_exception_warns_against_missing_economic_events() -> None:
+    text = source()
+
+    assert '"assignments, IPO allocations, transfers, or other economic "' in text
+    assert '"events that still need to be reconstructed."' in text
+
+
+def test_boundary_exception_captures_exact_failed_mismatches() -> None:
+    text = source()
+
+    assert "decision = ReconciliationDecision(" in text
+    assert "decision_type=BOUNDARY_TIMING_EXCEPTION" in text
+    assert "resolution=ACCEPT_TRANSACTION_DERIVED_STATE" in text
+    assert "mismatches=capture_reconciliation_mismatches(" in text
+    assert "execution.closing_reconciliation.mismatches" in text
+
+
+def test_boundary_exception_backend_revalidates_before_publication() -> None:
+    text = source()
+
+    assert "The reconciliation" in text
+    assert "result changed or the documented exception no longer" in text
+    assert "matches the exact current discrepancies." in text
+    assert "if not execution.finalized:" in text
+    assert "if execution.reconciliation_decision is None:" in text
+
+
+def test_success_message_distinguishes_exceptional_finalization() -> None:
+    text = source()
+
+    assert "if execution.reconciliation_decision is None:" in text
+    assert "Closing inventory reconciled and the authoritative month was" in text
+    assert "finalized with a" in text
+    assert "documented boundary timing exception and the authoritative" in text

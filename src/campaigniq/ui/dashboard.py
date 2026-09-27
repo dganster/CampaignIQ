@@ -46,6 +46,12 @@ from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
+from campaigniq.persistence.reconciliation_decision import (
+    ACCEPT_TRANSACTION_DERIVED_STATE,
+    BOUNDARY_TIMING_EXCEPTION,
+    ReconciliationDecision,
+    capture_reconciliation_mismatches,
+)
 from campaigniq.pdf_text import extract_pdf_text
 from campaigniq.persistence.lifecycle_history import (
     load_lifecycle_history_from_storage,
@@ -670,8 +676,9 @@ def render_monthly_import_wizard():
         "Choose the month and supply the four monthly brokerage documents. "
         "CampaignIQ processes them against the authoritative position state. "
         "Validation is read-only; authoritative data is persisted only after "
-        "successful preflight, explicit confirmation, execution, and "
-        "closing-inventory reconciliation."
+        "successful preflight, explicit confirmation, and execution. Closing "
+        "inventory must reconcile unless the operator separately documents "
+        "and approves an exact boundary-timing exception."
     )
 
     authoritative_periods = _authoritative_lot_period_ends()
@@ -834,10 +841,17 @@ def render_monthly_import_wizard():
 
         st.markdown("##### What happens during finalization")
         st.write(
-            "CampaignIQ will reconstruct the selected month's activity, "
+            "CampaignIQ will reconstruct the selected month's activity and "
             "compare the computed month-end positions with the Schwab "
-            "closing-position snapshot, and publish the month only if "
-            "closing inventory reconciles."
+            "closing-position snapshot. Normally, the month is published "
+            "only when closing inventory reconciles."
+        )
+        st.caption(
+            "If reconciliation fails because independently reviewed evidence "
+            "shows a statement-boundary timing difference, CampaignIQ can "
+            "record a documented boundary exception in a separate second "
+            "step. An unexplained or missing economic event must be corrected "
+            "instead of overridden."
         )
         st.info(
             "Nothing has been published yet. Validation and review are "
@@ -850,7 +864,8 @@ def render_monthly_import_wizard():
         st.caption(
             "Finalization runs the monthly import and may publish a new "
             "authoritative CampaignIQ month. If closing inventory does not "
-            "reconcile, CampaignIQ will not publish the month."
+            "reconcile, the ordinary finalization attempt remains blocked "
+            "and CampaignIQ will show the exact discrepancies for review."
         )
 
         confirm = st.checkbox(
@@ -898,7 +913,7 @@ def render_monthly_import_wizard():
         if not execution.closing_reconciliation.reconciled:
             st.error(
                 "Closing inventory does not reconcile. "
-                "No authoritative month-end state was persisted."
+                "The ordinary finalization attempt did not publish the month."
             )
             st.dataframe(
                 [
@@ -912,7 +927,129 @@ def render_monthly_import_wizard():
                 ],
                 use_container_width=True,
             )
-            return
+
+            st.markdown("##### Document a boundary timing exception")
+            st.warning(
+                "Use this only when independent evidence shows that every "
+                "discrepancy above is caused by statement-boundary timing and "
+                "the transaction-derived closing state is the state that "
+                "should carry forward. Do not use this for missing trades, "
+                "assignments, IPO allocations, transfers, or other economic "
+                "events that still need to be reconstructed."
+            )
+
+            use_exception = st.checkbox(
+                "I have reviewed every mismatch above and believe all of them "
+                "are explained by statement-boundary timing.",
+                key="monthly_import_boundary_exception_requested",
+            )
+
+            if not use_exception:
+                return
+
+            exception_reason = st.text_area(
+                "Why is this a boundary timing difference?",
+                key="monthly_import_boundary_exception_reason",
+                help=(
+                    "Explain why the transaction-derived closing state should "
+                    "carry forward even though the supplied month-end statement "
+                    "shows different positions."
+                ),
+            )
+
+            exception_evidence = st.text_area(
+                "Supporting evidence",
+                key="monthly_import_boundary_exception_evidence",
+                help=(
+                    "Identify the independent evidence you reviewed, such as "
+                    "dated broker transaction history. Enter one item per line."
+                ),
+            )
+
+            evidence_items = tuple(
+                line.strip()
+                for line in exception_evidence.splitlines()
+                if line.strip()
+            )
+
+            exception_approved = st.checkbox(
+                "I approve carrying forward the transaction-derived closing "
+                "state for these exact mismatches and understand that the "
+                "closing reconciliation itself remains failed.",
+                key="monthly_import_boundary_exception_approved",
+            )
+
+            exception_ready = (
+                bool(exception_reason.strip())
+                and bool(evidence_items)
+                and exception_approved
+            )
+
+            if not exception_ready:
+                st.info(
+                    "A reason, supporting evidence, and explicit approval are "
+                    "required before exceptional finalization is available."
+                )
+                return
+
+            if not st.button(
+                "Finalize with documented boundary exception",
+                type="primary",
+                key="monthly_import_execute_boundary_exception",
+            ):
+                return
+
+            decision = ReconciliationDecision(
+                period_start=preflight.contract.period_start,
+                period_end=preflight.contract.period_end,
+                decision_type=BOUNDARY_TIMING_EXCEPTION,
+                resolution=ACCEPT_TRANSACTION_DERIVED_STATE,
+                reason=exception_reason.strip(),
+                evidence=evidence_items,
+                mismatches=capture_reconciliation_mismatches(
+                    execution.closing_reconciliation.mismatches
+                ),
+                approved=True,
+            )
+
+            try:
+                execution = execute_monthly_import(
+                    preflight,
+                    authoritative_state_root=AUTHORITATIVE_STATE_DIR,
+                    supplied_inputs=supplied,
+                    artifact_storage=ARTIFACT_STORAGE,
+                    historical_source_root=HISTORICAL_SOURCE_ROOT,
+                    reconciliation_decision=decision,
+                )
+            except Exception as exc:
+                st.error(
+                    f"Exceptional monthly finalization failed: {exc}"
+                )
+                return
+
+            if not execution.finalized:
+                st.error(
+                    "CampaignIQ did not publish the month. The reconciliation "
+                    "result changed or the documented exception no longer "
+                    "matches the exact current discrepancies. Review the "
+                    "current inputs and run finalization again."
+                )
+                return
+
+            if execution.reconciliation_decision is None:
+                st.error(
+                    "CampaignIQ did not record the required reconciliation "
+                    "decision. The month was not accepted as an exceptional "
+                    "finalization."
+                )
+                return
+
+            st.warning(
+                "This month was finalized with a documented boundary timing "
+                "exception. Closing inventory did not reconcile; the "
+                "transaction-derived closing state was carried forward under "
+                "the persisted operator decision."
+            )
 
         boundary = execution.result.boundary_reconstruction
         if (
@@ -1005,11 +1142,18 @@ def render_monthly_import_wizard():
                         f"{differences}. This difference is reported for review and did not block monthly finalization."
                     )
 
-        st.success(
-            f"{preflight.contract.period_start:%B %Y} finalized successfully. "
-            "Closing inventory reconciled and the authoritative month was "
-            "published."
-        )
+        if execution.reconciliation_decision is None:
+            st.success(
+                f"{preflight.contract.period_start:%B %Y} finalized successfully. "
+                "Closing inventory reconciled and the authoritative month was "
+                "published."
+            )
+        else:
+            st.success(
+                f"{preflight.contract.period_start:%B %Y} finalized with a "
+                "documented boundary timing exception and the authoritative "
+                "month was published."
+            )
         st.caption(
             f"Authoritative state: {execution.authoritative_state_path}"
         )
