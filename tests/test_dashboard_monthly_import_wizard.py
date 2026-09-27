@@ -577,3 +577,31 @@ def test_analytics_data_status_uses_actual_analytics_period_end() -> None:
     assert "analytics_period_end=summaries[-1].period_end" in text[
         status:metrics
     ]
+
+
+def test_validate_button_requires_four_monthly_uploads() -> None:
+    text = source()
+
+    assert "required_upload_roles = tuple(" in text
+    assert (
+        "role != MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT"
+        in text
+    )
+    assert "required_uploads_supplied = all(" in text
+    assert "disabled=not required_uploads_supplied" in text
+
+
+def test_assignment_status_requires_detected_records() -> None:
+    text = source()
+
+    review = text[text.index("def _show_monthly_preflight("):]
+    assert "if assignment_validation.record_count > 0:" in review
+    assert (
+        '"**Assignment/exercise evidence:** detected in the Schwab "'
+        in review
+    )
+    assert (
+        '"**Assignment/exercise evidence:** none detected for this "'
+        in review
+    )
+    assert "if assignment_validation.valid:" not in review

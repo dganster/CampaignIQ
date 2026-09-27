@@ -447,7 +447,7 @@ def _show_monthly_preflight(preflight):
         label="Thinkorswim Forex Transaction Report",
     )
 
-    if assignment_validation.valid:
+    if assignment_validation.record_count > 0:
         st.success(
             "**Assignment/exercise evidence:** detected in the Schwab "
             "Brokerage Statement."
@@ -816,10 +816,21 @@ def render_monthly_import_wizard():
         uploads=uploads,
     )
 
+    required_upload_roles = tuple(
+        role
+        for role, _, _ in MONTHLY_UPLOAD_ROLES
+        if role != MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+    )
+    required_uploads_supplied = all(
+        uploads.get(role) is not None
+        for role in required_upload_roles
+    )
+
     if st.button(
         "Validate monthly import",
         type="primary",
         key="monthly_import_validate",
+        disabled=not required_uploads_supplied,
     ):
         st.session_state["monthly_import_validated_signature"] = signature
         st.session_state["monthly_import_confirm"] = False
