@@ -4,7 +4,10 @@ from campaigniq.domain.lot_allocation import LotAllocation
 from campaigniq.domain.lot_attribution import RealizedAttribution
 from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.domain.value_objects.instrument import Instrument
-from campaigniq.ui.dashboard_campaigns import aggregate_period_qualified_campaigns
+from campaigniq.ui.dashboard_campaigns import (
+    aggregate_period_qualified_campaigns,
+    campaign_realized_attributions,
+)
 
 def attr(cid, symbol, day, pnl):
     gain = Decimal(pnl); basis = Decimal("100")
@@ -141,3 +144,35 @@ def test_equity_option_period_qualification_is_inclusive():
         "2026-08/CAMP-START",
         "2026-08/CAMP-END",
     }
+
+
+def test_campaign_realized_records_match_summary_and_do_not_cross_months():
+    monthly = {
+        (date(2026, 1, 1), date(2026, 1, 31)): (
+            attr("CAMP-1", "AAPL", date(2026, 1, 10), "100"),
+            attr("CAMP-1", "AAPL", date(2026, 1, 20), "-20"),
+        ),
+        (date(2026, 2, 1), date(2026, 2, 28)): (
+            attr("CAMP-1", "MSFT", date(2026, 2, 10), "40"),
+        ),
+    }
+    _, summaries = aggregate_period_qualified_campaigns(monthly)
+    january = campaign_realized_attributions(monthly, "2026-01/CAMP-1")
+    summary = next(item for item in summaries if item.campaign_id == "2026-01/CAMP-1")
+    assert [item.record.closed_date for item in january] == [date(2026, 1, 10), date(2026, 1, 20)]
+    assert sum((item.record.gain_loss for item in january), Decimal("0")) == summary.realized_pnl
+    assert len(january) == summary.record_count
+    assert sum(len(item.allocations) for item in january) == summary.allocation_count
+
+
+def test_campaign_realized_records_exclude_mixed_allocations():
+    record = attr("CAMP-1", "AAPL", date(2026, 1, 10), "100")
+    mixed = RealizedAttribution(
+        record=record.record,
+        allocations=(
+            record.allocations[0],
+            LotAllocation("other", Decimal("1"), Decimal("0"), campaign_id="CAMP-2"),
+        ),
+    )
+    monthly = {(date(2026, 1, 1), date(2026, 1, 31)): (mixed,)}
+    assert campaign_realized_attributions(monthly, "2026-01/CAMP-1") == ()

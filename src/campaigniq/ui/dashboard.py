@@ -63,7 +63,9 @@ from campaigniq.persistence.persisted_multi_month_analytics import (
 from campaigniq.runtime import build_local_runtime
 from campaigniq.persistence.authoritative_lot_state import (
     load_preceding_authoritative_state_from_storage,
+    lot_state_key,
 )
+from campaigniq.persistence.lot_book_store import load_lot_book_from_storage
 from campaigniq.ui.access_audit import audit_unauthorized_oidc_identity
 from campaigniq.ui.access_gate import (
     AUTH_MODE_OIDC,
@@ -73,6 +75,7 @@ from campaigniq.ui.access_gate import (
 )
 from campaigniq.ui.dashboard_campaigns import (
     aggregate_period_qualified_campaigns,
+    campaign_realized_attributions,
 )
 from campaigniq.ui.oidc_access_gate import authorized_streamlit_access
 from campaigniq.ui.workspace_authorization import workspace_authorization
@@ -238,6 +241,24 @@ def _display_position(instrument, quantity) -> str:
 def _lifecycle_transition_details(transition) -> tuple[str, object]:
     """Describe existing lifecycle evidence without inferring intent."""
 
+    if transition.corporate_action is not None:
+        action = transition.corporate_action
+        action_name = action.action_type.value.replace("_", " ").title()
+        ratio = f"{_display_decimal(action.new_units)}-for-{_display_decimal(action.old_units)}"
+        source = f"Source: {action.source}"
+        if action.source_reference:
+            source += f" ({action.source_reference})"
+        return f"{action_name} {ratio}. {source}", None
+
+    if transition.position_event is not None:
+        changes = transition.position_event.changes
+        return ", ".join(
+            f"{'+' if change.quantity > 0 else '-'}"
+            f"{_display_decimal(abs(change.quantity))} "
+            f"{_display_instrument(change.instrument)}"
+            for change in changes
+        ), None
+
     if transition.option_roll is not None:
         roll = transition.option_roll
         return (
@@ -290,7 +311,7 @@ def lifecycle_timeline_rows(
                 "Time": transition.occurred_at.time(),
                 "Transition": transition.kind.value.replace("_", " "),
                 "Details": details,
-                "Qty": quantity if quantity is not None else "",
+                "Qty": float(quantity) if quantity is not None else None,
             }
         )
 
@@ -1263,17 +1284,73 @@ if authentication_mode() == AUTH_MODE_OIDC:
     if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
         st.logout()
 
+# CAMPAIGNIQ_UI_STAGE1
 view = st.sidebar.radio(
-    "View",
-    ("Realized Campaign Analytics", "Monthly Import"),
-    key="campaigniq_view",
+    "Navigate",
+    ("Overview", "Campaigns", "Performance", "Positions", "Data"),
+    key="campaigniq_primary_view",
 )
 
-if view == "Monthly Import":
+if view == "Data":
+    st.subheader("Data")
+    st.caption("Published periods and monthly import")
+    try:
+        realized_keys = _published_artifact_keys(suffix="-realized-attributions.json")
+        forex_keys = _published_artifact_keys(suffix="-forex-settlement-attributions.json")
+        lot_periods = _authoritative_lot_period_ends()
+    except Exception as exc:
+        st.warning(f"Published data status is unavailable: {exc}")
+    else:
+        realized_months = {Path(key).name[:7] for key in realized_keys}
+        forex_months = {Path(key).name[:7] for key in forex_keys}
+        lot_months = {f"{period:%Y-%m}" for period in lot_periods}
+        all_months = sorted(realized_months | forex_months | lot_months, reverse=True)
+        latest_analytics = max(realized_months) if realized_months else None
+        latest_lots = lot_periods[-1] if lot_periods else None
+        status1, status2, status3 = st.columns(3)
+        status1.metric("Realized analytics through", latest_analytics or "Not available")
+        status2.metric("Authoritative lots through", f"{latest_lots:%B %Y}" if latest_lots else "Not available")
+        status3.metric("Next expected import", _next_month(latest_lots).strftime("%B %Y") if latest_lots else "Bootstrap required")
+        with st.expander("Published data by month"):
+            if all_months:
+                st.dataframe(pd.DataFrame([{
+                    "Month": month,
+                    "Realized attributions": "Published" if month in realized_months else "—",
+                    "FOREX settlements": "Published" if month in forex_months else "—",
+                    "Authoritative lots": "Published" if month in lot_months else "—",
+                } for month in all_months]), use_container_width=True, hide_index=True)
+            else:
+                st.info("No published periods are available yet.")
+            st.caption("A blank FOREX cell means no published FOREX attribution artifact for that month; it does not by itself indicate an import failure.")
+    st.subheader("Attribution Status")
+    try:
+        published_summaries, _, _ = load_summaries()
+    except FileNotFoundError:
+        st.info("Attribution status will appear after the first published import.")
+    except Exception as exc:
+        st.warning(f"Unable to load attribution status: {exc}")
+    else:
+        total_unattributed_data = sum(
+            summary.realized_pnl.unattributed_record_count
+            for summary in published_summaries
+        )
+        st.metric("Unattributed broker records", f"{total_unattributed_data:,}")
+        if total_unattributed_data == 0:
+            st.success("All published broker realized records are attributed to campaigns.")
+        else:
+            st.warning("Review months with unattributed records before interpreting campaign results as complete.")
+        with st.expander("Broker attribution by month"):
+            st.dataframe(pd.DataFrame([{
+                "Month": summary.period_start.strftime("%B %Y"),
+                "Broker records": summary.realized_pnl.broker_record_count,
+                "Unattributed": summary.realized_pnl.unattributed_record_count,
+            } for summary in published_summaries]), use_container_width=True, hide_index=True)
+    st.divider()
     render_monthly_import_wizard()
     st.stop()
 
-st.caption("Realized campaign analytics")
+if view == "Performance":
+    st.caption("Realized campaign analytics")
 
 try:
     summaries, monthly_attributions, monthly_forex_attributions = load_summaries()
@@ -1371,13 +1448,11 @@ overall_win_rate = (
 first_period = summaries[0].period_start.strftime("%B %Y")
 last_period = summaries[-1].period_end.strftime("%B %Y")
 
-st.subheader(f"{first_period} – {last_period}")
-
-_render_analytics_data_status(
-    analytics_period_end=summaries[-1].period_end,
-)
-
-metric1, metric2, metric3, metric4 = st.columns(4)
+if view == "Performance":
+    st.subheader(f"{first_period} – {last_period}")
+    _render_analytics_data_status(
+        analytics_period_end=summaries[-1].period_end,
+    )
 
 forex_settled_pnl = sum(
     (
@@ -1394,497 +1469,595 @@ equity_options_realized_pnl = sum(
 combined_realized_pnl = equity_options_realized_pnl + forex_settled_pnl
 
 
-metric1.metric(
-    "Combined Realized P&L",
-    money(combined_realized_pnl),
-)
-metric2.metric(
-    "Campaigns",
-    f"{multi_month_campaign_performance.campaign_count:,}",
-)
-metric3.metric(
-    "Campaign Win Rate",
-    f"{float(multi_month_campaign_performance.win_rate):.1%}",
-)
-metric4.metric(
-    "Broker Records",
-    f"{total_records:,}",
-)
-
-pnl1, pnl2, pnl3 = st.columns(3)
-pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
-pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
-pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
-st.caption(
-    "Combined realized P&L includes equity/options realized P&L and FOREX settled P&L. "
-    "FOREX financing/interest is excluded."
-)
-
-perf1, perf2, perf3, perf4 = st.columns(4)
-
-profitable_month_rate_delta = (
-    f"{float(multi_month_performance.profitable_month_rate):.1%} profitable"
-    if multi_month_performance.profitable_month_rate is not None
-    else None
-)
-
-perf1.metric(
-    "Profitable Months",
-    f"{multi_month_performance.profitable_month_count:,} / "
-    f"{multi_month_performance.month_count:,}",
-    profitable_month_rate_delta,
-)
-
-perf2.metric(
-    "Average Monthly P&L",
-    (
-        money(multi_month_performance.average_monthly_pnl)
-        if multi_month_performance.average_monthly_pnl is not None
-        else "—"
-    ),
-)
-
-best_month_label = (
-    multi_month_performance.best_month_start.strftime("%B")
-    if multi_month_performance.best_month_start is not None
-    else "—"
-)
-
-perf3.metric(
-    "Best Month",
-    best_month_label,
-    (
-        money(multi_month_performance.best_month_pnl)
-        if multi_month_performance.best_month_pnl is not None
-        else None
-    ),
-)
-
-worst_month_label = (
-    multi_month_performance.worst_month_start.strftime("%B")
-    if multi_month_performance.worst_month_start is not None
-    else "—"
-)
-
-perf4.metric(
-    "Worst Month",
-    worst_month_label,
-    (
-        money(multi_month_performance.worst_month_pnl)
-        if multi_month_performance.worst_month_pnl is not None
-        else None
-    ),
-    delta_color="inverse",
-)
-
-st.subheader("Campaign Economics")
-
-econ1, econ2, econ3, econ4 = st.columns(4)
-
-econ1.metric(
-    "Average Winning Campaign",
-    (
-        money(multi_month_campaign_performance.average_win)
-        if multi_month_campaign_performance.average_win is not None
-        else "—"
-    ),
-)
-
-econ2.metric(
-    "Average Losing Campaign",
-    (
-        money(multi_month_campaign_performance.average_loss)
-        if multi_month_campaign_performance.average_loss is not None
-        else "—"
-    ),
-)
-
-econ3.metric(
-    "Win/Loss Payoff Ratio",
-    (
-        f"{multi_month_campaign_performance.payoff_ratio:.2f}×"
-        if multi_month_campaign_performance.payoff_ratio is not None
-        else "—"
-    ),
-)
-
-econ4.metric(
-    "Breakeven Campaigns",
-    f"{multi_month_campaign_performance.breakeven_campaign_count:,}",
-)
-
-st.subheader("Campaign Outcome Distribution")
-
-dist1, dist2, dist3, dist4 = st.columns(4)
-
-dist1.metric(
-    "Median Campaign P&L",
-    (
-        money(campaign_outcomes.median_campaign_pnl)
-        if campaign_outcomes.median_campaign_pnl is not None
-        else "—"
-    ),
-)
-
-dist2.metric(
-    "Median Winner",
-    (
-        money(campaign_outcomes.median_win)
-        if campaign_outcomes.median_win is not None
-        else "—"
-    ),
-)
-
-dist3.metric(
-    "Median Loser",
-    (
-        money(campaign_outcomes.median_loss)
-        if campaign_outcomes.median_loss is not None
-        else "—"
-    ),
-)
-
-dist4.metric(
-    "Excluded Campaigns",
-    f"{campaign_outcomes.excluded_campaign_count:,}",
-)
-
-tail1, tail2, tail3, tail4 = st.columns(4)
-
-tail1.metric(
-    "Best Campaign",
-    campaign_outcomes.best_campaign_id or "—",
-    (
-        money(campaign_outcomes.best_campaign_pnl)
-        if campaign_outcomes.best_campaign_pnl is not None
-        else None
-    ),
-)
-
-tail2.metric(
-    "Worst Campaign",
-    campaign_outcomes.worst_campaign_id or "—",
-    (
-        money(campaign_outcomes.worst_campaign_pnl)
-        if campaign_outcomes.worst_campaign_pnl is not None
-        else None
-    ),
-    delta_color="inverse",
-)
-
-tail3.metric(
-    "Top 3 Winners",
-    money(campaign_outcomes.top_3_winner_pnl),
-)
-
-tail4.metric(
-    "Bottom 3 Losers",
-    money(campaign_outcomes.bottom_3_loser_pnl),
-)
-
-st.subheader("Position Lifecycle")
-
-if lifecycle_summary.transition_count == 0:
-    st.info(
-        "No published lifecycle transitions are available yet."
-    )
-else:
-    lifecycle_metric_columns = st.columns(5)
-
-    lifecycle_metric_columns[0].metric(
-        "Transitions",
-        f"{lifecycle_summary.transition_count:,}",
-    )
-    lifecycle_metric_columns[1].metric(
-        "Symbols",
-        f"{lifecycle_summary.symbol_count:,}",
-    )
-    lifecycle_metric_columns[2].metric(
-        "Rolls",
-        f"{lifecycle_summary.roll_count:,}",
-    )
-    lifecycle_metric_columns[3].metric(
-        "Exits",
-        f"{lifecycle_summary.exit_count:,}",
-    )
-    lifecycle_metric_columns[4].metric(
-        "Assignments",
-        f"{lifecycle_summary.assignment_count:,}",
+if view == "Overview":
+    st.subheader("Portfolio Overview")
+    st.caption(f"{first_period} – {last_period} · Published analytics through {summaries[-1].period_end:%B %Y}")
+    o1, o2, o3, o4 = st.columns(4)
+    o1.metric("Realized P&L", money(combined_realized_pnl))
+    o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
+    win_rate = multi_month_campaign_performance.win_rate
+    o3.metric("Campaign Win Rate", f"{float(win_rate):.1%}" if win_rate is not None else "—")
+    o4.metric(
+        "Profitable Months",
+        f"{multi_month_performance.profitable_month_count:,} / {multi_month_performance.month_count:,}",
     )
 
-    lifecycle_by_symbol = {
-        summary.symbol: summary
-        for summary in lifecycle_summary.symbols
-    }
+    st.subheader("Monthly Realized P&L")
+    monthly_chart_data = df[["period_start", "realized_pnl"]].copy()
+    monthly_chart_data["month_label"] = monthly_chart_data["period_start"].map(
+        lambda value: value.strftime("%b %Y")
+    )
+    monthly_chart_data["result"] = monthly_chart_data["realized_pnl"].map(
+        lambda value: "Gain" if value >= 0 else "Loss"
+    )
+    monthly_chart = (
+        alt.Chart(monthly_chart_data)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                "month_label:N",
+                sort=monthly_chart_data["month_label"].tolist(),
+                title="Reporting month",
+                axis=alt.Axis(labelAngle=0),
+            ),
+            y=alt.Y("realized_pnl:Q", title="Realized P&L (USD)"),
+            color=alt.Color(
+                "result:N",
+                scale=alt.Scale(domain=["Gain", "Loss"], range=["#287d59", "#c44949"]),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("month_label:N", title="Month"),
+                alt.Tooltip("realized_pnl:Q", title="Realized P&L", format="$,.2f"),
+            ],
+        )
+        .properties(height=320)
+    )
+    st.altair_chart(monthly_chart, use_container_width=True)
 
-    lifecycle_symbol = st.selectbox(
-        "Underlying",
-        options=tuple(lifecycle_by_symbol),
-        key="campaigniq_lifecycle_symbol",
-    )
-    selected_lifecycle = lifecycle_by_symbol[lifecycle_symbol]
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Campaign Results")
+        st.metric("Average Winner", money(multi_month_campaign_performance.average_win) if multi_month_campaign_performance.average_win is not None else "—")
+        st.metric("Average Loser", money(multi_month_campaign_performance.average_loss) if multi_month_campaign_performance.average_loss is not None else "—")
+        ratio = multi_month_campaign_performance.payoff_ratio
+        st.metric("Payoff Ratio", f"{ratio:.2f}×" if ratio is not None else "—")
+    with right:
+        st.subheader("Attention")
+        st.metric("Unattributed Broker Records", f"{total_unattributed:,}")
+        st.metric("Worst Campaign", money(campaign_outcomes.worst_campaign_pnl) if campaign_outcomes.worst_campaign_pnl is not None else "—")
+        st.metric("Data Through", f"{summaries[-1].period_end:%B %Y}")
 
-    st.markdown(f"#### {selected_lifecycle.symbol}")
+    st.subheader("Recent Campaigns")
+    recent = sorted(campaign_drilldowns, key=lambda item: item.last_closed_date, reverse=True)[:10]
+    st.dataframe(pd.DataFrame([{
+        "Symbols": ", ".join(item.symbols), "Campaign": item.campaign_id,
+        "Realized P&L": float(item.realized_pnl), "Last Close": item.last_closed_date,
+    } for item in recent]), use_container_width=True, hide_index=True)
+    if recent:
+        recent_id = st.selectbox(
+            "Open a recent campaign",
+            [item.campaign_id for item in recent],
+            format_func=lambda campaign_id: next(
+                f"{', '.join(item.symbols)} · {campaign_id} · {money(item.realized_pnl)}"
+                for item in recent if item.campaign_id == campaign_id
+            ),
+            key="campaigniq_overview_recent_campaign",
+        )
 
-    symbol_metric_columns = st.columns(4)
-    symbol_metric_columns[0].metric(
-        "Transitions",
-        f"{selected_lifecycle.transition_count:,}",
-    )
-    symbol_metric_columns[1].metric(
-        "Covered Positions",
-        f"{selected_lifecycle.covered_position_count:,}",
-    )
-    symbol_metric_columns[2].metric(
-        "Rolls",
-        f"{selected_lifecycle.roll_count:,}",
-    )
-    symbol_metric_columns[3].metric(
-        "Exits",
-        f"{selected_lifecycle.exit_count:,}",
-    )
+        def open_recent_campaign(campaign_id):
+            # Callbacks run before the next Streamlit rerun creates the widgets.
+            st.session_state["campaigniq_campaign_symbol"] = "All symbols"
+            st.session_state["campaigniq_campaign_result"] = "All results"
+            st.session_state["campaigniq_campaign_detail"] = campaign_id
+            st.session_state["campaigniq_primary_view"] = "Campaigns"
 
-    lifecycle_timeline_df = pd.DataFrame(
-        lifecycle_timeline_rows(selected_lifecycle)
-    )
+        st.button(
+            "View campaign detail",
+            on_click=open_recent_campaign,
+            args=(recent_id,),
+            key="campaigniq_open_recent_campaign",
+        )
+    st.caption("Realized P&L combines equity/options realized results and settled FOREX; financing and interest are excluded. Campaign counts, win rate, and economics follow the existing campaign performance summary.")
+    st.stop()
 
+if view == "Campaigns":
+    st.subheader("Campaigns")
+    st.caption(f"Realized campaigns · {first_period} – {last_period}")
+    if not campaign_drilldowns:
+        st.info("No realized campaigns are available for these periods.")
+        st.stop()
+
+    symbol_options = sorted({symbol for item in campaign_drilldowns for symbol in item.symbols})
+    filter1, filter2 = st.columns(2)
+    selected_symbol = filter1.selectbox("Symbol", ["All symbols", *symbol_options], key="campaigniq_campaign_symbol")
+    selected_result = filter2.selectbox("Result", ["All results", "Profit", "Loss", "Breakeven"], key="campaigniq_campaign_result")
+
+    def matches_result(item):
+        if selected_result == "Profit":
+            return item.realized_pnl > 0
+        if selected_result == "Loss":
+            return item.realized_pnl < 0
+        if selected_result == "Breakeven":
+            return item.realized_pnl == 0
+        return True
+
+    visible = [
+        item for item in campaign_drilldowns
+        if (selected_symbol == "All symbols" or selected_symbol in item.symbols)
+        and matches_result(item)
+    ]
+    visible.sort(key=lambda item: (item.last_closed_date, item.campaign_id), reverse=True)
+    st.caption(f"{len(visible):,} of {len(campaign_drilldowns):,} realized campaigns")
+    campaign_table = pd.DataFrame([{
+        "Campaign": item.campaign_id,
+        "Symbols": ", ".join(item.symbols),
+        "Realized P&L": float(item.realized_pnl),
+        "First Close": item.first_closed_date,
+        "Last Close": item.last_closed_date,
+        "Reconciled": "Yes" if item.fully_reconciled else "No",
+    } for item in visible])
     st.dataframe(
-        lifecycle_timeline_df,
-        hide_index=True,
-        width="stretch",
+        campaign_table, use_container_width=True, hide_index=True,
         column_config={
-            "Date": st.column_config.DateColumn(
-                "Date",
-                format="MMM D, YYYY",
-            ),
-            "Time": st.column_config.TimeColumn(
-                "Time",
-                format="HH:mm:ss",
-            ),
+            "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
+            "First Close": st.column_config.DateColumn("First Close", format="MMM D, YYYY"),
+            "Last Close": st.column_config.DateColumn("Last Close", format="MMM D, YYYY"),
         },
     )
 
-    st.caption(
-        "Authoritative lifecycle evidence from published monthly artifacts. "
-        "This view summarizes observed corporate actions, assignments, "
-        "covered positions, option rolls, and exits; it does not infer "
-        "strategy intent or realized P&L."
-    )
-
-st.subheader("Underlying Performance")
-
-underlying_rows = [
-    {
-        "Underlying": summary.underlying,
-        "Realized P&L": float(summary.realized_pnl),
-        "Campaigns": summary.campaign_count,
-        "Wins": summary.winning_campaign_count,
-        "Losses": summary.losing_campaign_count,
-        "Breakeven": summary.breakeven_campaign_count,
-        "Win Rate": float(summary.win_rate) * 100 if summary.win_rate is not None else None,
-        "Average Campaign P&L": float(summary.average_campaign_pnl) if summary.average_campaign_pnl is not None else None,
-        "Median Campaign P&L": float(summary.median_campaign_pnl) if summary.median_campaign_pnl is not None else None,
-        "Best Campaign": summary.best_campaign_id,
-        "Best Campaign P&L": float(summary.best_campaign_pnl) if summary.best_campaign_pnl is not None else None,
-        "Worst Campaign": summary.worst_campaign_id,
-        "Worst Campaign P&L": float(summary.worst_campaign_pnl) if summary.worst_campaign_pnl is not None else None,
-    }
-    for summary in underlying_performance
-]
-underlying_df = pd.DataFrame(underlying_rows)
-if not underlying_df.empty:
-    underlying_df = underlying_df.sort_values("Realized P&L", ascending=True).reset_index(drop=True)
-
-st.dataframe(
-    underlying_df,
-    use_container_width=True,
-    hide_index=True,
-    height=420,
-    column_config={
-        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
-        "Win Rate": st.column_config.NumberColumn("Win Rate", format="%.1f%%"),
-        "Average Campaign P&L": st.column_config.NumberColumn("Average Campaign P&L", format="$%0,.2f"),
-        "Median Campaign P&L": st.column_config.NumberColumn("Median Campaign P&L", format="$%0,.2f"),
-        "Best Campaign P&L": st.column_config.NumberColumn("Best Campaign P&L", format="$%0,.2f"),
-        "Worst Campaign P&L": st.column_config.NumberColumn("Worst Campaign P&L", format="$%0,.2f"),
-    },
-)
-st.caption(
-    "Equity/options only. FOREX is excluded from Underlying Performance v1. "
-    "Only fully reconciled, unambiguous realized records are included. "
-    "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
-)
-
-st.subheader("Repeated-Campaign Performance")
-
-repeated_campaign_rows = [
-    {
-        "Underlying": summary.underlying,
-        "Campaigns": summary.campaign_count,
-        "First Realized Campaign": summary.first_campaign_id,
-        "First Realized Date": summary.first_realized_date,
-        "First Campaign P&L": float(summary.first_campaign_pnl),
-        "Subsequent Campaigns": summary.subsequent_campaign_count,
-        "Subsequent Realized P&L": float(summary.subsequent_realized_pnl),
-        "Subsequent Wins": summary.subsequent_winning_campaign_count,
-        "Subsequent Losses": summary.subsequent_losing_campaign_count,
-        "Subsequent Breakeven": summary.subsequent_breakeven_campaign_count,
-        "Subsequent Win Rate": float(summary.subsequent_win_rate) * 100 if summary.subsequent_win_rate is not None else None,
-        "Subsequent Average Campaign P&L": float(summary.subsequent_average_campaign_pnl) if summary.subsequent_average_campaign_pnl is not None else None,
-        "Subsequent Median Campaign P&L": float(summary.subsequent_median_campaign_pnl) if summary.subsequent_median_campaign_pnl is not None else None,
-    }
-    for summary in repeated_campaign_performance
-]
-repeated_campaign_df = pd.DataFrame(repeated_campaign_rows)
-if not repeated_campaign_df.empty:
-    repeated_campaign_df = repeated_campaign_df.sort_values("Subsequent Realized P&L", ascending=True).reset_index(drop=True)
-
-st.dataframe(
-    repeated_campaign_df,
-    use_container_width=True,
-    hide_index=True,
-    height=420,
-    column_config={
-        "First Realized Date": st.column_config.DateColumn("First Realized Date", format="MMM D, YYYY"),
-        "First Campaign P&L": st.column_config.NumberColumn("First Campaign P&L", format="$%0,.2f"),
-        "Subsequent Realized P&L": st.column_config.NumberColumn("Subsequent Realized P&L", format="$%0,.2f"),
-        "Subsequent Win Rate": st.column_config.NumberColumn("Subsequent Win Rate", format="%.1f%%"),
-        "Subsequent Average Campaign P&L": st.column_config.NumberColumn("Subsequent Average Campaign P&L", format="$%0,.2f"),
-        "Subsequent Median Campaign P&L": st.column_config.NumberColumn("Subsequent Median Campaign P&L", format="$%0,.2f"),
-    },
-)
-st.caption(
-    "Equity/options only; underlyings with at least two qualifying campaigns are shown. "
-    "This is realized-campaign chronology, not true campaign-start chronology: campaigns "
-    "are ordered by earliest realized close date, with period-qualified campaign ID as a "
-    "same-date tie-breaker. Only fully reconciled, unambiguous realized records are included. "
-    "Rows are sorted by subsequent realized P&L, worst first; click column headers to re-sort."
-)
-
-st.subheader("Campaign Drill-Down")
-
-campaign_rows = [
-    {
-        "Campaign": summary.campaign_id,
-        "Symbols": ", ".join(summary.symbols),
-        "Realized P&L": float(summary.realized_pnl),
-        "Records": summary.record_count,
-        "Allocations": summary.allocation_count,
-        "First Close": summary.first_closed_date,
-        "Last Close": summary.last_closed_date,
-        "Reconciled": "Yes" if summary.fully_reconciled else "No",
-    }
-    for summary in campaign_drilldowns
-]
-
-campaign_df = pd.DataFrame(campaign_rows)
-if not campaign_df.empty:
-    campaign_df = campaign_df.sort_values(
-        "Realized P&L",
-        ascending=True,
-    ).reset_index(drop=True)
-
-st.dataframe(
-    campaign_df,
-    use_container_width=True,
-    hide_index=True,
-    height=420,
-    column_config={
-        "Realized P&L": st.column_config.NumberColumn(
-            "Realized P&L",
-            format="$%0,.2f",
-        ),
-        "First Close": st.column_config.DateColumn(
-            "First Close",
-            format="MMM D, YYYY",
-        ),
-        "Last Close": st.column_config.DateColumn(
-            "Last Close",
-            format="MMM D, YYYY",
-        ),
-    },
-)
-
-st.caption(
-    "Campaigns are sorted by realized P&L, worst first. "
-    "Click column headers to re-sort the table."
-)
-
-if total_unattributed == 0:
-    st.success("All broker realized records are attributed to campaigns.")
-else:
-    st.warning(
-        f"{total_unattributed} broker realized record(s) remain unattributed."
-    )
-
-st.divider()
-
-left, right = st.columns(2)
-
-with left:
-    st.subheader("Monthly Realized P&L")
-
-    pnl_chart = df[["period_start", "realized_pnl"]].copy()
-    pnl_chart["period_start"] = pd.to_datetime(pnl_chart["period_start"])
-    pnl_chart = pnl_chart.sort_values("period_start")
-
-    monthly_pnl_base = alt.Chart(pnl_chart).encode(
-        x=alt.X(
-            "period_start:T",
-            title="Month",
-            axis=alt.Axis(format="%B"),
-        ),
-        y=alt.Y(
-            "realized_pnl:Q",
-            title="Realized P&L ($)",
-        ),
-        tooltip=[
-            alt.Tooltip(
-                "period_start:T",
-                title="Month",
-                format="%B %Y",
+    if visible:
+        selected_id = st.selectbox(
+            "Inspect campaign",
+            [item.campaign_id for item in visible],
+            format_func=lambda campaign_id: next(
+                f"{', '.join(item.symbols)} · {campaign_id} · {money(item.realized_pnl)}"
+                for item in visible if item.campaign_id == campaign_id
             ),
-            alt.Tooltip(
-                "realized_pnl:Q",
-                title="Realized P&L",
-                format="$,.2f",
-            ),
-        ],
-    )
-
-    monthly_pnl_chart = (
-        monthly_pnl_base.mark_bar()
-        + monthly_pnl_base.mark_point(
-            filled=True,
-            size=70,
+            key="campaigniq_campaign_detail",
         )
+        selected = next(item for item in visible if item.campaign_id == selected_id)
+        st.subheader("Campaign Detail")
+        st.caption(f"{selected.campaign_id} · {', '.join(selected.symbols)}")
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Realized P&L", money(selected.realized_pnl))
+        d2.metric("Broker Records", f"{selected.record_count:,}")
+        d3.metric("Lot Allocations", f"{selected.allocation_count:,}")
+        st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
+        st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
+        realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
+        if len(realized_records) != selected.record_count:
+            st.warning("Campaign summary and underlying record counts differ; review the published data.")
+        else:
+            st.markdown("#### Broker Realized Records")
+            st.dataframe(pd.DataFrame([{
+                "Record": number,
+                "Close Date": attribution.record.closed_date,
+                "Instrument": _display_instrument(attribution.record.instrument),
+                "Quantity": float(attribution.record.quantity),
+                "Realized P&L": float(attribution.record.gain_loss),
+                "Status": (
+                    "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
+                    else "Review basis and P&L" if not attribution.basis_reconciled and not attribution.gain_loss_reconciled
+                    else "Review basis" if not attribution.basis_reconciled
+                    else "Review P&L"
+                ),
+            } for number, attribution in enumerate(realized_records, 1)]),
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "Record": st.column_config.NumberColumn("Record", width=80),
+                    "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=125),
+                    "Instrument": st.column_config.TextColumn("Instrument", width=330),
+                    "Quantity": st.column_config.NumberColumn("Quantity", width=95),
+                    "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f", width=140),
+                    "Status": st.column_config.TextColumn("Status", width=150),
+                },
+            )
+            with st.expander("Broker proceeds and cost basis"):
+                st.dataframe(pd.DataFrame([{
+                    "Record": number,
+                    "Proceeds": float(attribution.record.proceeds),
+                    "Cost Basis": float(attribution.record.cost_basis),
+                    "Disallowed Loss": float(attribution.record.disallowed_loss),
+                    "Basis Method": attribution.record.basis_method,
+                    "Term": attribution.record.term,
+                } for number, attribution in enumerate(realized_records, 1)]),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Proceeds": st.column_config.NumberColumn("Proceeds", format="$%0,.2f"),
+                        "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%0,.2f"),
+                        "Disallowed Loss": st.column_config.NumberColumn("Disallowed Loss", format="$%0,.2f"),
+                    },
+                )
+            with st.expander("Lot allocations for these closes"):
+                st.dataframe(pd.DataFrame([{
+                    "Record": number,
+                    "Lot ID": allocation.lot_id,
+                    "Quantity": float(allocation.quantity),
+                    "Broker Basis": float(allocation.broker_basis) if allocation.broker_basis is not None else None,
+                    "Basis Source": allocation.basis_source or "—",
+                } for number, attribution in enumerate(realized_records, 1)
+                    for allocation in attribution.allocations]),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Broker Basis": st.column_config.NumberColumn("Broker Basis", format="$%0,.2f"),
+                    },
+                )
+        st.caption("This is broker realized close evidence, not a complete opening-trade or position history. Record numbers link the results, broker amounts, and lot allocations.")
+        if len(selected.symbols) == 1:
+            symbol = selected.symbols[0]
+            lifecycle_symbols = {item.symbol for item in lifecycle_summary.symbols}
+            if symbol in lifecycle_symbols:
+                st.caption("The position timeline covers all published activity for this symbol, including other campaigns.")
+
+                def open_symbol_lifecycle(underlying):
+                    st.session_state["campaigniq_lifecycle_symbol"] = underlying
+                    st.session_state["campaigniq_primary_view"] = "Positions"
+
+                st.button(
+                    f"View {symbol} position lifecycle",
+                    on_click=open_symbol_lifecycle,
+                    args=(symbol,),
+                    key="campaigniq_campaign_to_positions",
+                )
+    st.stop()
+
+if view == "Positions":
+    st.subheader("Positions")
+    st.caption("Published month-end open lots and observed lifecycle transitions")
+    st.subheader("Published Month-End Positions")
+    try:
+        published_lot_periods = _authoritative_lot_period_ends()
+        if published_lot_periods:
+            selected_lot_period = st.selectbox(
+                "Snapshot month",
+                options=tuple(reversed(published_lot_periods)),
+                format_func=lambda period: period.strftime("%B %Y"),
+                key="campaigniq_position_snapshot_month",
+            )
+            persisted_lots = load_lot_book_from_storage(
+                ARTIFACT_STORAGE,
+                lot_state_key(period_end=selected_lot_period),
+            )
+            if persisted_lots.period_end != selected_lot_period:
+                raise ValueError("Published lot-state period does not match the artifact date.")
+        else:
+            persisted_lots = None
+    except Exception as exc:
+        st.warning(f"Unable to load published open-lot inventory: {exc}")
+    else:
+        if persisted_lots is None:
+            st.info("No published authoritative month-end lot inventory is available.")
+        else:
+            lot_book = persisted_lots.lot_book
+            open_lots = [lot for instrument in lot_book.instruments() for lot in lot_book.lots(instrument)]
+            groups = {}
+            for lot in open_lots:
+                groups.setdefault((lot.instrument, lot.side), []).append(lot)
+            st.caption(f"As of {selected_lot_period:%B %d, %Y}. This is saved month-end lot state, not a live broker position feed.")
+            inv1, inv2 = st.columns(2)
+            inv1.metric("Open instruments", len(lot_book.instruments()))
+            inv2.metric("Open lots", len(open_lots))
+            if groups:
+                position_rows = [{
+                    "Instrument": _display_instrument(instrument),
+                    "Side": side,
+                    "Quantity": float(sum((abs(lot.quantity) for lot in lots), Decimal("0"))),
+                    "Lots": len(lots),
+                } for (instrument, side), lots in groups.items()]
+                st.dataframe(
+                    pd.DataFrame(position_rows).sort_values(["Instrument", "Side"]),
+                    use_container_width=True, hide_index=True,
+                )
+                with st.expander("Open lot details"):
+                    st.dataframe(pd.DataFrame([{
+                        "Instrument": _display_instrument(lot.instrument),
+                        "Side": lot.side,
+                        "Quantity": float(lot.absolute_quantity),
+                        "Lot ID": lot.lot_id,
+                        "Opened": lot.opened_at.date(),
+                        "Stored Basis": float(lot.basis_total) if lot.basis_total is not None else None,
+                        "Campaign": lot.campaign_id or "Unassigned",
+                    } for lot in open_lots]), use_container_width=True, hide_index=True)
+            else:
+                st.info("No open lots are present in the selected published state.")
+
+            previous_index = published_lot_periods.index(selected_lot_period) - 1
+            if previous_index >= 0:
+                previous_period = published_lot_periods[previous_index]
+                with st.expander(f"Position changes since {previous_period:%B %Y}"):
+                    try:
+                        previous = load_lot_book_from_storage(
+                            ARTIFACT_STORAGE,
+                            lot_state_key(period_end=previous_period),
+                        )
+                        if previous.period_end != previous_period:
+                            raise ValueError("Previous lot-state period does not match its artifact date.")
+                    except Exception as exc:
+                        st.warning(f"Unable to compare published snapshots: {exc}")
+                    else:
+                        def quantities_by_instrument_and_side(book):
+                            quantities = {}
+                            for instrument in book.instruments():
+                                for lot in book.lots(instrument):
+                                    key = (instrument, lot.side)
+                                    quantities[key] = quantities.get(key, Decimal("0")) + lot.absolute_quantity
+                            return quantities
+
+                        before = quantities_by_instrument_and_side(previous.lot_book)
+                        after = quantities_by_instrument_and_side(lot_book)
+                        changed = sorted(
+                            (key for key in before.keys() | after.keys()
+                             if before.get(key, Decimal("0")) != after.get(key, Decimal("0"))),
+                            key=lambda key: (_display_instrument(key[0]), key[1]),
+                        )
+                        if changed:
+                            st.dataframe(pd.DataFrame([{
+                                "Instrument": _display_instrument(instrument),
+                                "Side": side,
+                                "Prior Quantity": float(before.get((instrument, side), Decimal("0"))),
+                                "Selected Quantity": float(after.get((instrument, side), Decimal("0"))),
+                                "Change": float(after.get((instrument, side), Decimal("0")) - before.get((instrument, side), Decimal("0"))),
+                            } for instrument, side in changed]), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No open-quantity differences between these published snapshots.")
+                        st.caption("These are differences between saved month-end quantities. They do not identify trades, splits, or other causes.")
+    st.divider()
+    st.subheader("Published Lifecycle Events")
+
+    if lifecycle_summary.transition_count == 0:
+        st.info(
+            "No published lifecycle transitions are available yet."
+        )
+    else:
+        lifecycle_metric_columns = st.columns(6)
+
+        lifecycle_metric_columns[0].metric(
+            "Transitions",
+            f"{lifecycle_summary.transition_count:,}",
+        )
+        lifecycle_metric_columns[1].metric(
+            "Symbols",
+            f"{lifecycle_summary.symbol_count:,}",
+        )
+        lifecycle_metric_columns[2].metric(
+            "Corporate Actions",
+            f"{lifecycle_summary.corporate_action_count:,}",
+        )
+        lifecycle_metric_columns[3].metric(
+            "Rolls",
+            f"{lifecycle_summary.roll_count:,}",
+        )
+        lifecycle_metric_columns[4].metric(
+            "Exits",
+            f"{lifecycle_summary.exit_count:,}",
+        )
+        lifecycle_metric_columns[5].metric(
+            "Assignments",
+            f"{lifecycle_summary.assignment_count:,}",
+        )
+
+        lifecycle_by_symbol = {
+            summary.symbol: summary
+            for summary in lifecycle_summary.symbols
+        }
+
+        lifecycle_symbol = st.selectbox(
+            "Underlying",
+            options=tuple(lifecycle_by_symbol),
+            key="campaigniq_lifecycle_symbol",
+        )
+        selected_lifecycle = lifecycle_by_symbol[lifecycle_symbol]
+
+        st.markdown(f"#### {selected_lifecycle.symbol}")
+        if lifecycle_symbol == "NFLX":
+            with st.expander("Historical context: NFLX 10-for-1 split", expanded=True):
+                st.write(
+                    "Netflix announced a 10-for-1 forward stock split. "
+                    "Split-adjusted trading was scheduled for November 17, 2025. "
+                    "The supplied NFLX Transaction History shows an "
+                    "'Options Frwd Split' entry dated November 17, 2025, "
+                    "with a -45 quantity adjustment to the December $114 put."
+                )
+                st.link_button(
+                    "Netflix split announcement",
+                    "https://ir.netflix.net/investor-news-and-events/financial-releases/press-release-details/2025/Netflix-Announces-Ten-For-One-Stock-Split/default.aspx",
+                )
+                st.caption(
+                    "Broker source: NFLX Transaction History.pdf, transaction "
+                    "dated November 17, 2025. This historical context predates "
+                    "the published 2026 lifecycle periods. It is not counted "
+                    "as a published transition or used to change positions or P&L."
+                )
+
+        symbol_metric_columns = st.columns(4)
+        symbol_metric_columns[0].metric(
+            "Transitions",
+            f"{selected_lifecycle.transition_count:,}",
+        )
+        symbol_metric_columns[1].metric(
+            "Covered Positions",
+            f"{selected_lifecycle.covered_position_count:,}",
+        )
+        symbol_metric_columns[2].metric(
+            "Rolls",
+            f"{selected_lifecycle.roll_count:,}",
+        )
+        symbol_metric_columns[3].metric(
+            "Exits",
+            f"{selected_lifecycle.exit_count:,}",
+        )
+
+        lifecycle_timeline_df = pd.DataFrame(
+            lifecycle_timeline_rows(selected_lifecycle)
+        )
+
+        st.dataframe(
+            lifecycle_timeline_df,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Date": st.column_config.DateColumn(
+                    "Date",
+                    format="MMM D, YYYY",
+                ),
+                "Time": st.column_config.TimeColumn(
+                    "Time",
+                    format="HH:mm:ss",
+                ),
+            },
+        )
+
+        st.caption(
+            "Authoritative lifecycle evidence from published monthly artifacts. "
+            "This view summarizes observed corporate actions, assignments, "
+            "covered positions, option rolls, and exits; it does not infer "
+            "strategy intent or realized P&L."
+        )
+
+        related_campaigns = sorted(
+            (item for item in campaign_drilldowns if lifecycle_symbol in item.symbols),
+            key=lambda item: (item.last_closed_date, item.campaign_id),
+            reverse=True,
+        )
+        st.subheader("Realized Campaigns for This Symbol")
+        if not related_campaigns:
+            st.info("No realized campaign summaries are available for this symbol in the selected published periods.")
+        else:
+            related_id = st.selectbox(
+                "Open a campaign",
+                [item.campaign_id for item in related_campaigns],
+                format_func=lambda campaign_id: next(
+                    f"{campaign_id} · {money(item.realized_pnl)} · {item.last_closed_date:%b %d, %Y}"
+                    for item in related_campaigns if item.campaign_id == campaign_id
+                ),
+                key="campaigniq_positions_related_campaign",
+            )
+
+            def open_related_campaign(campaign_id, symbol):
+                st.session_state["campaigniq_campaign_symbol"] = symbol
+                st.session_state["campaigniq_campaign_result"] = "All results"
+                st.session_state["campaigniq_campaign_detail"] = campaign_id
+                st.session_state["campaigniq_primary_view"] = "Campaigns"
+
+            st.button(
+                "View campaign detail",
+                on_click=open_related_campaign,
+                args=(related_id, lifecycle_symbol),
+                key="campaigniq_positions_to_campaign",
+            )
+        st.caption("Campaign summaries are keyed by realized closes; the lifecycle timeline above covers all published activity for this symbol.")
+    st.stop()
+
+summary_tab, campaigns_tab, risk_tab = st.tabs(
+    ["Monthly Results", "Campaign Analysis", "Drawdown"]
+)
+
+with summary_tab:
+    metric1, metric2, metric3, metric4 = st.columns(4)
+    metric1.metric(
+        "Combined Realized P&L",
+        money(combined_realized_pnl),
+    )
+    metric2.metric(
+        "Campaigns",
+        f"{multi_month_campaign_performance.campaign_count:,}",
+    )
+    metric3.metric(
+        "Campaign Win Rate",
+        f"{float(multi_month_campaign_performance.win_rate):.1%}",
+    )
+    metric4.metric(
+        "Broker Records",
+        f"{total_records:,}",
     )
 
-    st.altair_chart(
-        monthly_pnl_chart,
-        width="stretch",
+    pnl1, pnl2, pnl3 = st.columns(3)
+    pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
+    pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
+    pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
+    st.caption(
+        "Combined realized P&L includes equity/options realized P&L and FOREX settled P&L. "
+        "FOREX financing/interest is excluded."
     )
 
-with right:
-    st.subheader("Cumulative Realized P&L")
+    perf1, perf2, perf3, perf4 = st.columns(4)
 
-    cumulative = df[["period_start", "realized_pnl"]].copy()
-    cumulative["period_start"] = pd.to_datetime(cumulative["period_start"])
-    cumulative = cumulative.sort_values("period_start")
-    cumulative["cumulative_pnl"] = cumulative["realized_pnl"].cumsum()
+    profitable_month_rate_delta = (
+        f"{float(multi_month_performance.profitable_month_rate):.1%} profitable"
+        if multi_month_performance.profitable_month_rate is not None
+        else None
+    )
 
-    cumulative_pnl_chart = (
-        alt.Chart(cumulative)
-        .mark_line(point=True)
-        .encode(
+    perf1.metric(
+        "Profitable Months",
+        f"{multi_month_performance.profitable_month_count:,} / "
+        f"{multi_month_performance.month_count:,}",
+        profitable_month_rate_delta,
+    )
+
+    perf2.metric(
+        "Average Monthly P&L",
+        (
+            money(multi_month_performance.average_monthly_pnl)
+            if multi_month_performance.average_monthly_pnl is not None
+            else "—"
+        ),
+    )
+
+    best_month_label = (
+        multi_month_performance.best_month_start.strftime("%B")
+        if multi_month_performance.best_month_start is not None
+        else "—"
+    )
+
+    perf3.metric(
+        "Best Month",
+        best_month_label,
+        (
+            money(multi_month_performance.best_month_pnl)
+            if multi_month_performance.best_month_pnl is not None
+            else None
+        ),
+    )
+
+    worst_month_label = (
+        multi_month_performance.worst_month_start.strftime("%B")
+        if multi_month_performance.worst_month_start is not None
+        else "—"
+    )
+
+    perf4.metric(
+        "Worst Month",
+        worst_month_label,
+        (
+            money(multi_month_performance.worst_month_pnl)
+            if multi_month_performance.worst_month_pnl is not None
+            else None
+        ),
+        delta_color="inverse",
+    )
+
+    st.divider()
+
+    left, right = st.columns(2)
+
+    with left:
+        st.subheader("Monthly Realized P&L")
+
+        pnl_chart = df[["period_start", "realized_pnl"]].copy()
+        pnl_chart["period_start"] = pd.to_datetime(pnl_chart["period_start"])
+        pnl_chart = pnl_chart.sort_values("period_start")
+
+        monthly_pnl_base = alt.Chart(pnl_chart).encode(
             x=alt.X(
                 "period_start:T",
                 title="Month",
                 axis=alt.Axis(format="%B"),
             ),
             y=alt.Y(
-                "cumulative_pnl:Q",
-                title="Cumulative P&L ($)",
+                "realized_pnl:Q",
+                title="Realized P&L ($)",
             ),
             tooltip=[
                 alt.Tooltip(
@@ -1893,147 +2066,406 @@ with right:
                     format="%B %Y",
                 ),
                 alt.Tooltip(
-                    "cumulative_pnl:Q",
-                    title="Cumulative P&L",
+                    "realized_pnl:Q",
+                    title="Realized P&L",
                     format="$,.2f",
                 ),
             ],
         )
-    )
 
-    st.altair_chart(
-        cumulative_pnl_chart,
-        width="stretch",
-    )
-
-st.divider()
-
-st.subheader("Realized Drawdown")
-
-drawdown1, drawdown2, drawdown3, drawdown4 = st.columns(4)
-
-drawdown1.metric(
-    "Maximum Drawdown",
-    money(realized_drawdown.maximum_drawdown),
-)
-
-drawdown2.metric(
-    "Current Drawdown",
-    money(realized_drawdown.current_drawdown),
-)
-
-drawdown3.metric(
-    "Drawdown Peak",
-    (
-        realized_drawdown.maximum_drawdown_peak_date.strftime("%b %d, %Y")
-        if realized_drawdown.maximum_drawdown_peak_date is not None
-        else "Starting baseline"
-    ),
-)
-
-drawdown4.metric(
-    "Drawdown Trough",
-    (
-        realized_drawdown.maximum_drawdown_trough_date.strftime("%b %d, %Y")
-        if realized_drawdown.maximum_drawdown_trough_date is not None
-        else "—"
-    ),
-)
-
-if realized_drawdown.maximum_drawdown < Decimal("0"):
-    if realized_drawdown.recovery_date is not None:
-        st.caption(
-            "Maximum drawdown recovered on "
-            f"{realized_drawdown.recovery_date:%b %d, %Y}. "
-            "Equity/options realized P&L only."
+        monthly_pnl_chart = (
+            monthly_pnl_base.mark_bar()
+            + monthly_pnl_base.mark_point(
+                filled=True,
+                size=70,
+            )
         )
+
+        st.altair_chart(
+            monthly_pnl_chart,
+            width="stretch",
+        )
+
+    with right:
+        st.subheader("Cumulative Realized P&L")
+
+        cumulative = df[["period_start", "realized_pnl"]].copy()
+        cumulative["period_start"] = pd.to_datetime(cumulative["period_start"])
+        cumulative = cumulative.sort_values("period_start")
+        cumulative["cumulative_pnl"] = cumulative["realized_pnl"].cumsum()
+
+        cumulative_pnl_chart = (
+            alt.Chart(cumulative)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "period_start:T",
+                    title="Month",
+                    axis=alt.Axis(format="%B"),
+                ),
+                y=alt.Y(
+                    "cumulative_pnl:Q",
+                    title="Cumulative P&L ($)",
+                ),
+                tooltip=[
+                    alt.Tooltip(
+                        "period_start:T",
+                        title="Month",
+                        format="%B %Y",
+                    ),
+                    alt.Tooltip(
+                        "cumulative_pnl:Q",
+                        title="Cumulative P&L",
+                        format="$,.2f",
+                    ),
+                ],
+            )
+        )
+
+        st.altair_chart(
+            cumulative_pnl_chart,
+            width="stretch",
+        )
+
+    st.divider()
+
+    st.divider()
+
+    st.subheader("Monthly Performance")
+
+    display_df = df[
+        [
+            "month",
+            "equity_options_realized_pnl",
+            "forex_settled_pnl",
+            "realized_pnl",
+            "campaigns",
+            "wins",
+            "losses",
+            "breakeven",
+            "win_rate",
+            "records",
+        ]
+    ].copy()
+
+    display_df.columns = [
+        "Month",
+        "Equity/Options P&L",
+        "FOREX Settled P&L",
+        "Combined Realized P&L",
+        "Campaigns",
+        "Wins",
+        "Losses",
+        "Breakeven",
+        "Win Rate",
+        "Broker Records",
+    ]
+
+    st.dataframe(
+        display_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Equity/Options P&L": st.column_config.NumberColumn(
+                "Equity/Options P&L",
+                format="$%,.2f",
+            ),
+            "FOREX Settled P&L": st.column_config.NumberColumn(
+                "FOREX Settled P&L",
+                format="$%,.2f",
+            ),
+            "Combined Realized P&L": st.column_config.NumberColumn(
+                "Combined Realized P&L",
+                format="$%,.2f",
+            ),
+            "Win Rate": st.column_config.NumberColumn(
+                "Win Rate",
+                format="percent",
+            ),
+        },
+    )
+
+    st.caption(
+        "Monthly realized P&L combines equity/options realized P&L and FOREX "
+        "settled P&L. FOREX financing/interest is excluded."
+    )
+
+with campaigns_tab:
+    st.subheader("Campaign Economics")
+
+    econ1, econ2, econ3, econ4 = st.columns(4)
+
+    econ1.metric(
+        "Average Winning Campaign",
+        (
+            money(multi_month_campaign_performance.average_win)
+            if multi_month_campaign_performance.average_win is not None
+            else "—"
+        ),
+    )
+
+    econ2.metric(
+        "Average Losing Campaign",
+        (
+            money(multi_month_campaign_performance.average_loss)
+            if multi_month_campaign_performance.average_loss is not None
+            else "—"
+        ),
+    )
+
+    econ3.metric(
+        "Win/Loss Payoff Ratio",
+        (
+            f"{multi_month_campaign_performance.payoff_ratio:.2f}×"
+            if multi_month_campaign_performance.payoff_ratio is not None
+            else "—"
+        ),
+    )
+
+    econ4.metric(
+        "Breakeven Campaigns",
+        f"{multi_month_campaign_performance.breakeven_campaign_count:,}",
+    )
+
+    st.subheader("Campaign Outcome Distribution")
+
+    dist1, dist2, dist3, dist4 = st.columns(4)
+
+    dist1.metric(
+        "Median Campaign P&L",
+        (
+            money(campaign_outcomes.median_campaign_pnl)
+            if campaign_outcomes.median_campaign_pnl is not None
+            else "—"
+        ),
+    )
+
+    dist2.metric(
+        "Median Winner",
+        (
+            money(campaign_outcomes.median_win)
+            if campaign_outcomes.median_win is not None
+            else "—"
+        ),
+    )
+
+    dist3.metric(
+        "Median Loser",
+        (
+            money(campaign_outcomes.median_loss)
+            if campaign_outcomes.median_loss is not None
+            else "—"
+        ),
+    )
+
+    dist4.metric(
+        "Excluded Campaigns",
+        f"{campaign_outcomes.excluded_campaign_count:,}",
+    )
+
+    tail1, tail2, tail3, tail4 = st.columns(4)
+
+    tail1.metric(
+        "Best Campaign",
+        campaign_outcomes.best_campaign_id or "—",
+        (
+            money(campaign_outcomes.best_campaign_pnl)
+            if campaign_outcomes.best_campaign_pnl is not None
+            else None
+        ),
+    )
+
+    tail2.metric(
+        "Worst Campaign",
+        campaign_outcomes.worst_campaign_id or "—",
+        (
+            money(campaign_outcomes.worst_campaign_pnl)
+            if campaign_outcomes.worst_campaign_pnl is not None
+            else None
+        ),
+        delta_color="inverse",
+    )
+
+    tail3.metric(
+        "Top 3 Winners",
+        money(campaign_outcomes.top_3_winner_pnl),
+    )
+
+    tail4.metric(
+        "Bottom 3 Losers",
+        money(campaign_outcomes.bottom_3_loser_pnl),
+    )
+
+    st.subheader("Underlying Performance")
+
+    underlying_rows = [
+        {
+            "Underlying": summary.underlying,
+            "Realized P&L": float(summary.realized_pnl),
+            "Campaigns": summary.campaign_count,
+            "Wins": summary.winning_campaign_count,
+            "Losses": summary.losing_campaign_count,
+            "Breakeven": summary.breakeven_campaign_count,
+            "Win Rate": float(summary.win_rate) * 100 if summary.win_rate is not None else None,
+            "Average Campaign P&L": float(summary.average_campaign_pnl) if summary.average_campaign_pnl is not None else None,
+            "Median Campaign P&L": float(summary.median_campaign_pnl) if summary.median_campaign_pnl is not None else None,
+            "Best Campaign": summary.best_campaign_id,
+            "Best Campaign P&L": float(summary.best_campaign_pnl) if summary.best_campaign_pnl is not None else None,
+            "Worst Campaign": summary.worst_campaign_id,
+            "Worst Campaign P&L": float(summary.worst_campaign_pnl) if summary.worst_campaign_pnl is not None else None,
+        }
+        for summary in underlying_performance
+    ]
+    underlying_df = pd.DataFrame(underlying_rows)
+    if not underlying_df.empty:
+        underlying_df = underlying_df.sort_values("Realized P&L", ascending=True).reset_index(drop=True)
+
+    st.dataframe(
+        underlying_df,
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        column_config={
+            "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
+            "Win Rate": st.column_config.NumberColumn("Win Rate", format="%.1f%%"),
+            "Average Campaign P&L": st.column_config.NumberColumn("Average Campaign P&L", format="$%0,.2f"),
+            "Median Campaign P&L": st.column_config.NumberColumn("Median Campaign P&L", format="$%0,.2f"),
+            "Best Campaign P&L": st.column_config.NumberColumn("Best Campaign P&L", format="$%0,.2f"),
+            "Worst Campaign P&L": st.column_config.NumberColumn("Worst Campaign P&L", format="$%0,.2f"),
+        },
+    )
+    st.caption(
+        "Equity/options only. FOREX is excluded from Underlying Performance v1. "
+        "Only fully reconciled, unambiguous realized records are included. "
+        "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
+    )
+
+    st.subheader("Repeated-Campaign Performance")
+
+    repeated_campaign_rows = [
+        {
+            "Underlying": summary.underlying,
+            "Campaigns": summary.campaign_count,
+            "First Realized Campaign": summary.first_campaign_id,
+            "First Realized Date": summary.first_realized_date,
+            "First Campaign P&L": float(summary.first_campaign_pnl),
+            "Subsequent Campaigns": summary.subsequent_campaign_count,
+            "Subsequent Realized P&L": float(summary.subsequent_realized_pnl),
+            "Subsequent Wins": summary.subsequent_winning_campaign_count,
+            "Subsequent Losses": summary.subsequent_losing_campaign_count,
+            "Subsequent Breakeven": summary.subsequent_breakeven_campaign_count,
+            "Subsequent Win Rate": float(summary.subsequent_win_rate) * 100 if summary.subsequent_win_rate is not None else None,
+            "Subsequent Average Campaign P&L": float(summary.subsequent_average_campaign_pnl) if summary.subsequent_average_campaign_pnl is not None else None,
+            "Subsequent Median Campaign P&L": float(summary.subsequent_median_campaign_pnl) if summary.subsequent_median_campaign_pnl is not None else None,
+        }
+        for summary in repeated_campaign_performance
+    ]
+    repeated_campaign_df = pd.DataFrame(repeated_campaign_rows)
+    if not repeated_campaign_df.empty:
+        repeated_campaign_df = repeated_campaign_df.sort_values("Subsequent Realized P&L", ascending=True).reset_index(drop=True)
+
+    st.dataframe(
+        repeated_campaign_df,
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        column_config={
+            "First Realized Date": st.column_config.DateColumn("First Realized Date", format="MMM D, YYYY"),
+            "First Campaign P&L": st.column_config.NumberColumn("First Campaign P&L", format="$%0,.2f"),
+            "Subsequent Realized P&L": st.column_config.NumberColumn("Subsequent Realized P&L", format="$%0,.2f"),
+            "Subsequent Win Rate": st.column_config.NumberColumn("Subsequent Win Rate", format="%.1f%%"),
+            "Subsequent Average Campaign P&L": st.column_config.NumberColumn("Subsequent Average Campaign P&L", format="$%0,.2f"),
+            "Subsequent Median Campaign P&L": st.column_config.NumberColumn("Subsequent Median Campaign P&L", format="$%0,.2f"),
+        },
+    )
+    st.caption(
+        "Equity/options only; underlyings with at least two qualifying campaigns are shown. "
+        "This is realized-campaign chronology, not true campaign-start chronology: campaigns "
+        "are ordered by earliest realized close date, with period-qualified campaign ID as a "
+        "same-date tie-breaker. Only fully reconciled, unambiguous realized records are included. "
+        "Rows are sorted by subsequent realized P&L, worst first; click column headers to re-sort."
+    )
+
+with risk_tab:
+    st.subheader("Realized Drawdown")
+
+    drawdown1, drawdown2, drawdown3, drawdown4 = st.columns(4)
+
+    drawdown1.metric(
+        "Maximum Drawdown",
+        money(realized_drawdown.maximum_drawdown),
+    )
+
+    drawdown2.metric(
+        "Current Drawdown",
+        money(realized_drawdown.current_drawdown),
+    )
+
+    drawdown3.metric(
+        "Drawdown Peak",
+        (
+            realized_drawdown.maximum_drawdown_peak_date.strftime("%b %d, %Y")
+            if realized_drawdown.maximum_drawdown_peak_date is not None
+            else "Starting baseline"
+        ),
+    )
+
+    drawdown4.metric(
+        "Drawdown Trough",
+        (
+            realized_drawdown.maximum_drawdown_trough_date.strftime("%b %d, %Y")
+            if realized_drawdown.maximum_drawdown_trough_date is not None
+            else "—"
+        ),
+    )
+
+    if realized_drawdown.maximum_drawdown < Decimal("0"):
+        if realized_drawdown.recovery_date is not None:
+            st.caption(
+                "Maximum drawdown recovered on "
+                f"{realized_drawdown.recovery_date:%b %d, %Y}. "
+                "Equity/options realized P&L only."
+            )
+        else:
+            st.caption(
+                "Maximum drawdown has not recovered through the latest "
+                "period-qualified realized close. Equity/options realized P&L only."
+            )
     else:
         st.caption(
-            "Maximum drawdown has not recovered through the latest "
-            "period-qualified realized close. Equity/options realized P&L only."
+            "No realized drawdown is present in the available "
+            "period-qualified equity/options history."
         )
-else:
-    st.caption(
-        "No realized drawdown is present in the available "
-        "period-qualified equity/options history."
-    )
 
-drawdown_rows = [
-    {
-        "closed_date": point.closed_date,
-        "daily_realized_pnl": float(point.realized_pnl),
-        "cumulative_pnl": float(point.cumulative_pnl),
-        "running_peak_pnl": float(point.running_peak_pnl),
-        "drawdown": float(point.drawdown),
-    }
-    for point in realized_drawdown.points
-]
+    drawdown_rows = [
+        {
+            "closed_date": point.closed_date,
+            "daily_realized_pnl": float(point.realized_pnl),
+            "cumulative_pnl": float(point.cumulative_pnl),
+            "running_peak_pnl": float(point.running_peak_pnl),
+            "drawdown": float(point.drawdown),
+        }
+        for point in realized_drawdown.points
+    ]
 
-drawdown_df = pd.DataFrame(drawdown_rows)
+    drawdown_df = pd.DataFrame(drawdown_rows)
 
-if not drawdown_df.empty:
-    drawdown_df["closed_date"] = pd.to_datetime(
-        drawdown_df["closed_date"]
-    )
+    if not drawdown_df.empty:
+        drawdown_df["closed_date"] = pd.to_datetime(
+            drawdown_df["closed_date"]
+        )
 
-    equity_base = alt.Chart(drawdown_df).encode(
-        x=alt.X(
-            "closed_date:T",
-            title="Realized Close Date",
-        ),
-    )
-
-    cumulative_line = equity_base.mark_line().encode(
-        y=alt.Y(
-            "cumulative_pnl:Q",
-            title="Cumulative Realized P&L ($)",
-        ),
-        tooltip=[
-            alt.Tooltip(
-                "closed_date:T",
-                title="Date",
-                format="%b %d, %Y",
-            ),
-            alt.Tooltip(
-                "cumulative_pnl:Q",
-                title="Cumulative P&L",
-                format="$,.2f",
-            ),
-        ],
-    )
-
-    peak_line = equity_base.mark_line(
-        strokeDash=[6, 4],
-    ).encode(
-        y=alt.Y(
-            "running_peak_pnl:Q",
-            title="Cumulative Realized P&L ($)",
-        ),
-        tooltip=[
-            alt.Tooltip(
-                "closed_date:T",
-                title="Date",
-                format="%b %d, %Y",
-            ),
-            alt.Tooltip(
-                "running_peak_pnl:Q",
-                title="High-Water Mark",
-                format="$,.2f",
-            ),
-        ],
-    )
-
-    drawdown_line = (
-        alt.Chart(drawdown_df)
-        .mark_line(point=True)
-        .encode(
+        equity_base = alt.Chart(drawdown_df).encode(
             x=alt.X(
                 "closed_date:T",
                 title="Realized Close Date",
             ),
+        )
+
+        cumulative_line = equity_base.mark_line().encode(
             y=alt.Y(
-                "drawdown:Q",
-                title="Drawdown ($)",
+                "cumulative_pnl:Q",
+                title="Cumulative Realized P&L ($)",
             ),
             tooltip=[
                 alt.Tooltip(
@@ -2042,204 +2474,190 @@ if not drawdown_df.empty:
                     format="%b %d, %Y",
                 ),
                 alt.Tooltip(
-                    "drawdown:Q",
-                    title="Drawdown",
-                    format="$,.2f",
-                ),
-                alt.Tooltip(
-                    "daily_realized_pnl:Q",
-                    title="Daily Realized P&L",
+                    "cumulative_pnl:Q",
+                    title="Cumulative P&L",
                     format="$,.2f",
                 ),
             ],
         )
-    )
 
-    trough_df = drawdown_df[
-        drawdown_df["drawdown"]
-        == float(realized_drawdown.maximum_drawdown)
-    ]
-
-    trough_point = (
-        alt.Chart(trough_df)
-        .mark_point(
-            filled=True,
-            size=120,
-        )
-        .encode(
-            x=alt.X("closed_date:T"),
-            y=alt.Y("drawdown:Q"),
+        peak_line = equity_base.mark_line(
+            strokeDash=[6, 4],
+        ).encode(
+            y=alt.Y(
+                "running_peak_pnl:Q",
+                title="Cumulative Realized P&L ($)",
+            ),
             tooltip=[
                 alt.Tooltip(
                     "closed_date:T",
-                    title="Maximum Drawdown Trough",
+                    title="Date",
                     format="%b %d, %Y",
                 ),
                 alt.Tooltip(
-                    "drawdown:Q",
-                    title="Maximum Drawdown",
+                    "running_peak_pnl:Q",
+                    title="High-Water Mark",
                     format="$,.2f",
                 ),
             ],
         )
-    )
 
-    drawdown_chart = drawdown_line + trough_point
-
-    equity_col, drawdown_col = st.columns(2)
-
-    with equity_col:
-        st.caption("Realized equity curve and high-water mark")
-        st.altair_chart(
-            cumulative_line + peak_line,
-            width="stretch",
+        drawdown_line = (
+            alt.Chart(drawdown_df)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X(
+                    "closed_date:T",
+                    title="Realized Close Date",
+                ),
+                y=alt.Y(
+                    "drawdown:Q",
+                    title="Drawdown ($)",
+                ),
+                tooltip=[
+                    alt.Tooltip(
+                        "closed_date:T",
+                        title="Date",
+                        format="%b %d, %Y",
+                    ),
+                    alt.Tooltip(
+                        "drawdown:Q",
+                        title="Drawdown",
+                        format="$,.2f",
+                    ),
+                    alt.Tooltip(
+                        "daily_realized_pnl:Q",
+                        title="Daily Realized P&L",
+                        format="$,.2f",
+                    ),
+                ],
+            )
         )
 
-    with drawdown_col:
-        st.caption("Realized drawdown from high-water mark")
-        st.altair_chart(
-            drawdown_chart,
-            width="stretch",
+        trough_df = drawdown_df[
+            drawdown_df["drawdown"]
+            == float(realized_drawdown.maximum_drawdown)
+        ]
+
+        trough_point = (
+            alt.Chart(trough_df)
+            .mark_point(
+                filled=True,
+                size=120,
+            )
+            .encode(
+                x=alt.X("closed_date:T"),
+                y=alt.Y("drawdown:Q"),
+                tooltip=[
+                    alt.Tooltip(
+                        "closed_date:T",
+                        title="Maximum Drawdown Trough",
+                        format="%b %d, %Y",
+                    ),
+                    alt.Tooltip(
+                        "drawdown:Q",
+                        title="Maximum Drawdown",
+                        format="$,.2f",
+                    ),
+                ],
+            )
         )
 
-st.subheader("Maximum Drawdown Contribution")
+        drawdown_chart = drawdown_line + trough_point
 
-contribution_rows = [
-    {
-        "Underlying": item.underlying,
-        "Records": item.record_count,
-        "Wins": item.winning_record_count,
-        "Losses": item.losing_record_count,
-        "Breakeven": item.breakeven_record_count,
-        "Gross Gain": float(item.gross_gain),
-        "Gross Loss": float(item.gross_loss),
-        "Net P&L": float(item.net_realized_pnl),
-        "Largest Gain": (
-            float(item.largest_gain)
-            if item.largest_gain is not None
-            else None
-        ),
-        "Largest Loss": (
-            float(item.largest_loss)
-            if item.largest_loss is not None
-            else None
-        ),
-        "Contribution": float(item.drawdown_contribution) * 100,
-    }
-    for item in maximum_drawdown_contributions.contributions
-]
+        equity_col, drawdown_col = st.columns(2)
 
-contribution_df = pd.DataFrame(contribution_rows)
+        with equity_col:
+            st.caption("Realized equity curve and high-water mark")
+            st.altair_chart(
+                cumulative_line + peak_line,
+                width="stretch",
+            )
 
-if not contribution_df.empty:
-    contribution_df = contribution_df.sort_values(
-        ["Net P&L", "Underlying"],
-        ascending=[True, True],
-    ).reset_index(drop=True)
+        with drawdown_col:
+            st.caption("Realized drawdown from high-water mark")
+            st.altair_chart(
+                drawdown_chart,
+                width="stretch",
+            )
 
-st.dataframe(
-    contribution_df,
-    use_container_width=True,
-    hide_index=True,
-    height=420,
-    column_config={
-        "Gross Gain": st.column_config.NumberColumn(
-            "Gross Gain",
-            format="$%0,.2f",
-        ),
-        "Gross Loss": st.column_config.NumberColumn(
-            "Gross Loss",
-            format="$%0,.2f",
-        ),
-        "Net P&L": st.column_config.NumberColumn(
-            "Net P&L",
-            format="$%0,.2f",
-        ),
-        "Largest Gain": st.column_config.NumberColumn(
-            "Largest Gain",
-            format="$%0,.2f",
-        ),
-        "Largest Loss": st.column_config.NumberColumn(
-            "Largest Loss",
-            format="$%0,.2f",
-        ),
-        "Contribution": st.column_config.NumberColumn(
-            "Contribution",
-            format="%.1f%%",
-        ),
-    },
-)
+    st.subheader("Maximum Drawdown Contribution")
 
-if maximum_drawdown_contributions.maximum_drawdown < Decimal("0"):
-    st.caption(
-        "Equity/options broker realized facts from the maximum-drawdown "
-        "interval only. Negative contribution increased drawdown; positive "
-        "contribution offset losses elsewhere. Unassigned, ambiguous, and "
-        "unreconciled campaign provenance remains included. FOREX is excluded."
-    )
-else:
-    st.caption(
-        "No maximum-drawdown contribution interval is present in the "
-        "available equity/options history."
-    )
-
-st.divider()
-
-st.subheader("Monthly Performance")
-
-display_df = df[
-    [
-        "month",
-        "equity_options_realized_pnl",
-        "forex_settled_pnl",
-        "realized_pnl",
-        "campaigns",
-        "wins",
-        "losses",
-        "breakeven",
-        "win_rate",
-        "records",
+    contribution_rows = [
+        {
+            "Underlying": item.underlying,
+            "Records": item.record_count,
+            "Wins": item.winning_record_count,
+            "Losses": item.losing_record_count,
+            "Breakeven": item.breakeven_record_count,
+            "Gross Gain": float(item.gross_gain),
+            "Gross Loss": float(item.gross_loss),
+            "Net P&L": float(item.net_realized_pnl),
+            "Largest Gain": (
+                float(item.largest_gain)
+                if item.largest_gain is not None
+                else None
+            ),
+            "Largest Loss": (
+                float(item.largest_loss)
+                if item.largest_loss is not None
+                else None
+            ),
+            "Contribution": float(item.drawdown_contribution) * 100,
+        }
+        for item in maximum_drawdown_contributions.contributions
     ]
-].copy()
 
-display_df.columns = [
-    "Month",
-    "Equity/Options P&L",
-    "FOREX Settled P&L",
-    "Combined Realized P&L",
-    "Campaigns",
-    "Wins",
-    "Losses",
-    "Breakeven",
-    "Win Rate",
-    "Broker Records",
-]
+    contribution_df = pd.DataFrame(contribution_rows)
 
-st.dataframe(
-    display_df,
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "Equity/Options P&L": st.column_config.NumberColumn(
-            "Equity/Options P&L",
-            format="$%,.2f",
-        ),
-        "FOREX Settled P&L": st.column_config.NumberColumn(
-            "FOREX Settled P&L",
-            format="$%,.2f",
-        ),
-        "Combined Realized P&L": st.column_config.NumberColumn(
-            "Combined Realized P&L",
-            format="$%,.2f",
-        ),
-        "Win Rate": st.column_config.NumberColumn(
-            "Win Rate",
-            format="percent",
-        ),
-    },
-)
+    if not contribution_df.empty:
+        contribution_df = contribution_df.sort_values(
+            ["Net P&L", "Underlying"],
+            ascending=[True, True],
+        ).reset_index(drop=True)
 
-st.caption(
-    "Monthly realized P&L combines equity/options realized P&L and FOREX "
-    "settled P&L. FOREX financing/interest is excluded."
-)
+    st.dataframe(
+        contribution_df,
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        column_config={
+            "Gross Gain": st.column_config.NumberColumn(
+                "Gross Gain",
+                format="$%0,.2f",
+            ),
+            "Gross Loss": st.column_config.NumberColumn(
+                "Gross Loss",
+                format="$%0,.2f",
+            ),
+            "Net P&L": st.column_config.NumberColumn(
+                "Net P&L",
+                format="$%0,.2f",
+            ),
+            "Largest Gain": st.column_config.NumberColumn(
+                "Largest Gain",
+                format="$%0,.2f",
+            ),
+            "Largest Loss": st.column_config.NumberColumn(
+                "Largest Loss",
+                format="$%0,.2f",
+            ),
+            "Contribution": st.column_config.NumberColumn(
+                "Contribution",
+                format="%.1f%%",
+            ),
+        },
+    )
+
+    if maximum_drawdown_contributions.maximum_drawdown < Decimal("0"):
+        st.caption(
+            "Equity/options broker realized facts from the maximum-drawdown "
+            "interval only. Negative contribution increased drawdown; positive "
+            "contribution offset losses elsewhere. Unassigned, ambiguous, and "
+            "unreconciled campaign provenance remains included. FOREX is excluded."
+        )
+    else:
+        st.caption(
+            "No maximum-drawdown contribution interval is present in the "
+            "available equity/options history."
+        )

@@ -95,7 +95,7 @@ def test_wizard_requires_explicit_execution_confirmation() -> None:
 
 def test_monthly_import_view_stops_before_analytics_loading() -> None:
     text = source()
-    import_view = text.index('if view == "Monthly Import":')
+    import_view = text.index('if view == "Data":')
     stop = text.index("st.stop()", import_view)
     load = text.index("summaries, monthly_attributions, monthly_forex_attributions = load_summaries()")
     assert import_view < stop < load

@@ -43,7 +43,7 @@ def test_lifecycle_timeline_rows_describe_authoritative_nflx_history() -> None:
     assert rows[0]["Details"] == (
         "Feb 20, 2026 $86 Call → Feb 20, 2026 $82 Call"
     )
-    assert str(rows[0]["Qty"]) == "50"
+    assert rows[0]["Qty"] == 50.0
 
     assert rows[1]["Details"] == (
         "Feb 20, 2026 $82 Call → Feb 20, 2026 $78 Call"
@@ -66,4 +66,24 @@ def test_lifecycle_timeline_rows_describe_authoritative_nflx_history() -> None:
         "50 short May 15, 2026 $74 Call contracts "
         "→ zero exposure"
     )
-    assert rows[5]["Qty"] == ""
+    assert rows[5]["Qty"] is None
+
+
+def test_lifecycle_displays_authoritative_split_details() -> None:
+    from datetime import date
+    from decimal import Decimal
+    from campaigniq.domain.corporate_action import CorporateActionEvidence, CorporateActionType
+    from campaigniq.domain.position_lifecycle_transition import PositionLifecycleTransition
+    from campaigniq.ui.dashboard import _lifecycle_transition_details
+
+    evidence = CorporateActionEvidence(
+        symbol="NFLX", effective_date=date(2025, 11, 17),
+        action_type=CorporateActionType.FORWARD_SPLIT,
+        new_units=Decimal("10"), old_units=Decimal("1"),
+        source="Broker statement", source_reference="November 2025",
+    )
+    details, qty = _lifecycle_transition_details(
+        PositionLifecycleTransition.from_corporate_action(evidence)
+    )
+    assert details == "Forward Split 10-for-1. Source: Broker statement (November 2025)"
+    assert qty is None

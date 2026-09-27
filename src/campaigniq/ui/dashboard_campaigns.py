@@ -48,3 +48,26 @@ def aggregate_period_qualified_campaigns(
         aggregate_campaign_realized_pnl(qualified, qualified_forex),
         summarize_campaign_drilldowns(qualified),
     )
+
+
+def campaign_realized_attributions(
+    monthly_attributions: Mapping[tuple[date, date], tuple[RealizedAttribution, ...]],
+    campaign_id: str,
+) -> tuple[RealizedAttribution, ...]:
+    """Return the exact realized records counted by one campaign drilldown.
+
+    A record shared by campaigns or containing an unassigned allocation is
+    excluded, matching summarize_campaign_drilldowns. Period qualification
+    prevents identical local campaign IDs in different months from mixing.
+    """
+    records = []
+    for (start, end), attributions in sorted(monthly_attributions.items()):
+        for attribution in attributions:
+            if not start <= attribution.record.closed_date <= end:
+                continue
+            qualified = _qualified(attribution, start)
+            if qualified.has_unassigned_campaign_allocation:
+                continue
+            if qualified.campaign_ids == (campaign_id,):
+                records.append(qualified)
+    return tuple(sorted(records, key=lambda item: item.record.closed_date))
