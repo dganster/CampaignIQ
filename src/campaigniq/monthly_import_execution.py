@@ -43,6 +43,12 @@ from campaigniq.persistence.import_provenance import (
 from campaigniq.persistence.boundary_completeness_store import (
     serialize_boundary_completeness,
 )
+from campaigniq.persistence.reconciliation_decision import (
+    ReconciliationDecision,
+    decision_exactly_matches_reconciliation,
+    reconciliation_decision_key,
+    serialize_reconciliation_decision,
+)
 from campaigniq.persistence.monthly_publication import (
     ensure_publication_protocol_in_storage,
     publish_finalized_month_marker_to_storage,
@@ -57,6 +63,7 @@ class MonthlyImportExecution:
     result: PeriodImportResult
     closing_reconciliation: ClosingInventoryReconciliation
     authoritative_state_path: Path | None
+    reconciliation_decision: ReconciliationDecision | None = None
 
     @property
     def finalized(self) -> bool:
@@ -127,8 +134,9 @@ def execute_monthly_import(
     supplied_inputs: Mapping[MonthlyInputRole, str | Path],
     historical_source_root: str | Path | None = None,
     artifact_storage: ArtifactStorage | None = None,
+    reconciliation_decision: ReconciliationDecision | None = None,
 ) -> MonthlyImportExecution:
-    """Run a ready import and persist ending state only after reconciliation."""
+    """Run and finalize after reconciliation or an exact reviewed exception."""
     if not preflight.ready:
         raise ValueError("Monthly import preflight is not ready.")
 
@@ -193,12 +201,29 @@ def execute_monthly_import(
         period_end=contract.period_end,
     )
 
+    accepted_decision: ReconciliationDecision | None = None
+
     if not reconciliation.reconciled:
-        return MonthlyImportExecution(
-            result=result,
-            closing_reconciliation=reconciliation,
-            authoritative_state_path=None,
-        )
+        if reconciliation_decision is None:
+            return MonthlyImportExecution(
+                result=result,
+                closing_reconciliation=reconciliation,
+                authoritative_state_path=None,
+            )
+
+        if not decision_exactly_matches_reconciliation(
+            decision=reconciliation_decision,
+            reconciliation=reconciliation,
+            period_start=contract.period_start,
+            period_end=contract.period_end,
+        ):
+            return MonthlyImportExecution(
+                result=result,
+                closing_reconciliation=reconciliation,
+                authoritative_state_path=None,
+            )
+
+        accepted_decision = reconciliation_decision
 
     state_root = Path(authoritative_state_root)
     storage = artifact_storage or LocalFilesystemArtifactStorage(state_root)
@@ -219,6 +244,7 @@ def execute_monthly_import(
     lot_name = lot_state_key(period_end=contract.period_end)
     provenance_name = f"{contract.period_end:%Y-%m}-import-provenance.json"
     completeness_name = f"{contract.period_end:%Y-%m}-boundary-completeness.json"
+    decision_name = reconciliation_decision_key(period_end=contract.period_end)
 
     ensure_publication_protocol_in_storage(
         storage, first_period_end=contract.period_end
@@ -253,6 +279,11 @@ def execute_monthly_import(
         period_end=contract.period_end,
         reconstruction=result.boundary_reconstruction,
     )
+    decision_text = (
+        serialize_reconciliation_decision(accepted_decision)
+        if accepted_decision is not None
+        else None
+    )
 
     # A rerun becomes invisible before any canonical payload is replaced.
     unpublish_finalized_month_marker_from_storage(
@@ -265,6 +296,11 @@ def execute_monthly_import(
     storage.write_text(provenance_name, provenance_text)
     storage.write_text(completeness_name, completeness_text)
 
+    if decision_text is not None:
+        storage.write_text(decision_name, decision_text)
+    else:
+        storage.delete(decision_name)
+
     # The marker is the multi-object visibility boundary and is written last.
     publish_finalized_month_marker_to_storage(
         storage, period_end=contract.period_end
@@ -275,6 +311,7 @@ def execute_monthly_import(
         result=result,
         closing_reconciliation=reconciliation,
         authoritative_state_path=state_path,
+        reconciliation_decision=accepted_decision,
     )
 
 

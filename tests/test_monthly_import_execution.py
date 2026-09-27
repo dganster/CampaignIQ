@@ -16,6 +16,13 @@ from campaigniq.persistence.authoritative_lot_state import (
     lot_state_path,
     save_authoritative_lot_state,
 )
+from campaigniq.persistence.reconciliation_decision import (
+    ACCEPT_TRANSACTION_DERIVED_STATE,
+    BOUNDARY_TIMING_EXCEPTION,
+    ReconciliationDecision,
+    capture_reconciliation_mismatches,
+    deserialize_reconciliation_decision,
+)
 from campaigniq.domain.lot_book import LotBook
 from decimal import Decimal
 
@@ -844,3 +851,313 @@ def test_thinkorswim_history_archive_replaces_same_month(
     assert replacement_path == expected
     assert expected.read_text(encoding="utf-8") == "replacement generation"
     assert list(history_root.glob("*.csv")) == [expected]
+
+
+
+def _approved_august_reconciliation_decision(
+    reconciliation: ClosingInventoryReconciliation,
+) -> ReconciliationDecision:
+    return ReconciliationDecision(
+        period_start=date(2026, 8, 1),
+        period_end=date(2026, 8, 31),
+        decision_type=BOUNDARY_TIMING_EXCEPTION,
+        resolution=ACCEPT_TRANSACTION_DERIVED_STATE,
+        reason=(
+            "Independent transaction evidence establishes a boundary timing "
+            "difference in the supplied closing statement."
+        ),
+        evidence=(
+            "Reviewed broker transaction history",
+        ),
+        mismatches=capture_reconciliation_mismatches(
+            reconciliation.mismatches
+        ),
+        approved=True,
+    )
+
+
+def _ready_august_preflight_for_exception_test(tmp_path):
+    july = PeriodImportPipeline().run(
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        thinkorswim_trade_history=(
+            DATA / "thinkorswim" / "Account Trade History July 2026.csv"
+        ),
+        opening_snapshot=DATA / "schwab" / "june_positions.txt",
+        opening_snapshot_at=datetime(2026, 6, 30, 23, 59, 59),
+        assignment_lines=(
+            (DATA / "schwab" / "july_assignments.txt")
+            .read_text()
+            .splitlines(),
+        ),
+    )
+    save_authoritative_lot_state(
+        tmp_path,
+        period_end=date(2026, 7, 31),
+        lot_book=july.ending_lot_book,
+    )
+    inputs = _august_inputs(tmp_path)
+    preflight = prepare_monthly_import(
+        2026,
+        8,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+    assert preflight.ready
+    return preflight, inputs
+
+
+def test_exact_approved_decision_allows_exceptional_finalization(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    mismatch = ClosingInventoryMismatch(
+        instrument=Instrument("IBM"),
+        computed_quantity=Decimal("0"),
+        snapshot_quantity=Decimal("100"),
+    )
+    reconciliation = ClosingInventoryReconciliation((mismatch,))
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: reconciliation,
+    )
+
+    decision = _approved_august_reconciliation_decision(reconciliation)
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+        reconciliation_decision=decision,
+    )
+
+    assert outcome.finalized
+    assert not outcome.closing_reconciliation.reconciled
+    assert outcome.reconciliation_decision == decision
+
+    decision_path = (
+        tmp_path / "2026-08-reconciliation-decision.json"
+    )
+    assert decision_path.is_file()
+
+    persisted = deserialize_reconciliation_decision(
+        decision_path.read_text(encoding="utf-8")
+    )
+    assert persisted == decision
+
+    assert (tmp_path / "2026-08-lot-book.json").is_file()
+    assert (tmp_path / "2026-08-finalized.json").is_file()
+
+
+def test_unreconciled_month_without_decision_remains_blocked(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    mismatch = ClosingInventoryMismatch(
+        instrument=Instrument("IBM"),
+        computed_quantity=Decimal("0"),
+        snapshot_quantity=Decimal("100"),
+    )
+    reconciliation = ClosingInventoryReconciliation((mismatch,))
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: reconciliation,
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+
+    assert not outcome.finalized
+    assert outcome.reconciliation_decision is None
+    assert not (
+        tmp_path / "2026-08-reconciliation-decision.json"
+    ).exists()
+    assert not (tmp_path / "2026-08-lot-book.json").exists()
+    assert not (tmp_path / "2026-08-finalized.json").exists()
+
+
+def test_decision_cannot_hide_additional_unreviewed_mismatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    lin_only = ClosingInventoryReconciliation(
+        (
+            ClosingInventoryMismatch(
+                instrument=Instrument("LIN"),
+                computed_quantity=Decimal("0"),
+                snapshot_quantity=Decimal("500"),
+            ),
+        )
+    )
+    decision = _approved_august_reconciliation_decision(lin_only)
+
+    current = ClosingInventoryReconciliation(
+        lin_only.mismatches
+        + (
+            ClosingInventoryMismatch(
+                instrument=Instrument("SPCX"),
+                computed_quantity=Decimal("63"),
+                snapshot_quantity=Decimal("100"),
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: current,
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+        reconciliation_decision=decision,
+    )
+
+    assert not outcome.finalized
+    assert outcome.reconciliation_decision is None
+    assert not (
+        tmp_path / "2026-08-reconciliation-decision.json"
+    ).exists()
+    assert not (tmp_path / "2026-08-lot-book.json").exists()
+    assert not (tmp_path / "2026-08-finalized.json").exists()
+
+
+def test_normal_reconciled_finalization_does_not_persist_decision(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    reconciliation = ClosingInventoryReconciliation(())
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: reconciliation,
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+
+    assert outcome.finalized
+    assert outcome.closing_reconciliation.reconciled
+    assert outcome.reconciliation_decision is None
+    assert not (
+        tmp_path / "2026-08-reconciliation-decision.json"
+    ).exists()
+
+
+def test_normal_reconciled_rerun_removes_stale_decision_artifact(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    stale = tmp_path / "2026-08-reconciliation-decision.json"
+    stale.write_text("stale exception", encoding="utf-8")
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: ClosingInventoryReconciliation(()),
+    )
+
+    outcome = execution_module.execute_monthly_import(
+        preflight,
+        authoritative_state_root=tmp_path,
+        supplied_inputs=inputs,
+    )
+
+    assert outcome.finalized
+    assert outcome.closing_reconciliation.reconciled
+    assert not stale.exists()
+
+
+
+def test_decision_write_failure_never_publishes_month(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Decision persistence must succeed before the month becomes visible."""
+    from campaigniq.persistence.artifact_storage import (
+        LocalFilesystemArtifactStorage,
+    )
+
+    preflight, inputs = _ready_august_preflight_for_exception_test(
+        tmp_path
+    )
+
+    mismatch = ClosingInventoryMismatch(
+        instrument=Instrument("IBM"),
+        computed_quantity=Decimal("0"),
+        snapshot_quantity=Decimal("100"),
+    )
+    reconciliation = ClosingInventoryReconciliation((mismatch,))
+
+    monkeypatch.setattr(
+        execution_module,
+        "reconcile_closing_inventory",
+        lambda **_: reconciliation,
+    )
+
+    decision = _approved_august_reconciliation_decision(
+        reconciliation
+    )
+
+    class FailingDecisionStorage(LocalFilesystemArtifactStorage):
+        def write_text(self, key: str, content: str) -> None:
+            if key == "2026-08-reconciliation-decision.json":
+                raise OSError(
+                    "simulated reconciliation decision persistence failure"
+                )
+            super().write_text(key, content)
+
+    storage = FailingDecisionStorage(tmp_path)
+
+    with pytest.raises(
+        OSError,
+        match="simulated reconciliation decision persistence failure",
+    ):
+        execution_module.execute_monthly_import(
+            preflight,
+            authoritative_state_root=tmp_path,
+            supplied_inputs=inputs,
+            artifact_storage=storage,
+            reconciliation_decision=decision,
+        )
+
+    # Some replacement payloads may already have been written.  They are not
+    # authoritative because publication is defined by the finalized marker.
+    assert not (tmp_path / "2026-08-finalized.json").exists()
+
+    # The failed decision itself must not appear as a completed artifact.
+    assert not (
+        tmp_path / "2026-08-reconciliation-decision.json"
+    ).exists()
