@@ -66,6 +66,12 @@ from campaigniq.persistence.authoritative_lot_state import (
     lot_state_key,
 )
 from campaigniq.persistence.lot_book_store import load_lot_book_from_storage
+from campaigniq.ui.access_history import (
+    access_history_storage,
+    is_access_admin,
+    load_access_history,
+    record_session_access,
+)
 from campaigniq.ui.access_audit import audit_unauthorized_oidc_identity
 from campaigniq.ui.access_gate import (
     AUTH_MODE_OIDC,
@@ -151,6 +157,15 @@ RUNTIME = build_local_runtime(
 AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
 HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
 ARTIFACT_STORAGE = RUNTIME.artifact_storage
+
+# CAMPAIGNIQ_ACCESS_HISTORY
+ACCESS_HISTORY_STORAGE = access_history_storage(PROJECT_ROOT)
+ACCESS_HISTORY_ERROR = record_session_access(
+    ACCESS,
+    st.user.to_dict() if ACCESS is not None else {},
+    st.session_state,
+    ACCESS_HISTORY_STORAGE,
+)
 
 MONTHLY_UPLOAD_ROLES = (
     (
@@ -1285,11 +1300,42 @@ if authentication_mode() == AUTH_MODE_OIDC:
         st.logout()
 
 # CAMPAIGNIQ_UI_STAGE1
+navigation_views = ("Overview", "Campaigns", "Performance", "Positions", "Data")
+if is_access_admin(ACCESS):
+    navigation_views += ("Access History",)
 view = st.sidebar.radio(
     "Navigate",
-    ("Overview", "Campaigns", "Performance", "Positions", "Data"),
+    navigation_views,
     key="campaigniq_primary_view",
 )
+
+if view == "Access History":
+    if not is_access_admin(ACCESS):
+        st.error("Administrator access is required.")
+        st.stop()
+    st.subheader("Access History")
+    st.caption("Authorized browser sessions recorded since access logging was enabled. Times are UTC.")
+    st.caption("Opening a new browser session counts as a visit; changing filters does not.")
+    if ACCESS_HISTORY_ERROR:
+        st.warning(ACCESS_HISTORY_ERROR)
+    st.button("Refresh history", key="campaigniq_refresh_access_history")
+    try:
+        access_rows = load_access_history(ACCESS, ACCESS_HISTORY_STORAGE)
+    except Exception:
+        st.error("Access history could not be loaded. Check the service storage configuration.")
+    else:
+        if access_rows:
+            access_df = pd.DataFrame(access_rows)
+            st.metric("Recorded visits", len(access_df))
+            st.markdown("#### Last visit by user")
+            st.dataframe(access_df.drop_duplicates(subset=["Identity"]),
+                         use_container_width=True, hide_index=True)
+            st.markdown("#### Recent visits")
+            st.dataframe(access_df.head(500), use_container_width=True, hide_index=True)
+            st.caption("The recent visits table shows up to 500 sessions.")
+        else:
+            st.info("No visits have been recorded yet.")
+    st.stop()
 
 if view == "Data":
     st.subheader("Data")
