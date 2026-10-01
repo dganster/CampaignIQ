@@ -746,6 +746,8 @@ def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
         "Choose the month and supply the four monthly brokerage documents. "
+        "When opening inventory is not yet available, also supply the prior "
+        "month-end Schwab Brokerage Statement (five files in total). "
         "CampaignIQ processes them against the authoritative position state. "
         "Validation is read-only; authoritative data is persisted only after "
         "successful preflight, explicit confirmation, and execution. Closing "
@@ -783,9 +785,16 @@ def render_monthly_import_wizard():
     )
 
     st.markdown("#### 1. Supply monthly documents")
-    st.caption(
-        "Supply the four brokerage documents for the selected month."
-    )
+    if predecessor is None:
+        prior_month_end = _month_start(int(year), int(month)) - date.resolution
+        st.caption(
+            f"Supply five required files: the four monthly documents for "
+            f"{_month_start(int(year), int(month)):%B %Y}, plus the "
+            f"{prior_month_end:%B %Y} Schwab Brokerage Statement to establish "
+            "opening inventory."
+        )
+    else:
+        st.caption("Supply the four brokerage documents for the selected month.")
 
     selected_period_start = _month_start(int(year), int(month))
     if selected_period_start.month == 12:
@@ -881,11 +890,19 @@ def render_monthly_import_wizard():
                 "Validate the monthly import again."
             )
         else:
-            st.info(
-                "Supply the four monthly documents above, then validate. "
-                "CampaignIQ will use the authoritative predecessor state when "
-                "one is available."
-            )
+            if predecessor is None:
+                prior_month_end = selected_period_start - date.resolution
+                st.info(
+                    f"Supply all five required files above: four monthly documents "
+                    f"for {selected_period_start:%B %Y} and the "
+                    f"{prior_month_end:%B %Y} Schwab Brokerage Statement. "
+                    "Then select Validate monthly import."
+                )
+            else:
+                st.info(
+                    "Supply the four monthly documents above, then validate. "
+                    "CampaignIQ will use the existing opening inventory."
+                )
         return
 
     # Streamlit reruns the script for checkbox/button interactions. Recreate
