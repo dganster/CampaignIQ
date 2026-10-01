@@ -42,6 +42,25 @@ _DATE_RANGE_RE = re.compile(
 )
 
 
+_REPORTING_PERIOD_RE = re.compile(
+    r"Reporting Period[^\n]*\n\s*(?P<start>\d{2}/\d{2}/\d{4})"
+    r"\s+to\s+(?P<end>\d{2}/\d{2}/\d{4})",
+    re.IGNORECASE,
+)
+
+
+def _realized_report_period(text: str) -> tuple[date, date] | None:
+    # Use declared report periods, never transaction dates or the update date.
+    matches = [*_DATE_RANGE_RE.finditer(text), *_REPORTING_PERIOD_RE.finditer(text)]
+    periods = {
+        (_mmddyyyy(match.group("start")), _mmddyyyy(match.group("end")))
+        for match in matches
+    }
+    if len(periods) != 1:
+        return None
+    return periods.pop()
+
+
 def _mmddyyyy(value: str) -> date:
     month, day, year = (int(part) for part in value.split("/"))
     return date(year, month, day)
@@ -185,15 +204,14 @@ def validate_monthly_input(
                 return MonthlyInputValidation(
                     role, False, "Not a recognized Schwab realized gain/loss report."
                 )
-            match = _DATE_RANGE_RE.search(text)
-            if match is None:
+            report_period = _realized_report_period(text)
+            if report_period is None:
                 return MonthlyInputValidation(
                     role,
                     False,
                     "Recognized Schwab realized gain/loss report, but its date range could not be determined.",
                 )
-            report_start = _mmddyyyy(match.group("start"))
-            report_end = _mmddyyyy(match.group("end"))
+            report_start, report_end = report_period
             if (report_start, report_end) != (period_start, period_end):
                 return MonthlyInputValidation(
                     role,

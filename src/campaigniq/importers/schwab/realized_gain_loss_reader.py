@@ -23,8 +23,8 @@ _OPTION_RE = re.compile(
     r"(?P<basis_method>\S+)\s+"
     r"\$(?P<proceeds>[\d,]+(?:\.\d+)?)\s+"
     r"\$(?P<cost_basis>[\d,]+(?:\.\d+)?)\s+"
-    r"(?P<gain_loss>[+-]?\$[\d,]+(?:\.\d+)?)\s+"
-    r"(?P<term_amount>[+-]?\$?[\d,]+(?:\.\d+)?)"
+    r"(?P<gain_loss>[+-]?\$[\d,]+(?:\.\d+)?)"
+    r"(?:\s+(?P<term_amount>[+-]?\$?[\d,]+(?:\.\d+)?))?"
 )
 
 _DISALLOWED_LOSS_RE = re.compile(
@@ -39,8 +39,8 @@ _EQUITY_RE = re.compile(
     r"(?P<basis_method>\S+)\s+"
     r"\$(?P<proceeds>[\d,]+(?:\.\d+)?)\s+"
     r"\$(?P<cost_basis>[\d,]+(?:\.\d+)?)\s+"
-    r"(?P<gain_loss>[+-]?\$[\d,]+(?:\.\d+)?)\s+"
-    r"(?P<term_amount>[+-]?\$?[\d,]+(?:\.\d+)?)"
+    r"(?P<gain_loss>[+-]?\$[\d,]+(?:\.\d+)?)"
+    r"(?:\s+(?P<term_amount>[+-]?\$?[\d,]+(?:\.\d+)?))?"
 )
 
 
@@ -183,4 +183,5 @@ def _decimal(value: str) -> Decimal:
 def _term(match: re.Match[str]) -> str:
     # Schwab renders the inactive term column as blank. The final numeric
     # amount therefore identifies the active tax term for ordinary rows.
-    return "SHORT" if _decimal(match.group("term_amount")) != 0 else "UNKNOWN"
+    amount = match.group("term_amount")
+    return "SHORT" if amount is not None and _decimal(amount) != 0 else "UNKNOWN"
