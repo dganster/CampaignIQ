@@ -10,6 +10,7 @@ from campaigniq.domain.lot import InstrumentLike
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.importers.schwab.pending_activity_reader import (
     SchwabPendingOptionActivity,
+    SchwabPendingPositionActivity,
 )
 from campaigniq.importers.schwab.position_snapshot import SchwabPositionSnapshotRow
 
@@ -68,7 +69,7 @@ def reconcile_closing_inventory(
     ending_lot_book: LotBook,
     snapshot_rows: list[SchwabPositionSnapshotRow]
     | tuple[SchwabPositionSnapshotRow, ...],
-    pending_activity: tuple[SchwabPendingOptionActivity, ...] = (),
+    pending_activity: tuple[SchwabPendingOptionActivity | SchwabPendingPositionActivity, ...] = (),
     period_end: date | None = None,
 ) -> ClosingInventoryReconciliation:
     """Compare economic ending quantities, including exact period-end pending changes."""
@@ -76,8 +77,20 @@ def reconcile_closing_inventory(
     snapshot = _snapshot_quantities(snapshot_rows)
 
     for activity in pending_activity:
-        if period_end is not None and activity.activity_date != period_end:
-            continue
+        if period_end is not None:
+            activity_day = activity.activity_date
+            settlement_day = activity.settlement_date
+            if activity_day is None or not (
+                period_end.replace(day=1) <= activity_day <= period_end
+            ):
+                continue
+            if settlement_day is not None:
+                if settlement_day <= period_end:
+                    continue
+            elif activity_day != period_end:
+                # Preserve legacy period-end evidence with no settlement date;
+                # earlier activity needs an explicit post-period settlement.
+                continue
         snapshot[activity.instrument] = (
             snapshot.get(activity.instrument, Decimal("0"))
             + activity.quantity_change

@@ -28,9 +28,9 @@ _OPTION_RE = re.compile(
     r"(?P<option_type>CALL|PUT)\b.*?"
     r"(?P<quantity>\([\d,]+\.\d{4}\))\s+S\s+"
     r"[\d,]+\.\d{5}\s+"
-    r"\(?[\d,]+\.\d{2}\)?\s+"
-    r"(?P<basis>\([\d,]+\.\d{2}\))\s+"
     r"\(?[\d,]+\.\d{2}\)?"
+    r"(?:\s+(?P<basis>\([\d,]+\.\d{2}\))\s+"
+    r"\(?[\d,]+\.\d{2}\)?)?"
     r"(?:\s+(?:N/A|[\d.]+%))?"
     r"(?:\s+(?:N/A|\(?-?[\d,]+\.\d{2}\)?))?\s*$"
 )
@@ -93,7 +93,10 @@ def read_position_snapshot_section(
                         symbol=match.group("symbol"),
                         quantity=_parse_amount(match.group("quantity")),
                         snapshot_at=snapshot_at,
-                        basis_total=_parse_amount(match.group("basis")),
+                        basis_total=(
+                            _parse_amount(match.group("basis"))
+                            if match.group("basis") is not None else None
+                        ),
                     )
                 )
 
@@ -115,7 +118,10 @@ def read_position_snapshot_section(
                         expiration=expiration,
                         strike=strike,
                         option_type=OptionType[match.group("option_type")],
-                        basis_total=_parse_amount(match.group("basis")),
+                        basis_total=(
+                            _parse_amount(match.group("basis"))
+                            if match.group("basis") is not None else None
+                        ),
                     )
                 )
 

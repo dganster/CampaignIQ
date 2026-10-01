@@ -19,7 +19,7 @@ from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_pipeline import PeriodImportPipeline, PeriodImportResult
 from campaigniq.import_preflight import MonthlyImportPreflight
 from campaigniq.importers.schwab.pending_activity_reader import (
-    read_pending_option_activity,
+    read_pending_position_activity,
 )
 from campaigniq.importers.schwab.position_snapshot_reader import (
     read_position_snapshot_section,
@@ -193,7 +193,9 @@ def execute_monthly_import(
         closing_lines,
         snapshot_at=datetime.combine(contract.period_end, datetime.max.time()),
     )
-    pending_activity = read_pending_option_activity(closing_lines)
+    pending_activity = read_pending_position_activity(
+        closing_lines, period_end=contract.period_end,
+    )
     reconciliation = reconcile_closing_inventory(
         ending_lot_book=result.ending_lot_book,
         snapshot_rows=closing_rows,
