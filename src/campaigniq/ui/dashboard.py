@@ -84,6 +84,10 @@ from campaigniq.ui.access_gate import (
     authentication_mode,
     password_matches,
 )
+from campaigniq.ui.campaign_interactions import (
+    campaign_month, closed_position_side, closed_quantity_units,
+    forex_drilldowns, read_closing_trades, render_campaign_table, render_month_chart,
+)
 from campaigniq.ui.dashboard_campaigns import (
     aggregate_period_qualified_campaigns,
     campaign_realized_attributions,
@@ -1603,12 +1607,18 @@ if view == "Overview":
     monthly_chart_data["month_label"] = monthly_chart_data["period_start"].map(
         lambda value: value.strftime("%b %Y")
     )
+    monthly_chart_data["month_key"] = monthly_chart_data["period_start"].map(
+        lambda value: value.strftime("%Y-%m")
+    )
+    month_selection = alt.selection_point(
+        name="campaign_month", fields=["month_key"], toggle=False
+    )
     monthly_chart_data["result"] = monthly_chart_data["realized_pnl"].map(
         lambda value: "Gain" if value >= 0 else "Loss"
     )
     monthly_chart = (
         alt.Chart(monthly_chart_data)
-        .mark_bar()
+        .mark_bar(cursor="pointer")
         .encode(
             x=alt.X(
                 "month_label:N",
@@ -1628,8 +1638,10 @@ if view == "Overview":
             ],
         )
         .properties(height=320)
+        .add_params(month_selection)
     )
-    st.altair_chart(monthly_chart, use_container_width=True)
+    st.caption("Click a month’s bar to inspect its campaigns.")
+    render_month_chart(st, monthly_chart, tuple(monthly_chart_data["month_key"]))
 
     left, right = st.columns(2)
     with left:
@@ -1644,48 +1656,27 @@ if view == "Overview":
         st.metric("Worst Campaign", money(campaign_outcomes.worst_campaign_pnl) if campaign_outcomes.worst_campaign_pnl is not None else "—")
         st.metric("Data Through", f"{summaries[-1].period_end:%B %Y}")
 
-    st.subheader("Recent Campaigns")
-    recent = sorted(campaign_drilldowns, key=lambda item: item.last_closed_date, reverse=True)[:10]
-    st.dataframe(pd.DataFrame([{
-        "Symbols": ", ".join(item.symbols), "Campaign": item.campaign_id,
-        "Realized P&L": float(item.realized_pnl), "Last Close": item.last_closed_date,
-    } for item in recent]).style.format({"Realized P&L": "{:,.2f}"}), use_container_width=True, hide_index=True)
-    if recent:
-        recent_id = st.selectbox(
-            "Open a recent campaign",
-            [item.campaign_id for item in recent],
-            format_func=lambda campaign_id: next(
-                f"{', '.join(item.symbols)} · {campaign_id} · {money(item.realized_pnl)}"
-                for item in recent if item.campaign_id == campaign_id
-            ),
-            key="campaigniq_overview_recent_campaign",
-        )
-
-        def open_recent_campaign(campaign_id):
-            # Callbacks run before the next Streamlit rerun creates the widgets.
-            st.session_state["campaigniq_campaign_symbol"] = "All symbols"
-            st.session_state["campaigniq_campaign_result"] = "All results"
-            st.session_state["campaigniq_campaign_detail"] = campaign_id
-            st.session_state["campaigniq_primary_view"] = "Campaigns"
-
-        st.button(
-            "View campaign detail",
-            on_click=open_recent_campaign,
-            args=(recent_id,),
-            key="campaigniq_open_recent_campaign",
-        )
     st.caption("Realized P&L combines equity/options realized results and settled FOREX; financing and interest are excluded. Campaign counts, win rate, and economics follow the existing campaign performance summary.")
     st.stop()
 
 if view == "Campaigns":
     st.subheader("Campaigns")
     st.caption(f"Realized campaigns · {first_period} – {last_period}")
+    forex_campaigns, forex_campaign_records = forex_drilldowns(monthly_forex_attributions)
+    campaign_drilldowns = (*campaign_drilldowns, *forex_campaigns)
     if not campaign_drilldowns:
         st.info("No realized campaigns are available for these periods.")
         st.stop()
 
     symbol_options = sorted({symbol for item in campaign_drilldowns for symbol in item.symbols})
-    filter1, filter2 = st.columns(2)
+    month_options = ["All months", *[summary.period_start.strftime("%Y-%m") for summary in reversed(summaries)]]
+    if st.session_state.get("campaigniq_campaign_month") not in month_options:
+        st.session_state["campaigniq_campaign_month"] = "All months"
+    filter0, filter1, filter2 = st.columns(3)
+    selected_month = filter0.selectbox(
+        "Month", month_options, key="campaigniq_campaign_month",
+        format_func=lambda value: "All months" if value == "All months" else date.fromisoformat(value + "-01").strftime("%B %Y"),
+    )
     selected_symbol = filter1.selectbox("Symbol", ["All symbols", *symbol_options], key="campaigniq_campaign_symbol")
     selected_result = filter2.selectbox("Result", ["All results", "Profit", "Loss", "Breakeven"], key="campaigniq_campaign_result")
 
@@ -1702,9 +1693,17 @@ if view == "Campaigns":
         item for item in campaign_drilldowns
         if (selected_symbol == "All symbols" or selected_symbol in item.symbols)
         and matches_result(item)
+        and (selected_month == "All months" or campaign_month(item) == selected_month)
     ]
     visible.sort(key=lambda item: (item.last_closed_date, item.campaign_id), reverse=True)
     st.caption(f"{len(visible):,} of {len(campaign_drilldowns):,} realized campaigns")
+    if selected_month != "All months":
+        monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
+        st.metric("Month realized P&L", money(monthly_summary.combined_realized_pnl))
+        month_campaign_total = sum((item.realized_pnl for item in campaign_drilldowns if campaign_month(item) == selected_month), Decimal("0"))
+        if month_campaign_total != monthly_summary.combined_realized_pnl:
+            st.caption("The month total includes broker records without an unambiguous campaign attribution. Those records do not appear as campaign rows.")
+    st.caption("Click a campaign row to inspect its details below.")
     campaign_table = pd.DataFrame([{
         "Campaign": item.campaign_id,
         "Symbols": ", ".join(item.symbols),
@@ -1712,93 +1711,118 @@ if view == "Campaigns":
         "First Close": item.first_closed_date,
         "Last Close": item.last_closed_date,
         "Reconciled": "Yes" if item.fully_reconciled else "No",
-    } for item in visible])
-    st.dataframe(
-        campaign_table.style.format({"Realized P&L": "{:,.2f}"}), use_container_width=True, hide_index=True,
+    } for item in visible], columns=["Campaign", "Symbols", "Realized P&L", "First Close", "Last Close", "Reconciled"])
+    render_campaign_table(
+        st, campaign_table, tuple(item.campaign_id for item in visible),
         column_config={
             "First Close": st.column_config.DateColumn("First Close", format="MMM D, YYYY"),
             "Last Close": st.column_config.DateColumn("Last Close", format="MMM D, YYYY"),
         },
     )
-
-    if visible:
-        selected_id = st.selectbox(
-            "Inspect campaign",
-            [item.campaign_id for item in visible],
-            format_func=lambda campaign_id: next(
-                f"{', '.join(item.symbols)} · {campaign_id} · {money(item.realized_pnl)}"
-                for item in visible if item.campaign_id == campaign_id
-            ),
-            key="campaigniq_campaign_detail",
-        )
-        selected = next(item for item in visible if item.campaign_id == selected_id)
+    selected_id = st.session_state.get("campaigniq_campaign_detail")
+    selected = next((item for item in visible if item.campaign_id == selected_id), None)
+    if selected is None:
+        st.session_state["campaigniq_campaign_detail"] = None
+        if visible:
+            st.info("Select a campaign in the table to see its details.")
+        else:
+            st.info("No campaigns match these filters.")
+    if selected is not None:
         st.subheader("Campaign Detail")
         st.caption(f"{selected.campaign_id} · {', '.join(selected.symbols)}")
         d1, d2, d3 = st.columns(3)
         d1.metric("Realized P&L", money(selected.realized_pnl))
-        d2.metric("Broker Records", f"{selected.record_count:,}")
+        d2.metric("Settlement Records" if selected_id in forex_campaign_records else "Broker Records", f"{selected.record_count:,}")
         d3.metric("Lot Allocations", f"{selected.allocation_count:,}")
         st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
         st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
-        realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
-        if len(realized_records) != selected.record_count:
-            st.warning("Campaign summary and underlying record counts differ; review the published data.")
-        else:
-            st.markdown("#### Broker Realized Records")
+        if selected_id in forex_campaign_records:
+            st.markdown("#### Broker FOREX Settlement Records")
             st.dataframe(pd.DataFrame([{
-                "Record": number,
-                "Close Date": attribution.record.closed_date,
-                "Instrument": _display_instrument(attribution.record.instrument),
-                "Quantity": float(attribution.record.quantity),
-                "Realized P&L": float(attribution.record.gain_loss),
-                "Status": (
-                    "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
-                    else "Review basis and P&L" if not attribution.basis_reconciled and not attribution.gain_loss_reconciled
-                    else "Review basis" if not attribution.basis_reconciled
-                    else "Review P&L"
-                ),
-            } for number, attribution in enumerate(realized_records, 1)]),
+                "Settlement Date": a.settlement.settlement_at.date(),
+                "Pair": a.settlement.instrument,
+                "Broker Side": a.settlement.side,
+                "Settlement amount": float(abs(a.settlement.amount)),
+                "Units": "Base currency",
+                "Realized P&L": float(a.gain_loss),
+            } for a in forex_campaign_records[selected_id]]),
                 use_container_width=True, hide_index=True,
                 column_config={
-                    "Record": st.column_config.NumberColumn("Record", width=80),
-                    "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=125),
-                    "Instrument": st.column_config.TextColumn("Instrument", width=330),
-                    "Quantity": st.column_config.NumberColumn("Quantity", width=95),
-                    "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f", width=140),
-                    "Status": st.column_config.TextColumn("Status", width=150),
+                    "Settlement Date": st.column_config.DateColumn("Settlement Date", format="MMM D, YYYY"),
+                    "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
                 },
             )
-            with st.expander("Broker proceeds and cost basis"):
+            st.caption("Broker settled FOREX P&L included in the monthly result; financing and interest are excluded.")
+        else:
+            realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
+            closing_trades, direction_incomplete = read_closing_trades(
+                HISTORICAL_SOURCE_ROOT, [a.record.closed_date for a in realized_records]
+            )
+            st.caption("Quantity closed is a positive count of shares or contracts closed, not a signed open position. Long/Short identifies the position that was closed.")
+            if direction_incomplete:
+                st.caption("Some retained trade evidence could not be read; position direction is unavailable.")
+            if len(realized_records) != selected.record_count:
+                st.warning("Campaign summary and underlying record counts differ; review the published data.")
+            else:
+                st.markdown("#### Broker Realized Records")
                 st.dataframe(pd.DataFrame([{
                     "Record": number,
-                    "Proceeds": float(attribution.record.proceeds),
-                    "Cost Basis": float(attribution.record.cost_basis),
-                    "Disallowed Loss": float(attribution.record.disallowed_loss),
-                    "Basis Method": attribution.record.basis_method,
-                    "Term": attribution.record.term,
+                    "Close Date": attribution.record.closed_date,
+                    "Instrument": _display_instrument(attribution.record.instrument),
+                    "Quantity closed": float(attribution.record.quantity),
+                    "Units": closed_quantity_units(attribution.record.instrument),
+                    "Long/Short": closed_position_side(attribution.record, closing_trades),
+                    "Realized P&L": float(attribution.record.gain_loss),
+                    "Status": (
+                        "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
+                        else "Review basis and P&L" if not attribution.basis_reconciled and not attribution.gain_loss_reconciled
+                        else "Review basis" if not attribution.basis_reconciled
+                        else "Review P&L"
+                    ),
                 } for number, attribution in enumerate(realized_records, 1)]),
                     use_container_width=True, hide_index=True,
                     column_config={
-                        "Proceeds": st.column_config.NumberColumn("Proceeds", format="$%0,.2f"),
-                        "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%0,.2f"),
-                        "Disallowed Loss": st.column_config.NumberColumn("Disallowed Loss", format="$%0,.2f"),
+                        "Record": st.column_config.NumberColumn("Record", width=80),
+                        "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=125),
+                        "Instrument": st.column_config.TextColumn("Instrument", width=330),
+                        "Quantity closed": st.column_config.NumberColumn("Quantity closed", width=140),
+                        "Units": st.column_config.TextColumn("Units", width=100),
+                        "Long/Short": st.column_config.TextColumn("Long/Short", width=120),
+                        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f", width=140),
+                        "Status": st.column_config.TextColumn("Status", width=150),
                     },
                 )
-            with st.expander("Lot allocations for these closes"):
-                st.dataframe(pd.DataFrame([{
-                    "Record": number,
-                    "Lot ID": allocation.lot_id,
-                    "Quantity": float(allocation.quantity),
-                    "Broker Basis": float(allocation.broker_basis) if allocation.broker_basis is not None else None,
-                    "Basis Source": allocation.basis_source or "—",
-                } for number, attribution in enumerate(realized_records, 1)
-                    for allocation in attribution.allocations]),
-                    use_container_width=True, hide_index=True,
-                    column_config={
-                        "Broker Basis": st.column_config.NumberColumn("Broker Basis", format="$%0,.2f"),
-                    },
-                )
-        st.caption("This is broker realized close evidence, not a complete opening-trade or position history. Record numbers link the results, broker amounts, and lot allocations.")
+                with st.expander("Broker proceeds and cost basis"):
+                    st.dataframe(pd.DataFrame([{
+                        "Record": number,
+                        "Proceeds": float(attribution.record.proceeds),
+                        "Cost Basis": float(attribution.record.cost_basis),
+                        "Disallowed Loss": float(attribution.record.disallowed_loss),
+                        "Basis Method": attribution.record.basis_method,
+                        "Term": attribution.record.term,
+                    } for number, attribution in enumerate(realized_records, 1)]),
+                        use_container_width=True, hide_index=True,
+                        column_config={
+                            "Proceeds": st.column_config.NumberColumn("Proceeds", format="$%0,.2f"),
+                            "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%0,.2f"),
+                            "Disallowed Loss": st.column_config.NumberColumn("Disallowed Loss", format="$%0,.2f"),
+                        },
+                    )
+                with st.expander("Lot allocations for these closes"):
+                    st.dataframe(pd.DataFrame([{
+                        "Record": number,
+                        "Lot ID": allocation.lot_id,
+                        "Quantity closed": float(allocation.quantity),
+                        "Broker Basis": float(allocation.broker_basis) if allocation.broker_basis is not None else None,
+                        "Basis Source": allocation.basis_source or "—",
+                    } for number, attribution in enumerate(realized_records, 1)
+                        for allocation in attribution.allocations]),
+                        use_container_width=True, hide_index=True,
+                        column_config={
+                            "Broker Basis": st.column_config.NumberColumn("Broker Basis", format="$%0,.2f"),
+                        },
+                    )
+            st.caption("This is broker realized close evidence, not a complete opening-trade or position history. Record numbers link the results, broker amounts, and lot allocations.")
         if len(selected.symbols) == 1:
             symbol = selected.symbols[0]
             lifecycle_symbols = {item.symbol for item in lifecycle_summary.symbols}
@@ -2050,6 +2074,7 @@ if view == "Positions":
             )
 
             def open_related_campaign(campaign_id, symbol):
+                st.session_state["campaigniq_campaign_month"] = "All months"
                 st.session_state["campaigniq_campaign_symbol"] = symbol
                 st.session_state["campaigniq_campaign_result"] = "All results"
                 st.session_state["campaigniq_campaign_detail"] = campaign_id

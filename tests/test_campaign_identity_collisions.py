@@ -139,7 +139,9 @@ def test_campaign_table_numeric_values_show_grouping_commas():
     assert '-6,638.05' in styled.to_html()
     assert value['Realized P&L'].dtype.kind=='f'
     source=Path('src/campaigniq/ui/dashboard.py').read_text()
-    assert source.count('style.format({"Realized P&L": "{:,.2f}"})')==2
+    interactions=Path("src/campaigniq/ui/campaign_interactions.py").read_text()
+    assert 'style.format({"Realized P&L": "{:,.2f}"})' in interactions
+    assert "render_campaign_table(" in source
 
 def test_stock_and_options_for_same_underlying_stay_one_campaign():
     from campaigniq.domain.option_contract import OptionContract
