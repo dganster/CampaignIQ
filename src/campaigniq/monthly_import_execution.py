@@ -205,6 +205,8 @@ def execute_monthly_import(
         snapshot_rows=closing_rows,
         pending_activity=pending_activity,
         period_end=contract.period_end,
+        forex_report=result.forex_transaction_report,
+        opening_lot_book=opening_lot_book,
     )
 
     accepted_decision: ReconciliationDecision | None = None

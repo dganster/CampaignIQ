@@ -1035,6 +1035,11 @@ def render_monthly_import_wizard():
                 "Closing inventory does not reconcile. "
                 "The ordinary finalization attempt did not publish the month."
             )
+            st.caption(
+                "Brokerage positions are checked against the closing statement. "
+                "FOREX positions are checked against the monthly FOREX report's "
+                "Total Position; pairs without activity retain the published opening quantity."
+            )
             st.dataframe(
                 [
                     {

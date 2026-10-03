@@ -60,7 +60,7 @@ def read_position_snapshot_section(
     while index < len(lines):
         line = lines[index].strip()
 
-        if line.startswith("Positions - Equities"):
+        if line.startswith(("Positions - Equities", "Positions - Exchange Traded Funds")):
             section = "equities"
             index += 1
             continue
@@ -75,7 +75,7 @@ def read_position_snapshot_section(
             index += 1
             continue
 
-        if line.startswith("Total Equities"):
+        if line.startswith(("Total Equities", "Total Exchange Traded Funds", "Total Other Assets")):
             section = None
             index += 1
             continue

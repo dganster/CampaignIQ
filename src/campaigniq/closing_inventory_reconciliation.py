@@ -8,6 +8,8 @@ from decimal import Decimal
 
 from campaigniq.domain.lot import InstrumentLike
 from campaigniq.domain.lot_book import LotBook
+from campaigniq.domain.value_objects.forex_pair import ForexPair
+from campaigniq.importers.schwab.forex_transaction_reader import SchwabForexTransactionReport
 from campaigniq.importers.schwab.pending_activity_reader import (
     SchwabPendingOptionActivity,
     SchwabPendingPositionActivity,
@@ -64,6 +66,43 @@ def _instrument_sort_key(instrument: InstrumentLike) -> tuple[str, ...]:
     return (type(instrument).__name__, repr(instrument))
 
 
+def _forex_closing_quantities(
+    report: SchwabForexTransactionReport,
+    *,
+    period_end: date,
+    opening_lot_book: LotBook | None,
+) -> dict[ForexPair, Decimal]:
+    """Use broker Total Position, never the computed ending lots, as the control.
+
+    A complete monthly report has no position changes beyond its transaction
+    rows. Pairs without activity retain previously authoritative opening units.
+    Financing records do not change units. Crypto is a separate account.
+    """
+    period_start = period_end.replace(day=1)
+    if report.period_end != period_end or report.period_start not in {
+        period_start, period_start - date.resolution,
+    }:
+        raise ValueError("FOREX closing control requires the complete selected-month report.")
+    positions = {
+        instrument: quantity
+        for instrument, quantity in _lot_book_quantities(opening_lot_book).items()
+        if isinstance(instrument, ForexPair)
+    } if opening_lot_book is not None else {}
+    events = sorted(
+        (*report.new_transactions, *report.settlements),
+        key=lambda row: (row.trade_at, row.settlement_at),
+    )
+    for row in events:
+        # The report's declared interval defines the closing control. Avoid
+        # silently accepting future events or entries outside that interval.
+        if not report.period_start <= row.trade_at.date() <= period_end:
+            raise ValueError("FOREX position-control transaction is outside the report period.")
+        if not row.total_position.is_finite():
+            raise ValueError("Non-finite FOREX Total Position.")
+        positions[ForexPair.from_symbol(row.instrument)] = row.total_position
+    return positions
+
+
 def reconcile_closing_inventory(
     *,
     ending_lot_book: LotBook,
@@ -71,10 +110,18 @@ def reconcile_closing_inventory(
     | tuple[SchwabPositionSnapshotRow, ...],
     pending_activity: tuple[SchwabPendingOptionActivity | SchwabPendingPositionActivity, ...] = (),
     period_end: date | None = None,
+    forex_report: SchwabForexTransactionReport | None = None,
+    opening_lot_book: LotBook | None = None,
 ) -> ClosingInventoryReconciliation:
     """Compare economic ending quantities, including exact period-end pending changes."""
     computed = _lot_book_quantities(ending_lot_book)
     snapshot = _snapshot_quantities(snapshot_rows)
+    if forex_report is not None:
+        if period_end is None:
+            raise ValueError("FOREX closing control requires a selected period end.")
+        snapshot.update(_forex_closing_quantities(
+            forex_report, period_end=period_end, opening_lot_book=opening_lot_book,
+        ))
 
     for activity in pending_activity:
         if period_end is not None:
