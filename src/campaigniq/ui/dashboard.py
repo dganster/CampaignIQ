@@ -85,6 +85,7 @@ from campaigniq.ui.access_gate import (
     password_matches,
 )
 from campaigniq.ui.campaign_interactions import (
+    apply_performance_typography, render_performance_months,
     campaign_month, closed_position_side, closed_quantity_units,
     forex_drilldowns, read_closing_trades, render_campaign_table, render_month_chart,
 )
@@ -1470,6 +1471,7 @@ if view == "Data":
     st.stop()
 
 if view == "Performance":
+    apply_performance_typography(st)
     st.caption("Realized campaign analytics")
 
 try:
@@ -2303,10 +2305,9 @@ with summary_tab:
         "Broker Records",
     ]
 
-    st.dataframe(
-        display_df,
-        hide_index=True,
-        width="stretch",
+    st.caption("Click a month’s row to inspect its campaigns.")
+    render_performance_months(
+        st, display_df, tuple(value.strftime("%Y-%m") for value in df["period_start"]),
         column_config={
             "Equity/Options P&L": st.column_config.NumberColumn(
                 "Equity/Options P&L",

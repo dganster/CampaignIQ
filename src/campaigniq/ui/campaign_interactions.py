@@ -18,15 +18,54 @@ from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
 def open_chart_month(state, event, months):
     points = event.get("selection", {}).get("campaign_month", [])
-    if not points or points[0].get("month_key") not in months:
+    if not points:
         return
-    state["campaigniq_campaign_month"] = points[0]["month_key"]
+    open_reporting_month(state, points[0].get("month_key"), months)
+
+
+def open_reporting_month(state, month, months):
+    if month not in months:
+        return
+    state["campaigniq_campaign_month"] = month
     state["campaigniq_campaign_symbol"] = "All symbols"
     state["campaigniq_campaign_result"] = "All results"
     state["campaigniq_campaign_detail"] = None
     state["campaigniq_primary_view"] = "Campaigns"
     # A fresh chart selection on returning to Overview can reopen the same bar.
     state["campaigniq_overview_chart_generation"] = state.get("campaigniq_overview_chart_generation", 0) + 1
+
+
+def apply_performance_typography(ui):
+    """Balance metric labels and values while the Performance view is open."""
+    ui.html("""<style>
+    [data-testid="stMetricLabel"] p {
+        font-size: 1.05rem;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.65rem;
+        line-height: 1.3;
+    }
+    [data-testid="stMetricDelta"] {
+        font-size: 0.9rem;
+    }
+    </style>""")
+
+
+def render_performance_months(ui, table, months, column_config):
+    fingerprint = hashlib.sha256(json.dumps(list(months)).encode()).hexdigest()[:20]
+    key = f"campaigniq_performance_months_{fingerprint}"
+
+    def selected():
+        rows = ui.session_state.get(key, {}).get("selection", {}).get("rows", [])
+        index = rows[0] if rows else None
+        if isinstance(index, int) and 0 <= index < len(months):
+            open_reporting_month(ui.session_state, months[index], months)
+
+    ui.dataframe(table, hide_index=True, width="stretch",
+                 column_config=column_config, key=key,
+                 on_select=selected, selection_mode="single-row")
 
 
 def render_month_chart(ui, chart, months):
