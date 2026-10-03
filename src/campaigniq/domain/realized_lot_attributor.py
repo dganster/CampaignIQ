@@ -27,6 +27,7 @@ class _ClosingActivity:
     quantity: Decimal
     allocations: tuple[LotAllocation, ...]
     is_assignment: bool = False
+    execution_date: date | None = None
 
 
 @dataclass(slots=True)
@@ -126,6 +127,7 @@ class RealizedLotAttributor:
                         quantity=self._leg_quantity(leg),
                         allocations=allocations,
                         is_assignment=is_assignment,
+                        execution_date=self._leg_date(leg),
                     )
                 )
 
@@ -516,10 +518,32 @@ class RealizedLotAttributor:
         Schwab can report the realized stock sale from an option assignment
         one business day before the assignment position event.  That
         tolerance is restricted to assignment-derived stock activity; normal
-        trade closures still require an exact realized date.
+        equity trade closures still require an exact realized date. Ordinary
+        option closures accept their source execution date or the calculated
+        settlement date, with ambiguous adjacent-day activity rejected.
         """
         remaining = record.quantity
         matched: list[LotAllocation] = []
+
+        # Some Schwab realized rows use the execution date, others the
+        # settlement date. Retain both for ordinary options. Never broaden
+        # dates for equity sales or substitute a different contract.
+        if isinstance(record.instrument, OptionContract):
+            candidates = [
+                activity for activity in activities
+                if activity.instrument == record.instrument
+                and not activity.is_assignment
+                and (activity.execution_date == record.closed_date
+                     or activity.closed_date == record.closed_date)
+            ]
+            source_days = {activity.execution_date for activity in candidates
+                           if activity.execution_date is not None}
+            if len(source_days) > 1:
+                raise ValueError(
+                    "Ambiguous option closing date: both trade-date and "
+                    f"settlement-date activity match {record.instrument} "
+                    f"{record.closed_date}; review broker transaction evidence."
+                )
 
         index = 0
         while index < len(activities) and remaining > 0:
@@ -529,6 +553,11 @@ class RealizedLotAttributor:
                 continue
 
             exact_date = activity.closed_date == record.closed_date
+            option_execution_date = (
+                isinstance(record.instrument, OptionContract)
+                and not activity.is_assignment
+                and activity.execution_date == record.closed_date
+            )
             prior_business_day = (
                 activity.is_assignment
                 and cls._next_business_day(record.closed_date)
@@ -548,6 +577,7 @@ class RealizedLotAttributor:
             )
             if not (
                 exact_date
+                or option_execution_date
                 or prior_business_day
                 or assignment_weekend_settlement
                 or assignment_holiday_settlement
@@ -572,6 +602,7 @@ class RealizedLotAttributor:
                         take,
                     ),
                     is_assignment=activity.is_assignment,
+                    execution_date=activity.execution_date,
                 )
                 index += 1
 
