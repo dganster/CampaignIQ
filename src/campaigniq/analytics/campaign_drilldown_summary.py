@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Iterable
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
+from campaigniq.domain.campaign_identity import separate_campaign_collisions
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +45,7 @@ def summarize_campaign_drilldowns(
 
     totals: dict[str, dict[str, object]] = {}
 
-    for attribution in attributions:
+    for attribution in separate_campaign_collisions(attributions):
         if attribution.has_unassigned_campaign_allocation:
             continue
 

@@ -96,7 +96,7 @@ def test_summarizes_campaign_drilldowns() -> None:
     )
 
 
-def test_combines_multiple_symbols_for_one_campaign() -> None:
+def test_separates_reused_campaign_id_across_different_symbols() -> None:
     summaries = summarize_campaign_drilldowns(
         [
             attribution(
@@ -114,7 +114,10 @@ def test_combines_multiple_symbols_for_one_campaign() -> None:
         ]
     )
 
-    assert summaries[0].symbols == ("AAPL", "MSFT")
+    assert len(summaries) == 2
+    assert {item.campaign_id for item in summaries} == {"CAMP-1@AAPL", "CAMP-1@MSFT"}
+    assert {item.symbols for item in summaries} == {("AAPL",), ("MSFT",)}
+    assert sum(item.realized_pnl for item in summaries) == Decimal("30")
 
 
 def test_excludes_unassigned_attributions() -> None:

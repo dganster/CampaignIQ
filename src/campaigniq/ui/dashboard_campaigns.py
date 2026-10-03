@@ -4,6 +4,7 @@ from datetime import date
 from campaigniq.analytics.campaign_drilldown_summary import CampaignDrilldownSummary, summarize_campaign_drilldowns
 from campaigniq.domain.campaign_realized_pnl import CampaignRealizedPnl, aggregate_campaign_realized_pnl
 from campaigniq.domain.lot_allocation import LotAllocation
+from campaigniq.domain.campaign_identity import separate_campaign_collisions
 from campaigniq.domain.lot_attribution import RealizedAttribution
 from campaigniq.domain.forex_settlement_attribution import ForexSettlementAttribution
 
@@ -39,6 +40,7 @@ def aggregate_period_qualified_campaigns(
         for a in attrs
         if start <= a.record.closed_date <= end
     ]
+    qualified = separate_campaign_collisions(qualified)
     qualified_forex = [
         _qualified_forex(a, start)
         for (start, _end), attrs in sorted((monthly_forex_attributions or {}).items())
@@ -60,14 +62,15 @@ def campaign_realized_attributions(
     excluded, matching summarize_campaign_drilldowns. Period qualification
     prevents identical local campaign IDs in different months from mixing.
     """
-    records = []
-    for (start, end), attributions in sorted(monthly_attributions.items()):
-        for attribution in attributions:
-            if not start <= attribution.record.closed_date <= end:
-                continue
-            qualified = _qualified(attribution, start)
-            if qualified.has_unassigned_campaign_allocation:
-                continue
-            if qualified.campaign_ids == (campaign_id,):
-                records.append(qualified)
+    qualified_records = separate_campaign_collisions(
+        _qualified(attribution, start)
+        for (start, end), attributions in sorted(monthly_attributions.items())
+        for attribution in attributions
+        if start <= attribution.record.closed_date <= end
+    )
+    records = [
+        attribution for attribution in qualified_records
+        if not attribution.has_unassigned_campaign_allocation
+        and attribution.campaign_ids == (campaign_id,)
+    ]
     return tuple(sorted(records, key=lambda item: item.record.closed_date))

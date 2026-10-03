@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
+from campaigniq.domain.campaign_identity import separate_campaign_collisions
 from campaigniq.persistence.artifact_storage import ArtifactStorage
 from campaigniq.persistence.realized_attribution_store import (
     load_realized_attributions,
@@ -38,7 +39,7 @@ def load_persisted_monthly_attributions(
                 f"through {persisted.period_end.isoformat()}"
             )
 
-        periods[key] = persisted.attributions
+        periods[key] = separate_campaign_collisions(persisted.attributions)
 
     return dict(sorted(periods.items()))
 
@@ -103,7 +104,7 @@ def load_persisted_monthly_attributions_from_storage(
                 "Duplicate persisted realized attribution period: "
                 f"{persisted.period_start.isoformat()} through {persisted.period_end.isoformat()}"
             )
-        periods[period] = persisted.attributions
+        periods[period] = separate_campaign_collisions(persisted.attributions)
     return dict(sorted(periods.items()))
 
 

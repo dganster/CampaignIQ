@@ -1641,7 +1641,7 @@ if view == "Overview":
     st.dataframe(pd.DataFrame([{
         "Symbols": ", ".join(item.symbols), "Campaign": item.campaign_id,
         "Realized P&L": float(item.realized_pnl), "Last Close": item.last_closed_date,
-    } for item in recent]), use_container_width=True, hide_index=True)
+    } for item in recent]).style.format({"Realized P&L": "{:,.2f}"}), use_container_width=True, hide_index=True)
     if recent:
         recent_id = st.selectbox(
             "Open a recent campaign",
@@ -1706,9 +1706,8 @@ if view == "Campaigns":
         "Reconciled": "Yes" if item.fully_reconciled else "No",
     } for item in visible])
     st.dataframe(
-        campaign_table, use_container_width=True, hide_index=True,
+        campaign_table.style.format({"Realized P&L": "{:,.2f}"}), use_container_width=True, hide_index=True,
         column_config={
-            "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
             "First Close": st.column_config.DateColumn("First Close", format="MMM D, YYYY"),
             "Last Close": st.column_config.DateColumn("Last Close", format="MMM D, YYYY"),
         },

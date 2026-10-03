@@ -181,6 +181,7 @@ def execute_monthly_import(
         boundary_assignment_lines = (lines,)
 
     result = PeriodImportPipeline().run(
+        campaign_namespace=f"{contract.period_start:%Y-%m}",
         period_start=contract.period_start,
         period_end=contract.period_end,
         thinkorswim_trade_history=tos_path,

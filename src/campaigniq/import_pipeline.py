@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from campaigniq.campaign_reconstructor import CampaignReconstructor
 from campaigniq.domain.campaign import Campaign
+from campaigniq.domain.campaign_identity import scope_import_campaigns, scope_legacy_opening_lots
 from campaigniq.domain.boundary_reconstruction import (
     BoundaryReconstruction,
     BoundaryReconstructionAnalyzer,
@@ -144,12 +145,14 @@ class PeriodImportPipeline:
         historical_trade_histories: tuple[str | Path, ...] = (),
         historical_period_start: date | None = None,
         historical_source_root: str | Path | None = None,
+        campaign_namespace: str | None = None,
     ) -> PeriodImportResult:
         """Run one monthly import from source records through boundary analysis."""
 
         # Preserve the existing manual-history behavior exactly.
         if historical_source_root is None:
             return self._run_once(
+                campaign_namespace=campaign_namespace,
                 period_start=period_start,
                 period_end=period_end,
                 thinkorswim_trade_history=thinkorswim_trade_history,
@@ -166,6 +169,7 @@ class PeriodImportPipeline:
 
         # First pass: deliberately do not seed historical evidence.
         first_pass = self._run_once(
+            campaign_namespace=campaign_namespace,
             period_start=period_start,
             period_end=period_end,
             thinkorswim_trade_history=thinkorswim_trade_history,
@@ -236,6 +240,7 @@ class PeriodImportPipeline:
                 effective_historical_period_start = discovered_start
 
         return self._run_once(
+            campaign_namespace=campaign_namespace,
             period_start=period_start,
             period_end=period_end,
             thinkorswim_trade_history=thinkorswim_trade_history,
@@ -331,6 +336,7 @@ class PeriodImportPipeline:
         historical_trade_histories: tuple[str | Path, ...],
         historical_period_start: date | None,
         seed_historical: bool = True,
+        campaign_namespace: str | None = None,
     ) -> PeriodImportResult:
         """Run one complete pipeline pass."""
 
@@ -369,6 +375,9 @@ class PeriodImportPipeline:
         forex_campaigns = self._namespace_forex_campaigns(
             raw_forex_campaigns
         )
+        if campaign_namespace is not None:
+            non_forex_campaigns = scope_import_campaigns(non_forex_campaigns, campaign_namespace)
+            forex_campaigns = scope_import_campaigns(forex_campaigns, campaign_namespace)
         campaigns = (*non_forex_campaigns, *forex_campaigns)
 
         assignment_events = tuple(
@@ -514,6 +523,9 @@ class PeriodImportPipeline:
             )
         else:
             historical_trades = ()
+
+        if campaign_namespace is not None:
+            opening_lot_book = scope_legacy_opening_lots(opening_lot_book)
 
         boundary = self._boundary_analyzer.analyze(
             period_start=period_start,

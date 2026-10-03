@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from campaigniq.domain.lot_attribution import RealizedAttribution
+from campaigniq.domain.campaign_identity import separate_campaign_collisions
 from campaigniq.domain.forex_settlement_attribution import ForexSettlementAttribution
 
 
@@ -35,7 +36,7 @@ def aggregate_campaign_realized_pnl(
     """
     totals: dict[str, dict[str, object]] = {}
 
-    for attribution in attributions:
+    for attribution in separate_campaign_collisions(attributions):
         campaign_ids = attribution.campaign_ids
 
         if attribution.has_unassigned_campaign_allocation:
