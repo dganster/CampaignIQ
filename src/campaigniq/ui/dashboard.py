@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from campaigniq.access import AccessContext
+from campaigniq.ui.access_history_view import local_access_rows, resolve_viewer_timezone
 from campaigniq.analytics.campaign_outcome_distribution import (
     summarize_campaign_outcomes,
 )
@@ -1359,7 +1360,14 @@ if view == "Access History":
         st.error("Administrator access is required.")
         st.stop()
     st.subheader("Access History")
-    st.caption("Authorized browser sessions recorded since access logging was enabled. Times are UTC.")
+    st.caption("Authorized browser sessions recorded since access logging was enabled.")
+    viewer_zone, timezone_fallback = resolve_viewer_timezone(
+        getattr(getattr(st, "context", None), "timezone", None)
+    )
+    if timezone_fallback:
+        st.caption("Times shown in UTC because your browser timezone is unavailable.")
+    else:
+        st.caption(f"All visit times shown in your browser timezone: {viewer_zone.key}.")
     st.caption("Opening a new browser session counts as a visit; changing filters does not.")
     if ACCESS_HISTORY_ERROR:
         st.warning(ACCESS_HISTORY_ERROR)
@@ -1370,7 +1378,7 @@ if view == "Access History":
         st.error("Access history could not be loaded. Check the service storage configuration.")
     else:
         if access_rows:
-            access_df = pd.DataFrame(access_rows)
+            access_df = pd.DataFrame(local_access_rows(access_rows, viewer_zone))
             st.metric("Recorded visits", len(access_df))
             st.markdown("#### Last visit by user")
             st.dataframe(access_df.drop_duplicates(subset=["Identity"]),
