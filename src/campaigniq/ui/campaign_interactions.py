@@ -14,6 +14,7 @@ from campaigniq.domain.side import Side
 from campaigniq.importers.thinkorswim.trade_history_reader import ThinkorswimTradeHistoryReader
 from campaigniq.importers.thinkorswim.translator import to_trade
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
+from campaigniq.ui.analytics_navigation import publish_route, remember_return
 
 
 def open_chart_month(state, event, months):
@@ -61,7 +62,11 @@ def render_performance_months(ui, table, months, column_config):
         rows = ui.session_state.get(key, {}).get("selection", {}).get("rows", [])
         index = rows[0] if rows else None
         if isinstance(index, int) and 0 <= index < len(months):
+            if hasattr(ui, "query_params"):
+                remember_return(ui)
             open_reporting_month(ui.session_state, months[index], months)
+            if hasattr(ui, "query_params"):
+                publish_route(ui)
 
     ui.dataframe(table, hide_index=True, width="stretch",
                  column_config=column_config, key=key,
@@ -69,13 +74,43 @@ def render_performance_months(ui, table, months, column_config):
 
 
 def render_month_chart(ui, chart, months):
-    key = f"campaigniq_monthly_chart_{ui.session_state.get('campaigniq_overview_chart_generation', 0)}"
+    fingerprint = hashlib.sha256(json.dumps(list(months)).encode()).hexdigest()[:12]
+    key = f"campaigniq_monthly_chart_{ui.session_state.get('campaigniq_primary_view', 'Overview')}_{fingerprint}_{ui.session_state.get('campaigniq_overview_chart_generation', 0)}"
 
     def selected():
-        open_chart_month(ui.session_state, ui.session_state.get(key, {}), months)
+        event = ui.session_state.get(key, {})
+        points = event.get("selection", {}).get("campaign_month", [])
+        if not points or points[0].get("month_key") not in months:
+            return
+        if hasattr(ui, "query_params"):
+            remember_return(ui)
+        open_chart_month(ui.session_state, event, months)
+        if hasattr(ui, "query_params"):
+            publish_route(ui)
 
     ui.altair_chart(chart, use_container_width=True, key=key,
                     on_select=selected, selection_mode="campaign_month")
+
+
+def build_month_chart(frame):
+    """One chart definition shared by Overview and Performance."""
+    import altair as alt
+
+    data = frame[["period_start", "realized_pnl"]].sort_values("period_start").copy()
+    data["month_label"] = data["period_start"].map(lambda value: value.strftime("%b %Y"))
+    data["month_key"] = data["period_start"].map(lambda value: value.strftime("%Y-%m"))
+    data["result"] = data["realized_pnl"].map(lambda value: "Gain" if value >= 0 else "Loss")
+    selection = alt.selection_point(name="campaign_month", fields=["month_key"], toggle=False)
+    chart = (alt.Chart(data).mark_bar(cursor="pointer").encode(
+        x=alt.X("month_label:N", sort=data["month_label"].tolist(),
+                title="Reporting month", axis=alt.Axis(labelAngle=0)),
+        y=alt.Y("realized_pnl:Q", title="Realized P&L (USD)"),
+        color=alt.Color("result:N", scale=alt.Scale(domain=["Gain", "Loss"],
+                        range=["#287d59", "#c44949"]), legend=None),
+        tooltip=[alt.Tooltip("month_label:N", title="Month"),
+                 alt.Tooltip("realized_pnl:Q", title="Realized P&L", format="$,.2f")],
+    ).properties(height=320).add_params(selection))
+    return chart, tuple(data["month_key"])
 
 
 def choose_campaign_row(state, event, campaign_ids):
@@ -92,10 +127,17 @@ def render_campaign_table(ui, table, campaign_ids, column_config):
     # Changing filters gives the table a fresh selection state, preventing an
     # old row offset from selecting a different campaign in the new table.
     fingerprint = hashlib.sha256(json.dumps(list(campaign_ids)).encode()).hexdigest()[:20]
-    key = f"campaigniq_campaign_rows_{fingerprint}"
+    key = f"campaigniq_campaign_rows_{fingerprint}_{ui.session_state.get('campaigniq_selection_generation', 0)}"
 
     def selected():
-        choose_campaign_row(ui.session_state, ui.session_state.get(key, {}), campaign_ids)
+        event = ui.session_state.get(key, {})
+        rows = event.get("selection", {}).get("rows", [])
+        if rows and isinstance(rows[0], int) and 0 <= rows[0] < len(campaign_ids):
+            if hasattr(ui, "query_params") and campaign_ids[rows[0]] != ui.session_state.get("campaigniq_campaign_detail"):
+                remember_return(ui)
+        choose_campaign_row(ui.session_state, event, campaign_ids)
+        if hasattr(ui, "query_params"):
+            publish_route(ui)
 
     ui.dataframe(table.style.format({"Realized P&L": "{:,.2f}"}),
                  use_container_width=True, hide_index=True,

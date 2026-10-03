@@ -84,8 +84,12 @@ from campaigniq.ui.access_gate import (
     authentication_mode,
     password_matches,
 )
+from campaigniq.ui.analytics_navigation import (
+    filter_reporting_periods, publish_route, remember_return,
+    render_date_range, render_return_button, restore_browser_route,
+)
 from campaigniq.ui.campaign_interactions import (
-    apply_performance_typography, render_performance_months,
+    apply_performance_typography, render_performance_months, build_month_chart,
     campaign_month, closed_position_side, closed_quantity_units,
     forex_drilldowns, read_closing_trades, render_campaign_table, render_month_chart,
 )
@@ -1354,11 +1358,21 @@ if authentication_mode() == AUTH_MODE_OIDC:
 navigation_views = ("Overview", "Campaigns", "Performance", "Positions", "Data", "Crypto")
 if is_access_admin(ACCESS):
     navigation_views += ("Access History",)
+restore_browser_route(st, navigation_views)
+
+def route_changed():
+    previous = st.session_state.get("campaigniq_last_url_route", {})
+    if previous.get("view") in navigation_views and previous["view"] != st.session_state.get("campaigniq_primary_view"):
+        st.session_state["campaigniq_return_route"] = json.dumps(previous, separators=(",", ":"))
+    publish_route(st)
+
 view = st.sidebar.radio(
     "Navigate",
     navigation_views,
     key="campaigniq_primary_view",
+    on_change=route_changed,
 )
+render_return_button(st, navigation_views)
 
 if view == "Access History":
     if not is_access_admin(ACCESS):
@@ -1486,6 +1500,20 @@ if not summaries:
     st.warning("No analytics periods are available.")
     st.stop()
 
+latest_available_analytics_period = summaries[-1].period_end
+if view in ("Overview", "Campaigns", "Performance"):
+    available_months = tuple(summary.period_start.strftime("%Y-%m") for summary in summaries)
+    range_start, range_end = render_date_range(st, available_months)
+    summaries, monthly_attributions, monthly_forex_attributions = filter_reporting_periods(
+        summaries, monthly_attributions, monthly_forex_attributions, range_start, range_end
+    )
+    if not summaries:
+        st.info("No published months are available in this reporting period.")
+        st.stop()
+    st.caption(
+        f"Selected reporting period: {summaries[0].period_start:%B %Y} – {summaries[-1].period_end:%B %Y}"
+    )
+
 multi_month_performance = summarize_multi_month_performance(summaries)
 multi_month_campaign_performance = summarize_multi_month_campaign_performance(
     summary.campaign_performance
@@ -1520,7 +1548,7 @@ for summary in summaries:
         {
             "period_start": summary.period_start,
             "period_end": summary.period_end,
-            "month": summary.period_start.strftime("%B"),
+            "month": summary.period_start.strftime("%b %Y"),
             "equity_options_realized_pnl": float(summary.equity_options_realized_pnl),
             "forex_settled_pnl": float(summary.forex_settled_pnl),
             "realized_pnl": float(summary.combined_realized_pnl),
@@ -1573,7 +1601,7 @@ last_period = summaries[-1].period_end.strftime("%B %Y")
 if view == "Performance":
     st.subheader(f"{first_period} – {last_period}")
     _render_analytics_data_status(
-        analytics_period_end=summaries[-1].period_end,
+        analytics_period_end=latest_available_analytics_period,
     )
 
 forex_settled_pnl = sum(
@@ -1593,7 +1621,7 @@ combined_realized_pnl = equity_options_realized_pnl + forex_settled_pnl
 
 if view == "Overview":
     st.subheader("Portfolio Overview")
-    st.caption(f"{first_period} – {last_period} · Published analytics through {summaries[-1].period_end:%B %Y}")
+    st.caption(f"{first_period} – {last_period} · Published analytics through {latest_available_analytics_period:%B %Y}")
     o1, o2, o3, o4 = st.columns(4)
     o1.metric("Realized P&L", money(combined_realized_pnl))
     o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
@@ -1605,45 +1633,9 @@ if view == "Overview":
     )
 
     st.subheader("Monthly Realized P&L")
-    monthly_chart_data = df[["period_start", "realized_pnl"]].copy()
-    monthly_chart_data["month_label"] = monthly_chart_data["period_start"].map(
-        lambda value: value.strftime("%b %Y")
-    )
-    monthly_chart_data["month_key"] = monthly_chart_data["period_start"].map(
-        lambda value: value.strftime("%Y-%m")
-    )
-    month_selection = alt.selection_point(
-        name="campaign_month", fields=["month_key"], toggle=False
-    )
-    monthly_chart_data["result"] = monthly_chart_data["realized_pnl"].map(
-        lambda value: "Gain" if value >= 0 else "Loss"
-    )
-    monthly_chart = (
-        alt.Chart(monthly_chart_data)
-        .mark_bar(cursor="pointer")
-        .encode(
-            x=alt.X(
-                "month_label:N",
-                sort=monthly_chart_data["month_label"].tolist(),
-                title="Reporting month",
-                axis=alt.Axis(labelAngle=0),
-            ),
-            y=alt.Y("realized_pnl:Q", title="Realized P&L (USD)"),
-            color=alt.Color(
-                "result:N",
-                scale=alt.Scale(domain=["Gain", "Loss"], range=["#287d59", "#c44949"]),
-                legend=None,
-            ),
-            tooltip=[
-                alt.Tooltip("month_label:N", title="Month"),
-                alt.Tooltip("realized_pnl:Q", title="Realized P&L", format="$,.2f"),
-            ],
-        )
-        .properties(height=320)
-        .add_params(month_selection)
-    )
+    monthly_chart, chart_months = build_month_chart(df)
     st.caption("Click a month’s bar to inspect its campaigns.")
-    render_month_chart(st, monthly_chart, tuple(monthly_chart_data["month_key"]))
+    render_month_chart(st, monthly_chart, chart_months)
 
     left, right = st.columns(2)
     with left:
@@ -1674,13 +1666,21 @@ if view == "Campaigns":
     month_options = ["All months", *[summary.period_start.strftime("%Y-%m") for summary in reversed(summaries)]]
     if st.session_state.get("campaigniq_campaign_month") not in month_options:
         st.session_state["campaigniq_campaign_month"] = "All months"
+    if st.session_state.get("campaigniq_campaign_symbol") not in ["All symbols", *symbol_options]:
+        st.session_state["campaigniq_campaign_symbol"] = "All symbols"
+
+    def campaign_filters_changed():
+        st.session_state["campaigniq_campaign_detail"] = None
+        st.session_state["campaigniq_selection_generation"] = st.session_state.get("campaigniq_selection_generation", 0) + 1
+        publish_route(st)
+
     filter0, filter1, filter2 = st.columns(3)
     selected_month = filter0.selectbox(
-        "Month", month_options, key="campaigniq_campaign_month",
+        "Month", month_options, key="campaigniq_campaign_month", on_change=campaign_filters_changed,
         format_func=lambda value: "All months" if value == "All months" else date.fromisoformat(value + "-01").strftime("%B %Y"),
     )
-    selected_symbol = filter1.selectbox("Symbol", ["All symbols", *symbol_options], key="campaigniq_campaign_symbol")
-    selected_result = filter2.selectbox("Result", ["All results", "Profit", "Loss", "Breakeven"], key="campaigniq_campaign_result")
+    selected_symbol = filter1.selectbox("Symbol", ["All symbols", *symbol_options], key="campaigniq_campaign_symbol", on_change=campaign_filters_changed)
+    selected_result = filter2.selectbox("Result", ["All results", "Profit", "Loss", "Breakeven"], key="campaigniq_campaign_result", on_change=campaign_filters_changed)
 
     def matches_result(item):
         if selected_result == "Profit":
@@ -1698,6 +1698,7 @@ if view == "Campaigns":
         and (selected_month == "All months" or campaign_month(item) == selected_month)
     ]
     visible.sort(key=lambda item: (item.last_closed_date, item.campaign_id), reverse=True)
+    publish_route(st)
     st.caption(f"{len(visible):,} of {len(campaign_drilldowns):,} realized campaigns")
     if selected_month != "All months":
         monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
@@ -1834,8 +1835,10 @@ if view == "Campaigns":
                 st.caption("The position timeline covers all published activity for this symbol, including other campaigns.")
 
                 def open_symbol_lifecycle(underlying):
+                    remember_return(st)
                     st.session_state["campaigniq_lifecycle_symbol"] = underlying
                     st.session_state["campaigniq_primary_view"] = "Positions"
+                    publish_route(st)
 
                 st.button(
                     f"View {symbol} position lifecycle",
@@ -1985,10 +1988,12 @@ if view == "Positions":
             for summary in lifecycle_summary.symbols
         }
 
+        if st.session_state.get("campaigniq_lifecycle_symbol") not in lifecycle_by_symbol:
+            st.session_state["campaigniq_lifecycle_symbol"] = next(iter(lifecycle_by_symbol))
         lifecycle_symbol = st.selectbox(
             "Underlying",
             options=tuple(lifecycle_by_symbol),
-            key="campaigniq_lifecycle_symbol",
+            key="campaigniq_lifecycle_symbol", on_change=route_changed,
         )
         selected_lifecycle = lifecycle_by_symbol[lifecycle_symbol]
 
@@ -2078,11 +2083,17 @@ if view == "Positions":
             )
 
             def open_related_campaign(campaign_id, symbol):
+                remember_return(st)
                 st.session_state["campaigniq_campaign_month"] = "All months"
                 st.session_state["campaigniq_campaign_symbol"] = symbol
                 st.session_state["campaigniq_campaign_result"] = "All results"
                 st.session_state["campaigniq_campaign_detail"] = campaign_id
+                reporting_month = campaign_id.split("/", 1)[0]
+                if not ((st.session_state.get("campaigniq_range_start") or reporting_month) <= reporting_month <= (st.session_state.get("campaigniq_range_end") or reporting_month)):
+                    st.session_state["campaigniq_range_start"] = reporting_month
+                    st.session_state["campaigniq_range_end"] = reporting_month
                 st.session_state["campaigniq_primary_view"] = "Campaigns"
+                publish_route(st)
 
             st.button(
                 "View campaign detail",
@@ -2094,7 +2105,10 @@ if view == "Positions":
     st.stop()
 
 summary_tab, campaigns_tab, risk_tab = st.tabs(
-    ["Monthly Results", "Campaign Analysis", "Drawdown"]
+    ["Monthly Results", "Campaign Analysis", "Drawdown"],
+    key="campaigniq_performance_tab",
+    default=st.session_state.get("campaigniq_performance_tab", "Monthly Results"),
+    on_change=route_changed,
 )
 
 with summary_tab:
@@ -2189,46 +2203,9 @@ with summary_tab:
     with left:
         st.subheader("Monthly Realized P&L")
 
-        pnl_chart = df[["period_start", "realized_pnl"]].copy()
-        pnl_chart["period_start"] = pd.to_datetime(pnl_chart["period_start"])
-        pnl_chart = pnl_chart.sort_values("period_start")
-
-        monthly_pnl_base = alt.Chart(pnl_chart).encode(
-            x=alt.X(
-                "period_start:T",
-                title="Month",
-                axis=alt.Axis(format="%B"),
-            ),
-            y=alt.Y(
-                "realized_pnl:Q",
-                title="Realized P&L ($)",
-            ),
-            tooltip=[
-                alt.Tooltip(
-                    "period_start:T",
-                    title="Month",
-                    format="%B %Y",
-                ),
-                alt.Tooltip(
-                    "realized_pnl:Q",
-                    title="Realized P&L",
-                    format="$,.2f",
-                ),
-            ],
-        )
-
-        monthly_pnl_chart = (
-            monthly_pnl_base.mark_bar()
-            + monthly_pnl_base.mark_point(
-                filled=True,
-                size=70,
-            )
-        )
-
-        st.altair_chart(
-            monthly_pnl_chart,
-            width="stretch",
-        )
+        monthly_chart, chart_months = build_month_chart(df)
+        st.caption("Click a month’s bar to inspect its campaigns.")
+        render_month_chart(st, monthly_chart, chart_months)
 
     with right:
         st.subheader("Cumulative Realized P&L")

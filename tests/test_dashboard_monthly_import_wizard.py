@@ -574,9 +574,10 @@ def test_analytics_data_status_uses_actual_analytics_period_end() -> None:
     )
 
     assert heading < status < metrics
-    assert "analytics_period_end=summaries[-1].period_end" in text[
+    assert "analytics_period_end=latest_available_analytics_period" in text[
         status:metrics
     ]
+    assert text.index("latest_available_analytics_period = summaries[-1].period_end") < text.index("filter_reporting_periods(\n")
 
 
 def test_validate_button_requires_four_monthly_uploads() -> None:
