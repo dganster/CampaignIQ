@@ -58,6 +58,7 @@ from campaigniq.importers.thinkorswim.expiration_event_reader import (
     ThinkorswimExpirationEventReader,
 )
 from campaigniq.importers.thinkorswim.translator import to_trade
+from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
 
@@ -83,6 +84,7 @@ class PeriodImportResult:
     lifecycle_transitions: tuple[PositionLifecycleTransition, ...] = ()
     forex_transaction_report: SchwabForexTransactionReport | None = None
     forex_settlement_attributions: tuple[ForexSettlementAttribution, ...] = ()
+    crypto_report: dict | None = None
 
 
 class PeriodImportPipeline:
@@ -561,6 +563,9 @@ class PeriodImportPipeline:
             lifecycle_transitions=lifecycle_transitions,
             forex_transaction_report=parsed_forex_report,
             forex_settlement_attributions=forex_settlement_attributions,
+            crypto_report=read_crypto_report(
+                thinkorswim_trade_history, period_start=period_start, period_end=period_end,
+            ),
         )
 
     def _read_expiration_events(

@@ -15,6 +15,9 @@ from campaigniq.closing_inventory_reconciliation import (
 from campaigniq.analytics.period_realized_attributions import (
     attribute_period_realized_pnl,
 )
+from campaigniq.persistence.crypto_month import (
+    build_crypto_month, crypto_month_key, load_preceding_crypto, serialize_crypto_month,
+)
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_pipeline import PeriodImportPipeline, PeriodImportResult
 from campaigniq.import_preflight import MonthlyImportPreflight
@@ -64,6 +67,7 @@ class MonthlyImportExecution:
     closing_reconciliation: ClosingInventoryReconciliation
     authoritative_state_path: Path | None
     reconciliation_decision: ReconciliationDecision | None = None
+    crypto_report: dict | None = None
 
     @property
     def finalized(self) -> bool:
@@ -287,6 +291,13 @@ def execute_monthly_import(
         else None
     )
 
+    crypto_report = (
+        build_crypto_month(result.crypto_report, load_preceding_crypto(storage, contract.period_start))
+        if result.crypto_report is not None else None
+    )
+    crypto_text = serialize_crypto_month(crypto_report) if crypto_report is not None else None
+    crypto_name = crypto_month_key(contract.period_end)
+
     # A rerun becomes invisible before any canonical payload is replaced.
     unpublish_finalized_month_marker_from_storage(
         storage, period_end=contract.period_end
@@ -297,6 +308,10 @@ def execute_monthly_import(
     storage.write_text(lot_name, lot_text)
     storage.write_text(provenance_name, provenance_text)
     storage.write_text(completeness_name, completeness_text)
+    if crypto_text is not None:
+        storage.write_text(crypto_name, crypto_text)
+    else:
+        storage.delete(crypto_name)
 
     if decision_text is not None:
         storage.write_text(decision_name, decision_text)
@@ -314,6 +329,7 @@ def execute_monthly_import(
         closing_reconciliation=reconciliation,
         authoritative_state_path=state_path,
         reconciliation_decision=accepted_decision,
+        crypto_report=crypto_report,
     )
 
 

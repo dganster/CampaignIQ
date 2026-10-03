@@ -54,7 +54,7 @@ class ThinkorswimTradeReader:
 
         for order in orders:
             if any(
-                row.option_type.upper() == "FOREX"
+                row.option_type.upper() in {"FOREX", "CRYPTO"}
                 for row in order.legs
             ):
                 continue

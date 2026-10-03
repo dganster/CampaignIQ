@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from decimal import InvalidOperation
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from campaigniq.import_contract import MonthlyInputRole
+from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.importers.schwab.forex_transaction_reader import (
     read_forex_transaction_report,
 )
@@ -102,7 +104,9 @@ def validate_monthly_input(
                 end=period_end,
             )
 
-            if not trades:
+            crypto = read_crypto_report(source, period_start=period_start, period_end=period_end)
+            crypto_count = len(crypto["fills"]) if crypto is not None else 0
+            if not trades and not crypto_count:
                 return MonthlyInputValidation(
                     role,
                     False,
@@ -113,7 +117,8 @@ def validate_monthly_input(
             return MonthlyInputValidation(
                 role,
                 True,
-                f"Recognized Thinkorswim trade history with {len(trades)} in-period trades.",
+                f"Recognized Thinkorswim trade history with {len(trades)} in-period trades."
+                + (f" Preserved {crypto_count} crypto fills separately from brokerage inventory." if crypto_count else ""),
                 len(trades),
             )
 
@@ -275,7 +280,7 @@ def validate_monthly_input(
         return MonthlyInputValidation(
             role, False, "This input role is not user-file validated."
         )
-    except (AttributeError, KeyError, ValueError, IndexError) as exc:
+    except (AttributeError, KeyError, ValueError, IndexError, InvalidOperation) as exc:
         return MonthlyInputValidation(
             role,
             False,

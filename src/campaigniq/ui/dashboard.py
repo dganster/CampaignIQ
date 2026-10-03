@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import tempfile
 from datetime import date
 from decimal import Decimal
@@ -45,6 +46,9 @@ from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
+from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
+from campaigniq.persistence.crypto_month import build_crypto_month, load_preceding_crypto
+from campaigniq.ui.crypto_view import render_crypto_report
 from campaigniq.monthly_import_execution import execute_monthly_import
 from campaigniq.persistence.reconciliation_decision import (
     ACCEPT_TRANSACTION_DERIVED_STATE,
@@ -927,6 +931,22 @@ def render_monthly_import_wizard():
             return
 
         _show_monthly_preflight(preflight)
+        if preflight.validation_for(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY).valid:
+            try:
+                crypto_preview = read_crypto_report(
+                    supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY],
+                    period_start=preflight.contract.period_start,
+                    period_end=preflight.contract.period_end,
+                )
+                if crypto_preview is not None:
+                    with st.expander("Review crypto activity from the same export", expanded=True):
+                        render_crypto_report(build_crypto_month(
+                            crypto_preview,
+                            load_preceding_crypto(ARTIFACT_STORAGE, preflight.contract.period_start),
+                        ), st)
+            except (ValueError, OSError) as exc:
+                st.error(f"Unable to review crypto evidence: {exc}")
+                return
 
         if not preflight.ready:
             st.error(
@@ -1186,6 +1206,9 @@ def render_monthly_import_wizard():
                         f"{documents}. {requirement.reason}"
                     )
 
+        if execution.crypto_report is not None:
+            render_crypto_report(execution.crypto_report, st)
+
         forex_report = execution.result.forex_transaction_report
         if forex_report is not None:
             st.markdown("#### FOREX Settlement Control")
@@ -1317,7 +1340,7 @@ if authentication_mode() == AUTH_MODE_OIDC:
         st.logout()
 
 # CAMPAIGNIQ_UI_STAGE1
-navigation_views = ("Overview", "Campaigns", "Performance", "Positions", "Data")
+navigation_views = ("Overview", "Campaigns", "Performance", "Positions", "Data", "Crypto")
 if is_access_admin(ACCESS):
     navigation_views += ("Access History",)
 view = st.sidebar.radio(
@@ -1352,6 +1375,23 @@ if view == "Access History":
             st.caption("The recent visits table shows up to 500 sessions.")
         else:
             st.info("No visits have been recorded yet.")
+    st.stop()
+
+if view == "Crypto":
+    crypto_keys = _published_artifact_keys(suffix="-crypto.json")
+    if not crypto_keys:
+        st.subheader("Crypto")
+        st.info("Crypto records will appear after a monthly import containing crypto evidence is finalized. Upload your original Account Trade History through Data; no extra crypto file is required.")
+    else:
+        crypto_key = st.selectbox(
+            "Published crypto month", options=tuple(reversed(crypto_keys)),
+            format_func=lambda key: Path(key).name[:7], key="crypto_month",
+        )
+        report = json.loads(ARTIFACT_STORAGE.read_text(crypto_key))
+        if report.get("format") != "campaigniq.crypto_month" or report.get("version") != 1:
+            st.error("Unsupported crypto artifact format.")
+        else:
+            render_crypto_report(report, st)
     st.stop()
 
 if view == "Data":
