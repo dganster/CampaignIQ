@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+import re
 
 from campaigniq.importers.schwab.option_assignment_row import (
     SchwabOptionAssignmentRow,
@@ -20,6 +21,11 @@ def read_option_assignment_section(
     index = 0
 
     while index < len(lines):
+        layout_row = _read_layout_assignment(lines, index)
+        if layout_row is not None:
+            row, index = layout_row
+            rows.append(row)
+            continue
         if lines[index].strip() != "Option Assignment":
             index += 1
             continue
@@ -79,6 +85,61 @@ def read_option_assignment_section(
         index = quantity_index + 1
 
     return rows
+
+
+def _read_layout_assignment(
+    lines: list[str], index: int,
+) -> tuple[SchwabOptionAssignmentRow, int] | None:
+    """Read an explicitly labeled assignment from Poppler's table layout."""
+    line = lines[index]
+    header = re.search(r"\bOther\s+Option\s+(?P<symbol>[A-Z][A-Z0-9./-]*)\b", line)
+    if header is None or index + 1 >= len(lines):
+        return None
+    if not re.search(r"\bActivity\s+Assignment\b", lines[index + 1]):
+        return None
+    description = re.search(r"\b(CALL|PUT)\b", line)
+    quantity = re.search(r"\s+(\d[\d,]*\.\d+)\s*$", line)
+    if description is None or quantity is None:
+        raise ValueError("Option Assignment is missing type or quantity.")
+    start = header.start("symbol")
+    stop = description.start()
+    contract_lines = [line[start:stop]]
+    end = index + 1
+    while end < len(lines) and end <= index + 3:
+        continuation = lines[end]
+        if end > index + 1 and (
+            not continuation.strip()
+            or re.match(r"\s*\d{2}/\d{2}\s", continuation)
+            or re.search(r"\bOther\s+Option\b", continuation)
+        ):
+            break
+        contract_lines.append(continuation[start:stop])
+        end += 1
+    contract = " ".join(contract_lines)
+    parsed = re.search(r"(\d{2}/\d{2}/\d{4})\s+(\d[\d,]*\.\d+)\s+([CP])\b", contract)
+    if parsed is None:
+        raise ValueError("Invalid wrapped Option Assignment contract.")
+    expiration = _parse_date(parsed[1])
+    option_type = description[1]
+    if parsed[3] != ("C" if option_type == "CALL" else "P"):
+        raise ValueError("Option Assignment type disagrees with contract.")
+    transaction_date = None
+    for previous in reversed(lines[:index + 1]):
+        dated = re.match(r"\s*(\d{2})/(\d{2})(?:\s|$)", previous)
+        if dated:
+            transaction_date = date(expiration.year, int(dated[1]), int(dated[2]))
+            break
+    if transaction_date is None:
+        raise ValueError("Could not find transaction date for Option Assignment.")
+    return SchwabOptionAssignmentRow(
+        transaction_date=transaction_date,
+        trade_date=_parse_trade_date(lines, index),
+        symbol=header["symbol"],
+        expiration=expiration,
+        strike=Decimal(parsed[2].replace(",", "")),
+        option_type=option_type,
+        quantity=Decimal(quantity[1].replace(",", "")),
+    ), end
 
 def _parse_transaction_date(
     lines: list[str],
