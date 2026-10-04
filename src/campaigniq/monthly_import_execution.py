@@ -5,7 +5,7 @@ from __future__ import annotations
 from campaigniq.persistence.position_journal import serialize_position_journal
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from shutil import copyfile
 from typing import Mapping
@@ -53,6 +53,7 @@ from campaigniq.persistence.reconciliation_decision import (
     decision_exactly_matches_reconciliation,
     reconciliation_decision_key,
     serialize_reconciliation_decision,
+    deserialize_reconciliation_decision,
 )
 from campaigniq.persistence.monthly_publication import (
     ensure_publication_protocol_in_storage,
@@ -182,8 +183,14 @@ def execute_monthly_import(
         assignment_lines = (lines,)
         boundary_assignment_lines = (lines,)
 
+    previously_applied_deliveries = _verified_prior_deliveries(
+        tos_path, period_start=contract.period_start, opening_lot_book=opening_lot_book,
+        storage=artifact_storage or LocalFilesystemArtifactStorage(Path(authoritative_state_root)),
+    )
+
     result = PeriodImportPipeline().run(
         campaign_namespace=f"{contract.period_start:%Y-%m}",
+        previously_applied_deliveries=previously_applied_deliveries,
         period_start=contract.period_start,
         period_end=contract.period_end,
         thinkorswim_trade_history=tos_path,
@@ -353,3 +360,37 @@ def _required_input(
         raise ValueError(
             f"Required monthly input is missing at execution time: {role.value}."
         ) from exc
+
+
+def _verified_prior_deliveries(filename, *, period_start, opening_lot_book, storage):
+    """Require a published, approved predecessor exception and matching cash evidence."""
+    from campaigniq.domain.option_contract import OptionContract
+    from campaigniq.importers.thinkorswim.expiration_event_reader import ThinkorswimExpirationEventReader
+    from campaigniq.importers.thinkorswim.cash_balance_reader import ThinkorswimCashBalanceReader
+    from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
+    from campaigniq.persistence.monthly_publication import is_month_published_in_storage
+    previous_end = period_start - timedelta(days=1)
+    key = reconciliation_decision_key(period_end=previous_end)
+    if not is_month_published_in_storage(storage, period_end=previous_end) or not storage.exists(key):
+        return ()
+    decision = deserialize_reconciliation_decision(storage.read_text(key))
+    if decision.period_end != previous_end or not decision.permits_exceptional_finalization:
+        return ()
+    statement = ThinkorswimSourceReader().read(str(filename))
+    events = ThinkorswimExpirationEventReader(ThinkorswimCashBalanceReader()).read(
+        statement.section("Cash Balance"), start=previous_end - timedelta(days=3), end=previous_end,
+    )
+    verified = []
+    for event in events:
+        if len(event.changes) != 1:
+            continue
+        change, = event.changes
+        if isinstance(change.instrument, OptionContract):
+            continue
+        quantity = sum((lot.quantity for lot in opening_lot_book.lots(change.instrument)), 0)
+        matches = [m for m in decision.mismatches if m.instrument == change.instrument
+                   and m.computed_quantity == quantity
+                   and m.computed_quantity - m.snapshot_quantity == change.quantity]
+        if len(matches) == 1:
+            verified.append(event)
+    return tuple(verified)

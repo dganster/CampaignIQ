@@ -63,6 +63,7 @@ from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
 
+from campaigniq.importers.schwab.monthly_transaction_evidence import recover_statement_allocations, carry_assignment_deliveries
 from campaigniq.domain.value_objects.forex_pair import ForexPair
 
 from campaigniq.importers.thinkorswim.historical_forex_position_reader import (
@@ -146,6 +147,7 @@ class PeriodImportPipeline:
         historical_period_start: date | None = None,
         historical_source_root: str | Path | None = None,
         campaign_namespace: str | None = None,
+        previously_applied_deliveries: tuple[PositionEvent, ...] = (),
     ) -> PeriodImportResult:
         """Run one monthly import from source records through boundary analysis."""
 
@@ -153,6 +155,7 @@ class PeriodImportPipeline:
         if historical_source_root is None:
             return self._run_once(
                 campaign_namespace=campaign_namespace,
+                previously_applied_deliveries=previously_applied_deliveries,
                 period_start=period_start,
                 period_end=period_end,
                 thinkorswim_trade_history=thinkorswim_trade_history,
@@ -170,6 +173,7 @@ class PeriodImportPipeline:
         # First pass: deliberately do not seed historical evidence.
         first_pass = self._run_once(
             campaign_namespace=campaign_namespace,
+            previously_applied_deliveries=previously_applied_deliveries,
             period_start=period_start,
             period_end=period_end,
             thinkorswim_trade_history=thinkorswim_trade_history,
@@ -241,6 +245,7 @@ class PeriodImportPipeline:
 
         return self._run_once(
             campaign_namespace=campaign_namespace,
+            previously_applied_deliveries=previously_applied_deliveries,
             period_start=period_start,
             period_end=period_end,
             thinkorswim_trade_history=thinkorswim_trade_history,
@@ -337,6 +342,7 @@ class PeriodImportPipeline:
         historical_period_start: date | None,
         seed_historical: bool = True,
         campaign_namespace: str | None = None,
+        previously_applied_deliveries: tuple[PositionEvent, ...] = (),
     ) -> PeriodImportResult:
         """Run one complete pipeline pass."""
 
@@ -354,6 +360,19 @@ class PeriodImportPipeline:
                 forex_initial_positions=forex_initial_positions,
             )
         )
+
+        supplemental = tuple(
+            trade for lines in assignment_lines
+            for trade in recover_statement_allocations(
+                thinkorswim_trade_history, lines, trades,
+                start=period_start, end=period_end,
+            )
+        )
+        # Repeated copies of one statement must not duplicate a recovered trade.
+        trades = tuple(sorted(
+            (*trades, *dict.fromkeys(supplemental)),
+            key=lambda trade: min(e.executed_at for leg in trade.legs for e in leg.executions),
+        ))
 
         non_forex_trades = [
             trade
@@ -409,13 +428,20 @@ class PeriodImportPipeline:
             end=period_end,
         )
 
-        position_events = self._position_event_reconciler.reconcile(
+        original_position_events = self._position_event_reconciler.reconcile(
             (*assignment_events, *expiration_events),
+            corroborating_assignments=boundary_assignment_events,
+        )
+        position_events = self._position_event_reconciler.reconcile(
+            (*carry_assignment_deliveries(
+                assignment_events, previously_applied_deliveries,
+                period_start=period_start,
+            ), *expiration_events),
             corroborating_assignments=boundary_assignment_events,
         )
 
         attribution_events = (
-            *position_events,
+            *original_position_events,
             *boundary_assignment_events,
         )
 
