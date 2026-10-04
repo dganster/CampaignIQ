@@ -1,6 +1,7 @@
 """Crypto evidence review, with exact fractional quantities and explicit limits."""
 
 from decimal import Decimal
+from campaigniq.ui.table_layout import render_dataframe
 
 
 def render_crypto_report(report: dict, st) -> None:
@@ -38,17 +39,17 @@ def render_crypto_report(report: dict, st) -> None:
                               "Export snapshot quantity": snapshot.get("quantity", "Unavailable"),
                               "Remaining FIFO cost incl. fees": f"${cost:,.2f}" if cost is not None else "Unknown opening cost"})
         if positions:
-            st.dataframe(positions, use_container_width=True, hide_index=True)
+            render_dataframe(st, positions, use_container_width=True, hide_index=True)
         st.caption("FIFO costs and realized results are calculated from available crypto cash evidence; they are not a broker tax report.")
         if report["realized_sales"]:
             st.markdown("#### Realized crypto sales (FIFO)")
-            st.dataframe(report["realized_sales"], use_container_width=True, hide_index=True)
+            render_dataframe(st, report["realized_sales"], use_container_width=True, hide_index=True)
         if report["snapshot_mismatches"]:
             st.warning("Computed crypto quantities differ from the export snapshot or snapshot evidence is missing.")
-            st.dataframe(report["snapshot_mismatches"], use_container_width=True, hide_index=True)
+            render_dataframe(st, report["snapshot_mismatches"], use_container_width=True, hide_index=True)
     st.markdown("#### Individual fills")
     if fills:
-        st.dataframe([{"Source execution time": row["executed_at"], "Pair": row["pair"],
+        render_dataframe(st, [{"Source execution time": row["executed_at"], "Pair": row["pair"],
                        "Side": row["side"], "Quantity": format(Decimal(row["quantity"]), "f"), "Price (USD)": row["price_usd"],
                        "Principal (USD)": row["principal_usd"], "Fee (USD)": row["fee_usd"],
                        "Reference": row["reference"]} for row in fills],
@@ -57,4 +58,4 @@ def render_crypto_report(report: dict, st) -> None:
         st.info("No crypto execution fills in the selected month.")
     with st.expander("Crypto cash ledger"):
         st.caption(f"Net funding: ${Decimal(report['net_funding_usd']):,.2f}. Funding transfers are not trading profit.")
-        st.dataframe(report["cash_ledger"], use_container_width=True, hide_index=True)
+        render_dataframe(st, report["cash_ledger"], use_container_width=True, hide_index=True)

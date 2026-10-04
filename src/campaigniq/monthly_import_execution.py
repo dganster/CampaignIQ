@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from campaigniq.persistence.position_journal import serialize_position_journal
+
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -275,6 +277,10 @@ def execute_monthly_import(
         period_end=contract.period_end,
         transitions=result.lifecycle_transitions,
     )
+    journal_name = f"{contract.period_end:%Y-%m}-position-journal.json"
+    journal_text = serialize_position_journal(
+        result, period_start=contract.period_start, period_end=contract.period_end
+    )
     lot_text = serialize_lot_book(
         period_end=contract.period_end, lot_book=result.ending_lot_book
     )
@@ -309,6 +315,7 @@ def execute_monthly_import(
     storage.write_text(forex_name, forex_text)
     storage.write_text(lifecycle_name, lifecycle_text)
     storage.write_text(lot_name, lot_text)
+    storage.write_text(journal_name, journal_text)
     storage.write_text(provenance_name, provenance_text)
     storage.write_text(completeness_name, completeness_text)
     if crypto_text is not None:

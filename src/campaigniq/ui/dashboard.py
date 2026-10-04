@@ -37,9 +37,6 @@ from campaigniq.analytics.multi_month_performance_summary import (
 from campaigniq.analytics.realized_drawdown import (
     summarize_period_qualified_realized_drawdown,
 )
-from campaigniq.analytics.repeated_campaign_performance import (
-    summarize_repeated_campaign_performance,
-)
 from campaigniq.analytics.underlying_performance import (
     summarize_underlying_performance,
 )
@@ -88,6 +85,12 @@ from campaigniq.ui.analytics_navigation import (
     filter_reporting_periods, publish_route, remember_return,
     render_date_range, render_return_button, restore_browser_route,
 )
+from campaigniq.ui.table_layout import FIT_KEY, render_dataframe
+from campaigniq.ui.position_history_view import (
+    load_position_evidence, evidence_fingerprint, campaign_entries, history_rows,
+)
+from campaigniq.domain.campaign_identity import underlying_symbol
+from campaigniq.persistence.lot_book_store import _deserialize_instrument
 from campaigniq.ui.campaign_interactions import (
     apply_performance_typography, render_performance_months, build_month_chart,
     campaign_month, closed_position_side, closed_quantity_units,
@@ -345,6 +348,42 @@ def lifecycle_timeline_rows(
         )
 
     return rows
+
+
+
+def _position_evidence():
+    fingerprint = evidence_fingerprint(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, history_monthly_attributions)
+    cached = st.session_state.get("campaigniq_position_evidence")
+    if cached is None or cached[0] != fingerprint:
+        cached = (fingerprint, load_position_evidence(
+            ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, history_monthly_attributions, lifecycle_history))
+        st.session_state["campaigniq_position_evidence"] = cached
+    return cached[1]
+
+
+def _render_position_history(entries, *, include_campaign=False, realized_records=(), lifecycle_rows=()):
+    rows = history_rows(entries, _display_instrument, include_campaign=include_campaign, realized_records=realized_records)
+    for row in lifecycle_rows:
+        if row["Event"] in {"CORPORATE ACTION", "COVERED POSITION"}:
+            rows.append({"Date": row["Date"], "Time": row["Time"], "Action": row["Event"].title(),
+                         "Instrument": row["Details"], "Quantity change": None, "Position after": None,
+                         "Price": None, "Fills": None, "Evidence": "Published lifecycle evidence"})
+    rows.sort(key=lambda row: (row["Date"], row["Time"]))
+    if not rows:
+        st.info("No retained trade history is available for this underlying. Published lifecycle evidence appears below." if include_campaign else "Position history is unavailable from the retained evidence. Broker close facts remain available under Accounting details.")
+        return
+    frame = pd.DataFrame(rows)
+    render_dataframe(st, frame, hide_index=True, width="stretch", column_config={
+        "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
+        "Time": st.column_config.TimeColumn("Source time", format="HH:mm:ss"),
+        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
+        "Quantity change": st.column_config.NumberColumn("Quantity change", format="%+.4f"),
+        "Position after": st.column_config.NumberColumn("Campaign position after", format="%+.4f"),
+        "Price": st.column_config.NumberColumn("Price (leg average)", format="$%0,.4f"),
+    })
+    st.caption("Quantities are signed: negative positions are short. Each row summarizes an attributed trade leg; Price is its weighted average fill price and Fills is its execution count. Position after is the campaign's quantity in that instrument, not an account total. Missing balances mean the retained evidence cannot establish them.")
+    if any(row["Action"] == "Carried position" for row in rows):
+        st.caption("Carried position marks a verified starting balance. Its original opening trade is not available in this history.")
 
 
 def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
@@ -1050,7 +1089,7 @@ def render_monthly_import_wizard():
                 "FOREX positions are checked against the monthly FOREX report's "
                 "Total Position; pairs without activity retain the published opening quantity."
             )
-            st.dataframe(
+            render_dataframe(st, 
                 [
                     {
                         "Instrument": _display_instrument(item.instrument),
@@ -1348,7 +1387,11 @@ st.set_page_config(
     layout="wide",
 )
 
+apply_performance_typography(st)
+st.session_state["campaigniq_table_render_number"] = 0
 st.title("CampaignIQ")
+st.sidebar.checkbox("Fit columns to contents", key=FIT_KEY,
+    help="Fits every table column to its heading and displayed values. You can still resize individual columns.")
 
 if authentication_mode() == AUTH_MODE_OIDC:
     if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
@@ -1400,10 +1443,10 @@ if view == "Access History":
             access_df = pd.DataFrame(local_access_rows(access_rows, viewer_zone))
             st.metric("Recorded visits", len(access_df))
             st.markdown("#### Last visit by user")
-            st.dataframe(access_df.drop_duplicates(subset=["Identity"]),
+            render_dataframe(st, access_df.drop_duplicates(subset=["Identity"]),
                          use_container_width=True, hide_index=True)
             st.markdown("#### Recent visits")
-            st.dataframe(access_df.head(500), use_container_width=True, hide_index=True)
+            render_dataframe(st, access_df.head(500), use_container_width=True, hide_index=True)
             st.caption("The recent visits table shows up to 500 sessions.")
         else:
             st.info("No visits have been recorded yet.")
@@ -1448,7 +1491,7 @@ if view == "Data":
         status3.metric("Next expected import", _next_month(latest_lots).strftime("%B %Y") if latest_lots else "Bootstrap required")
         with st.expander("Published data by month"):
             if all_months:
-                st.dataframe(pd.DataFrame([{
+                render_dataframe(st, pd.DataFrame([{
                     "Month": month,
                     "Realized attributions": "Published" if month in realized_months else "—",
                     "FOREX settlements": "Published" if month in forex_months else "—",
@@ -1475,7 +1518,7 @@ if view == "Data":
         else:
             st.warning("Review months with unattributed records before interpreting campaign results as complete.")
         with st.expander("Broker attribution by month"):
-            st.dataframe(pd.DataFrame([{
+            render_dataframe(st, pd.DataFrame([{
                 "Month": summary.period_start.strftime("%B %Y"),
                 "Broker records": summary.realized_pnl.broker_record_count,
                 "Unattributed": summary.realized_pnl.unattributed_record_count,
@@ -1485,13 +1528,13 @@ if view == "Data":
     st.stop()
 
 if view == "Performance":
-    apply_performance_typography(st)
     st.caption("Realized campaign analytics")
 
 try:
     summaries, monthly_attributions, monthly_forex_attributions = load_summaries()
     lifecycle_history = load_lifecycle_history_from_storage(ARTIFACT_STORAGE)
     lifecycle_summary = summarize_lifecycle_history(lifecycle_history)
+    history_monthly_attributions = dict(monthly_attributions)
 except Exception as exc:
     st.error(f"Unable to load CampaignIQ analytics: {exc}")
     st.stop()
@@ -1528,9 +1571,6 @@ campaign_results, campaign_drilldowns = (
 )
 campaign_outcomes = summarize_campaign_outcomes(campaign_results)
 underlying_performance = summarize_underlying_performance(monthly_attributions)
-repeated_campaign_performance = summarize_repeated_campaign_performance(
-    monthly_attributions
-)
 realized_drawdown = summarize_period_qualified_realized_drawdown(
     monthly_attributions
 )
@@ -1735,102 +1775,122 @@ if view == "Campaigns":
         st.caption(f"{selected.campaign_id} · {', '.join(selected.symbols)}")
         d1, d2, d3 = st.columns(3)
         d1.metric("Realized P&L", money(selected.realized_pnl))
-        d2.metric("Settlement Records" if selected_id in forex_campaign_records else "Broker Records", f"{selected.record_count:,}")
-        d3.metric("Lot Allocations", f"{selected.allocation_count:,}")
+        d2.metric("First close", selected.first_closed_date.strftime("%b %d, %Y"))
+        d3.metric("Last close", selected.last_closed_date.strftime("%b %d, %Y"))
         st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
         st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
+        evidence, history_gaps = _position_evidence()
+        st.markdown("#### Position history")
+        realized_records = ()
         if selected_id in forex_campaign_records:
-            st.markdown("#### Broker FOREX Settlement Records")
-            st.dataframe(pd.DataFrame([{
-                "Settlement Date": a.settlement.settlement_at.date(),
-                "Pair": a.settlement.instrument,
-                "Broker Side": a.settlement.side,
-                "Settlement amount": float(abs(a.settlement.amount)),
-                "Units": "Base currency",
-                "Realized P&L": float(a.gain_loss),
-            } for a in forex_campaign_records[selected_id]]),
-                use_container_width=True, hide_index=True,
-                column_config={
-                    "Settlement Date": st.column_config.DateColumn("Settlement Date", format="MMM D, YYYY"),
-                    "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
-                },
-            )
-            st.caption("Broker settled FOREX P&L included in the monthly result; financing and interest are excluded.")
+            forex_ids = {a.campaign_id for a in forex_campaign_records[selected_id]}
+            selected_history = [row for row in evidence if row["campaign_id"] in forex_ids
+                                and underlying_symbol(_deserialize_instrument(row["instrument"])) in selected.symbols
+                                and (row["period_start"][:7] == selected_id[:7]
+                                     or (row["campaign_id"] or "")[:7] in {start.strftime("%Y-%m") for start, _ in history_monthly_attributions})]
         else:
-            realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
-            closing_trades, direction_incomplete = read_closing_trades(
-                HISTORICAL_SOURCE_ROOT, [a.record.closed_date for a in realized_records]
-            )
-            st.caption("Quantity closed is a positive count of shares or contracts closed, not a signed open position. Long/Short identifies the position that was closed.")
-            if direction_incomplete:
-                st.caption("Some retained trade evidence could not be read; position direction is unavailable.")
-            if len(realized_records) != selected.record_count:
-                st.warning("Campaign summary and underlying record counts differ; review the published data.")
-            else:
-                st.markdown("#### Broker Realized Records")
-                st.dataframe(pd.DataFrame([{
-                    "Record": number,
-                    "Close Date": attribution.record.closed_date,
-                    "Instrument": _display_instrument(attribution.record.instrument),
-                    "Quantity closed": float(attribution.record.quantity),
-                    "Units": closed_quantity_units(attribution.record.instrument),
-                    "Long/Short": closed_position_side(attribution.record, closing_trades),
-                    "Realized P&L": float(attribution.record.gain_loss),
-                    "Status": (
-                        "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
-                        else "Review basis and P&L" if not attribution.basis_reconciled and not attribution.gain_loss_reconciled
-                        else "Review basis" if not attribution.basis_reconciled
-                        else "Review P&L"
-                    ),
-                } for number, attribution in enumerate(realized_records, 1)]),
+            realized_records = campaign_realized_attributions(history_monthly_attributions, selected_id)
+            selected_history = campaign_entries(evidence, realized_records)
+        _render_position_history(selected_history, realized_records=realized_records)
+        st.caption(f"History includes this campaign\'s retained activity across months. The realized P&L summary and Accounting details cover its closes in {campaign_month(selected)}.")
+        if history_gaps:
+            st.warning("Some published months lack verifiable full position history. Available evidence is shown; openings and campaign links are not guessed.")
+            with st.expander("History coverage"):
+                for gap in history_gaps:
+                    st.write(gap)
+        with st.expander("Accounting details"):
+            if selected_id in forex_campaign_records:
+                st.markdown("#### Broker FOREX Settlement Records")
+                render_dataframe(st, pd.DataFrame([{
+                    "Settlement Date": a.settlement.settlement_at.date(),
+                    "Pair": a.settlement.instrument,
+                    "Broker Side": a.settlement.side,
+                    "Settlement amount": float(abs(a.settlement.amount)),
+                    "Units": "Base currency",
+                    "Realized P&L": float(a.gain_loss),
+                } for a in forex_campaign_records[selected_id]]),
                     use_container_width=True, hide_index=True,
-                    key=f"campaigniq_broker_records_compact_{selected_id}",
-                    column_order=["Record", "Close Date", "Instrument", "Quantity closed", "Units", "Long/Short", "Realized P&L", "Status"],
                     column_config={
-                        "Record": st.column_config.NumberColumn("Record", width=60),
-                        "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=115),
-                        "Instrument": st.column_config.TextColumn("Instrument", width=240),
-                        "Quantity closed": st.column_config.NumberColumn("Quantity closed", width=130),
-                        "Units": st.column_config.TextColumn("Units", width=85),
-                        "Long/Short": st.column_config.TextColumn("Long/Short", width=105),
-                        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f", width=130),
-                        "Status": st.column_config.TextColumn("Status", width=120),
+                        "Settlement Date": st.column_config.DateColumn("Settlement Date", format="MMM D, YYYY"),
+                        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
                     },
                 )
-                with st.expander("Broker proceeds and cost basis"):
-                    st.dataframe(pd.DataFrame([{
+                st.caption("Broker settled FOREX P&L included in the monthly result; financing and interest are excluded.")
+            else:
+                realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
+                closing_trades, direction_incomplete = read_closing_trades(
+                    HISTORICAL_SOURCE_ROOT, [a.record.closed_date for a in realized_records]
+                )
+                st.caption("Quantity closed is a positive count of shares or contracts closed, not a signed open position. Long/Short identifies the position that was closed.")
+                if direction_incomplete:
+                    st.caption("Some retained trade evidence could not be read; position direction is unavailable.")
+                if len(realized_records) != selected.record_count:
+                    st.warning("Campaign summary and underlying record counts differ; review the published data.")
+                else:
+                    st.markdown("#### Broker Realized Records")
+                    render_dataframe(st, pd.DataFrame([{
                         "Record": number,
-                        "Proceeds": float(attribution.record.proceeds),
-                        "Cost Basis": float(attribution.record.cost_basis),
-                        "Disallowed Loss": float(attribution.record.disallowed_loss),
-                        "Basis Method": attribution.record.basis_method,
-                        "Term": attribution.record.term,
+                        "Close Date": attribution.record.closed_date,
+                        "Instrument": _display_instrument(attribution.record.instrument),
+                        "Quantity closed": float(attribution.record.quantity),
+                        "Units": closed_quantity_units(attribution.record.instrument),
+                        "Long/Short": closed_position_side(attribution.record, closing_trades),
+                        "Realized P&L": float(attribution.record.gain_loss),
+                        "Status": (
+                            "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
+                            else "Review basis and P&L" if not attribution.basis_reconciled and not attribution.gain_loss_reconciled
+                            else "Review basis" if not attribution.basis_reconciled
+                            else "Review P&L"
+                        ),
                     } for number, attribution in enumerate(realized_records, 1)]),
                         use_container_width=True, hide_index=True,
+                        key=f"campaigniq_broker_records_compact_{selected_id}",
+                        column_order=["Record", "Close Date", "Instrument", "Quantity closed", "Units", "Long/Short", "Realized P&L", "Status"],
                         column_config={
-                            "Proceeds": st.column_config.NumberColumn("Proceeds", format="$%0,.2f"),
-                            "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%0,.2f"),
-                            "Disallowed Loss": st.column_config.NumberColumn("Disallowed Loss", format="$%0,.2f"),
+                            "Record": st.column_config.NumberColumn("Record", width=60),
+                            "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=115),
+                            "Instrument": st.column_config.TextColumn("Instrument", width=240),
+                            "Quantity closed": st.column_config.NumberColumn("Quantity closed", width=130),
+                            "Units": st.column_config.TextColumn("Units", width=85),
+                            "Long/Short": st.column_config.TextColumn("Long/Short", width=105),
+                            "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f", width=130),
+                            "Status": st.column_config.TextColumn("Status", width=120),
                         },
                     )
-                with st.expander("Lot allocations for these closes"):
-                    st.dataframe(pd.DataFrame([{
-                        "Record": number,
-                        "Lot ID": allocation.lot_id,
-                        "Quantity closed": float(allocation.quantity),
-                        "Broker Basis": float(allocation.broker_basis) if allocation.broker_basis is not None else None,
-                        "Basis Source": allocation.basis_source or "—",
-                    } for number, attribution in enumerate(realized_records, 1)
-                        for allocation in attribution.allocations]),
-                        use_container_width=True, hide_index=True,
-                        column_config={
-                            "Broker Basis": st.column_config.NumberColumn("Broker Basis", format="$%0,.2f"),
-                        },
-                    )
-            st.caption("This is broker realized close evidence, not a complete opening-trade or position history. Record numbers link the results, broker amounts, and lot allocations.")
+                    with st.expander("Broker proceeds and cost basis"):
+                        render_dataframe(st, pd.DataFrame([{
+                            "Record": number,
+                            "Proceeds": float(attribution.record.proceeds),
+                            "Cost Basis": float(attribution.record.cost_basis),
+                            "Disallowed Loss": float(attribution.record.disallowed_loss),
+                            "Basis Method": attribution.record.basis_method,
+                            "Term": attribution.record.term,
+                        } for number, attribution in enumerate(realized_records, 1)]),
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "Proceeds": st.column_config.NumberColumn("Proceeds", format="$%0,.2f"),
+                                "Cost Basis": st.column_config.NumberColumn("Cost Basis", format="$%0,.2f"),
+                                "Disallowed Loss": st.column_config.NumberColumn("Disallowed Loss", format="$%0,.2f"),
+                            },
+                        )
+                    with st.expander("Lot allocations for these closes"):
+                        render_dataframe(st, pd.DataFrame([{
+                            "Record": number,
+                            "Lot ID": allocation.lot_id,
+                            "Quantity closed": float(allocation.quantity),
+                            "Broker Basis": float(allocation.broker_basis) if allocation.broker_basis is not None else None,
+                            "Basis Source": allocation.basis_source or "—",
+                        } for number, attribution in enumerate(realized_records, 1)
+                            for allocation in attribution.allocations]),
+                            use_container_width=True, hide_index=True,
+                            column_config={
+                                "Broker Basis": st.column_config.NumberColumn("Broker Basis", format="$%0,.2f"),
+                            },
+                        )
+                st.caption("Record numbers link broker close results, proceeds, cost basis, and lot allocations.")
         if len(selected.symbols) == 1:
             symbol = selected.symbols[0]
-            lifecycle_symbols = {item.symbol for item in lifecycle_summary.symbols}
+            lifecycle_symbols = {item.symbol for item in lifecycle_summary.symbols} | {underlying_symbol(_deserialize_instrument(row["instrument"])) for row in evidence}
             if symbol in lifecycle_symbols:
                 st.caption("The position timeline covers all published activity for this symbol, including other campaigns.")
 
@@ -1841,7 +1901,7 @@ if view == "Campaigns":
                     publish_route(st)
 
                 st.button(
-                    f"View {symbol} position lifecycle",
+                    f"View all {symbol} position history",
                     on_click=open_symbol_lifecycle,
                     args=(symbol,),
                     key="campaigniq_campaign_to_positions",
@@ -1850,7 +1910,7 @@ if view == "Campaigns":
 
 if view == "Positions":
     st.subheader("Positions")
-    st.caption("Published month-end open lots and observed lifecycle transitions")
+    st.caption("Published month-end positions and the retained trade history for each underlying")
     st.subheader("Published Month-End Positions")
     try:
         published_lot_periods = _authoritative_lot_period_ends()
@@ -1891,12 +1951,12 @@ if view == "Positions":
                     "Quantity": float(sum((abs(lot.quantity) for lot in lots), Decimal("0"))),
                     "Lots": len(lots),
                 } for (instrument, side), lots in groups.items()]
-                st.dataframe(
+                render_dataframe(st, 
                     pd.DataFrame(position_rows).sort_values(["Instrument", "Side"]),
                     use_container_width=True, hide_index=True,
                 )
                 with st.expander("Open lot details"):
-                    st.dataframe(pd.DataFrame([{
+                    render_dataframe(st, pd.DataFrame([{
                         "Instrument": _display_instrument(lot.instrument),
                         "Side": lot.side,
                         "Quantity": float(lot.absolute_quantity),
@@ -1938,7 +1998,7 @@ if view == "Positions":
                             key=lambda key: (_display_instrument(key[0]), key[1]),
                         )
                         if changed:
-                            st.dataframe(pd.DataFrame([{
+                            render_dataframe(st, pd.DataFrame([{
                                 "Instrument": _display_instrument(instrument),
                                 "Side": side,
                                 "Prior Quantity": float(before.get((instrument, side), Decimal("0"))),
@@ -1949,55 +2009,32 @@ if view == "Positions":
                             st.info("No open-quantity differences between these published snapshots.")
                         st.caption("These are differences between saved month-end quantities. They do not identify trades, splits, or other causes.")
     st.divider()
-    st.subheader("Published Lifecycle Events")
-
-    if lifecycle_summary.transition_count == 0:
-        st.info(
-            "No published lifecycle transitions are available yet."
-        )
+    st.subheader("Position history by underlying")
+    evidence, history_gaps = _position_evidence()
+    lifecycle_by_symbol = {summary.symbol: summary for summary in lifecycle_summary.symbols}
+    history_symbols = sorted(set(lifecycle_by_symbol) |
+        {underlying_symbol(_deserialize_instrument(row["instrument"])) for row in evidence} |
+        {symbol for campaign in campaign_drilldowns for symbol in campaign.symbols})
+    if not history_symbols:
+        st.info("No published position history is available yet.")
     else:
-        lifecycle_metric_columns = st.columns(6)
-
-        lifecycle_metric_columns[0].metric(
-            "Transitions",
-            f"{lifecycle_summary.transition_count:,}",
-        )
-        lifecycle_metric_columns[1].metric(
-            "Symbols",
-            f"{lifecycle_summary.symbol_count:,}",
-        )
-        lifecycle_metric_columns[2].metric(
-            "Corporate Actions",
-            f"{lifecycle_summary.corporate_action_count:,}",
-        )
-        lifecycle_metric_columns[3].metric(
-            "Rolls",
-            f"{lifecycle_summary.roll_count:,}",
-        )
-        lifecycle_metric_columns[4].metric(
-            "Exits",
-            f"{lifecycle_summary.exit_count:,}",
-        )
-        lifecycle_metric_columns[5].metric(
-            "Assignments",
-            f"{lifecycle_summary.assignment_count:,}",
-        )
-
-        lifecycle_by_symbol = {
-            summary.symbol: summary
-            for summary in lifecycle_summary.symbols
-        }
-
-        if st.session_state.get("campaigniq_lifecycle_symbol") not in lifecycle_by_symbol:
-            st.session_state["campaigniq_lifecycle_symbol"] = next(iter(lifecycle_by_symbol))
-        lifecycle_symbol = st.selectbox(
-            "Underlying",
-            options=tuple(lifecycle_by_symbol),
-            key="campaigniq_lifecycle_symbol", on_change=route_changed,
-        )
-        selected_lifecycle = lifecycle_by_symbol[lifecycle_symbol]
-
-        st.markdown(f"#### {selected_lifecycle.symbol}")
+        if st.session_state.get("campaigniq_lifecycle_symbol") not in history_symbols:
+            st.session_state["campaigniq_lifecycle_symbol"] = history_symbols[0]
+        lifecycle_symbol = st.selectbox("Underlying", options=tuple(history_symbols),
+            key="campaigniq_lifecycle_symbol", on_change=route_changed)
+        selected_lifecycle = lifecycle_by_symbol.get(lifecycle_symbol)
+        st.markdown(f"#### {lifecycle_symbol}")
+        underlying_history = [row for row in evidence
+                              if underlying_symbol(_deserialize_instrument(row["instrument"])) == lifecycle_symbol]
+        _render_position_history(underlying_history, include_campaign=True,
+            realized_records=tuple(a for attrs in history_monthly_attributions.values() for a in attrs
+                if underlying_symbol(a.record.instrument) == lifecycle_symbol),
+            lifecycle_rows=lifecycle_timeline_rows(selected_lifecycle) if selected_lifecycle is not None else ())
+        st.caption("This history spans all published months and campaigns for the selected underlying.")
+        if history_gaps:
+            with st.expander("History coverage"):
+                for gap in history_gaps:
+                    st.write(gap)
         if lifecycle_symbol == "NFLX":
             with st.expander("Historical context: NFLX 10-for-1 split", expanded=True):
                 st.write(
@@ -2018,50 +2055,14 @@ if view == "Positions":
                     "as a published transition or used to change positions or P&L."
                 )
 
-        symbol_metric_columns = st.columns(4)
-        symbol_metric_columns[0].metric(
-            "Transitions",
-            f"{selected_lifecycle.transition_count:,}",
-        )
-        symbol_metric_columns[1].metric(
-            "Covered Positions",
-            f"{selected_lifecycle.covered_position_count:,}",
-        )
-        symbol_metric_columns[2].metric(
-            "Rolls",
-            f"{selected_lifecycle.roll_count:,}",
-        )
-        symbol_metric_columns[3].metric(
-            "Exits",
-            f"{selected_lifecycle.exit_count:,}",
-        )
-
-        lifecycle_timeline_df = pd.DataFrame(
-            lifecycle_timeline_rows(selected_lifecycle)
-        )
-
-        st.dataframe(
-            lifecycle_timeline_df,
-            hide_index=True,
-            width="stretch",
-            column_config={
-                "Date": st.column_config.DateColumn(
-                    "Date",
-                    format="MMM D, YYYY",
-                ),
-                "Time": st.column_config.TimeColumn(
-                    "Time",
-                    format="HH:mm:ss",
-                ),
-            },
-        )
-
-        st.caption(
-            "Authoritative lifecycle evidence from published monthly artifacts. "
-            "This view summarizes observed corporate actions, assignments, "
-            "covered positions, option rolls, and exits; it does not infer "
-            "strategy intent or realized P&L."
-        )
+        if selected_lifecycle is not None:
+            with st.expander("Published Lifecycle Events"):
+                render_dataframe(st, pd.DataFrame(lifecycle_timeline_rows(selected_lifecycle)),
+                    hide_index=True, width="stretch", column_config={
+                        "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
+                        "Time": st.column_config.TimeColumn("Time", format="HH:mm:ss"),
+                    })
+                st.caption("Observed corporate actions, assignments, covered positions, option rolls, and exits from published evidence.")
 
         related_campaigns = sorted(
             (item for item in campaign_drilldowns if lifecycle_symbol in item.symbols),
@@ -2440,7 +2441,7 @@ with campaigns_tab:
     if not underlying_df.empty:
         underlying_df = underlying_df.sort_values("Realized P&L", ascending=True).reset_index(drop=True)
 
-    st.dataframe(
+    render_dataframe(st, 
         underlying_df,
         use_container_width=True,
         hide_index=True,
@@ -2460,51 +2461,6 @@ with campaigns_tab:
         "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
     )
 
-    st.subheader("Repeated-Campaign Performance")
-
-    repeated_campaign_rows = [
-        {
-            "Underlying": summary.underlying,
-            "Campaigns": summary.campaign_count,
-            "First Realized Campaign": summary.first_campaign_id,
-            "First Realized Date": summary.first_realized_date,
-            "First Campaign P&L": float(summary.first_campaign_pnl),
-            "Subsequent Campaigns": summary.subsequent_campaign_count,
-            "Subsequent Realized P&L": float(summary.subsequent_realized_pnl),
-            "Subsequent Wins": summary.subsequent_winning_campaign_count,
-            "Subsequent Losses": summary.subsequent_losing_campaign_count,
-            "Subsequent Breakeven": summary.subsequent_breakeven_campaign_count,
-            "Subsequent Win Rate": float(summary.subsequent_win_rate) * 100 if summary.subsequent_win_rate is not None else None,
-            "Subsequent Average Campaign P&L": float(summary.subsequent_average_campaign_pnl) if summary.subsequent_average_campaign_pnl is not None else None,
-            "Subsequent Median Campaign P&L": float(summary.subsequent_median_campaign_pnl) if summary.subsequent_median_campaign_pnl is not None else None,
-        }
-        for summary in repeated_campaign_performance
-    ]
-    repeated_campaign_df = pd.DataFrame(repeated_campaign_rows)
-    if not repeated_campaign_df.empty:
-        repeated_campaign_df = repeated_campaign_df.sort_values("Subsequent Realized P&L", ascending=True).reset_index(drop=True)
-
-    st.dataframe(
-        repeated_campaign_df,
-        use_container_width=True,
-        hide_index=True,
-        height=420,
-        column_config={
-            "First Realized Date": st.column_config.DateColumn("First Realized Date", format="MMM D, YYYY"),
-            "First Campaign P&L": st.column_config.NumberColumn("First Campaign P&L", format="$%0,.2f"),
-            "Subsequent Realized P&L": st.column_config.NumberColumn("Subsequent Realized P&L", format="$%0,.2f"),
-            "Subsequent Win Rate": st.column_config.NumberColumn("Subsequent Win Rate", format="%.1f%%"),
-            "Subsequent Average Campaign P&L": st.column_config.NumberColumn("Subsequent Average Campaign P&L", format="$%0,.2f"),
-            "Subsequent Median Campaign P&L": st.column_config.NumberColumn("Subsequent Median Campaign P&L", format="$%0,.2f"),
-        },
-    )
-    st.caption(
-        "Equity/options only; underlyings with at least two qualifying campaigns are shown. "
-        "This is realized-campaign chronology, not true campaign-start chronology: campaigns "
-        "are ordered by earliest realized close date, with period-qualified campaign ID as a "
-        "same-date tie-breaker. Only fully reconciled, unambiguous realized records are included. "
-        "Rows are sorted by subsequent realized P&L, worst first; click column headers to re-sort."
-    )
 
 with risk_tab:
     st.subheader("Realized Drawdown")
@@ -2736,7 +2692,7 @@ with risk_tab:
             ascending=[True, True],
         ).reset_index(drop=True)
 
-    st.dataframe(
+    render_dataframe(st, 
         contribution_df,
         use_container_width=True,
         hide_index=True,

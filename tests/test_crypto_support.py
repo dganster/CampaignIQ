@@ -142,7 +142,8 @@ def setup_execution(tmp_path,monkeypatch,raw):
     inputs={}
     for r in contract.user_supplied_requirements:
         path=tmp_path/(r.role.value+'.txt');path.write_text('synthetic evidence\n');inputs[r.role]=path
-    result=SimpleNamespace(ending_lot_book=LotBook(),forex_settlement_attributions=(),lifecycle_transitions=(),crypto_report=raw,forex_transaction_report=None,boundary_reconstruction=SimpleNamespace(unresolved_positions=(),unresolved_campaigns=(),historical_requirements=()))
+    from campaigniq.domain.position_history import PositionHistory
+    result=SimpleNamespace(opening_lot_book=LotBook(), position_history=PositionHistory(), campaigns=(), ending_lot_book=LotBook(),forex_settlement_attributions=(),lifecycle_transitions=(),crypto_report=raw,forex_transaction_report=None,boundary_reconstruction=SimpleNamespace(unresolved_positions=(),unresolved_campaigns=(),historical_requirements=()))
     monkeypatch.setattr(module,'PeriodImportPipeline',lambda:SimpleNamespace(run=lambda **kwargs:result))
     monkeypatch.setattr(module,'read_position_snapshot_section',lambda *args,**kwargs:())
     monkeypatch.setattr(module,'read_pending_position_activity',lambda *args,**kwargs:())

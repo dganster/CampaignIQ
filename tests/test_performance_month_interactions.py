@@ -52,12 +52,13 @@ def test_changed_month_order_has_fresh_selection_state():
     assert ui.kwargs["key"] != key
 
 
-def test_typography_is_applied_only_when_performance_is_active():
+def test_typography_is_applied_to_every_view():
     ui = UI()
     apply_performance_typography(ui)
     assert 'stMetricLabel' in ui.html_content
     assert 'font-weight: 600' in ui.html_content
     assert 'font-size: 1.65rem' in ui.html_content
     source = (Path(__file__).parents[1] / "src/campaigniq/ui/dashboard.py").read_text()
-    assert 'if view == "Performance":\n    apply_performance_typography(st)' in source
+    assert source.index("apply_performance_typography(st)") < source.index("navigation_views =")
+    assert 'if view == "Performance":\n    apply_performance_typography(st)' not in source
     assert "render_performance_months(" in source

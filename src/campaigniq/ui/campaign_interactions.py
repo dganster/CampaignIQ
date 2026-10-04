@@ -1,5 +1,7 @@
 """Direct navigation and evidence-backed labels for campaign inspection."""
 
+from campaigniq.ui.table_layout import render_dataframe, selection_table_key
+
 from datetime import date, timedelta
 from decimal import Decimal
 import hashlib
@@ -37,15 +39,15 @@ def open_reporting_month(state, month, months):
 
 
 def apply_performance_typography(ui):
-    """Balance metric labels and values while the Performance view is open."""
+    """Balance metric labels and values across the product."""
     ui.html("""<style>
     [data-testid="stMetricLabel"] p {
-        font-size: 1.05rem;
+        font-size: 1.05rem !important;
         font-weight: 600;
         line-height: 1.4;
     }
-    [data-testid="stMetricValue"] {
-        font-size: 1.65rem;
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] > div {
+        font-size: 1.65rem !important;
         line-height: 1.3;
     }
     [data-testid="stMetricDelta"] {
@@ -56,7 +58,7 @@ def apply_performance_typography(ui):
 
 def render_performance_months(ui, table, months, column_config):
     fingerprint = hashlib.sha256(json.dumps(list(months)).encode()).hexdigest()[:20]
-    key = f"campaigniq_performance_months_{fingerprint}"
+    key = selection_table_key(ui, f"campaigniq_performance_months_{fingerprint}")
 
     def selected():
         rows = ui.session_state.get(key, {}).get("selection", {}).get("rows", [])
@@ -68,7 +70,7 @@ def render_performance_months(ui, table, months, column_config):
             if hasattr(ui, "query_params"):
                 publish_route(ui)
 
-    ui.dataframe(table, hide_index=True, width="stretch",
+    render_dataframe(ui, table, hide_index=True, width="stretch",
                  column_config=column_config, key=key,
                  on_select=selected, selection_mode="single-row")
 
@@ -127,7 +129,7 @@ def render_campaign_table(ui, table, campaign_ids, column_config):
     # Changing filters gives the table a fresh selection state, preventing an
     # old row offset from selecting a different campaign in the new table.
     fingerprint = hashlib.sha256(json.dumps(list(campaign_ids)).encode()).hexdigest()[:20]
-    key = f"campaigniq_campaign_rows_{fingerprint}_{ui.session_state.get('campaigniq_selection_generation', 0)}"
+    key = selection_table_key(ui, f"campaigniq_campaign_rows_{fingerprint}_{ui.session_state.get('campaigniq_selection_generation', 0)}")
 
     def selected():
         event = ui.session_state.get(key, {})
@@ -139,7 +141,7 @@ def render_campaign_table(ui, table, campaign_ids, column_config):
         if hasattr(ui, "query_params"):
             publish_route(ui)
 
-    ui.dataframe(table.style.format({"Realized P&L": "{:,.2f}"}),
+    render_dataframe(ui, table.style.format({"Realized P&L": "{:,.2f}"}),
                  use_container_width=True, hide_index=True,
                  column_config=column_config, key=key,
                  on_select=selected, selection_mode="single-row")
