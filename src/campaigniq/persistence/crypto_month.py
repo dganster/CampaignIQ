@@ -37,7 +37,8 @@ def build_crypto_month(report: dict, previous: dict | None = None) -> dict:
     """
     result = deepcopy(report)
     if previous and previous.get("account") != report.get("account"):
-        raise ValueError("Crypto account changed; separate opening evidence is required.")
+        if not _empty_placeholder_history(previous):
+            raise ValueError("Crypto account changed; separate opening evidence is required.")
     if previous and report.get("opening_cash_usd") is not None and previous.get("last_reported_cash_usd") is not None:
         if Decimal(report["opening_cash_usd"]) != Decimal(previous["last_reported_cash_usd"]):
             result["warnings"].append("Opening crypto cash differs from the previous published export; review missing cash activity.")
@@ -128,3 +129,21 @@ def build_crypto_month(report: dict, previous: dict | None = None) -> dict:
 
 def serialize_crypto_month(report: dict) -> str:
     return json.dumps(report, indent=2, sort_keys=True) + "\n"
+
+
+def _empty_placeholder_history(previous):
+    """An unnamed, unused section is not evidence of a different crypto account."""
+    account = previous.get("account")
+    if account is not None and str(account).strip() not in {"", "Crypto #"}:
+        return False
+    if previous.get("fills") or previous.get("cash_ledger"):
+        return False
+    if any(previous.get(field) for field in ("ending_lots", "holdings_snapshot", "opening_quantities", "ending_quantities")):
+        return False
+    if previous.get("realized_sales"):
+        return False
+    for field in ("opening_cash_usd", "last_reported_cash_usd", "net_funding_usd", "realized_pnl_usd"):
+        value = previous.get(field)
+        if value is not None and Decimal(value) != 0:
+            return False
+    return True

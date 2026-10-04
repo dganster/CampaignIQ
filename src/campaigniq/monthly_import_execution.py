@@ -186,6 +186,7 @@ def execute_monthly_import(
     previously_applied_deliveries = _verified_prior_deliveries(
         tos_path, period_start=contract.period_start, opening_lot_book=opening_lot_book,
         storage=artifact_storage or LocalFilesystemArtifactStorage(Path(authoritative_state_root)),
+        historical_source_root=historical_source_root,
     )
 
     result = PeriodImportPipeline().run(
@@ -362,7 +363,7 @@ def _required_input(
         ) from exc
 
 
-def _verified_prior_deliveries(filename, *, period_start, opening_lot_book, storage):
+def _verified_prior_deliveries(filename, *, period_start, opening_lot_book, storage, historical_source_root=None):
     """Require a published, approved predecessor exception and matching cash evidence."""
     from campaigniq.domain.option_contract import OptionContract
     from campaigniq.importers.thinkorswim.expiration_event_reader import ThinkorswimExpirationEventReader
@@ -376,10 +377,32 @@ def _verified_prior_deliveries(filename, *, period_start, opening_lot_book, stor
     decision = deserialize_reconciliation_decision(storage.read_text(key))
     if decision.period_end != previous_end or not decision.permits_exceptional_finalization:
         return ()
-    statement = ThinkorswimSourceReader().read(str(filename))
-    events = ThinkorswimExpirationEventReader(ThinkorswimCashBalanceReader()).read(
-        statement.section("Cash Balance"), start=previous_end - timedelta(days=3), end=previous_end,
-    )
+    sources = [Path(filename)]
+    if historical_source_root is not None:
+        import hashlib
+        import json
+        archived = Path(historical_source_root) / f"Account Trade History {previous_end:%B %Y}.csv"
+        provenance_key = f"{previous_end:%Y-%m}-import-provenance.json"
+        if archived.is_file() and storage.exists(provenance_key):
+            manifest = json.loads(storage.read_text(provenance_key))
+            if (manifest.get("format") != "campaigniq.monthly_import_provenance"
+                    or manifest.get("version") != 1
+                    or manifest.get("period_end") != previous_end.isoformat()):
+                raise ValueError("Prior delivery source provenance is invalid.")
+            matches = [item for item in manifest.get("inputs", [])
+                       if item.get("role") == MonthlyInputRole.THINKORSWIM_TRADE_HISTORY.value]
+            content = archived.read_bytes()
+            if (len(matches) != 1 or matches[0].get("sha256") != hashlib.sha256(content).hexdigest()
+                    or matches[0].get("byte_size") != len(content)):
+                raise ValueError("Archived predecessor Trade History differs from its published source evidence.")
+            sources.append(archived)
+    events = tuple(dict.fromkeys(
+        event for source in sources
+        for event in ThinkorswimExpirationEventReader(ThinkorswimCashBalanceReader()).read(
+            ThinkorswimSourceReader().read(str(source)).section("Cash Balance"),
+            start=previous_end - timedelta(days=3), end=previous_end,
+        )
+    ))
     verified = []
     for event in events:
         if len(event.changes) != 1:
