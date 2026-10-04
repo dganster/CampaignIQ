@@ -373,12 +373,15 @@ def _render_position_history(entries, *, include_campaign=False, realized_record
         st.info("No retained trade history is available for this underlying. Published lifecycle evidence appears below." if include_campaign else "Position history is unavailable from the retained evidence. Broker close facts remain available under Accounting details.")
         return
     frame = pd.DataFrame(rows)
+    quantity_values = [value for column in ("Quantity change", "Position after")
+                       for value in frame[column].dropna()]
+    quantity_format = "%+d" if all(float(value).is_integer() for value in quantity_values) else "%+.4f"
     render_dataframe(st, frame, hide_index=True, width="stretch", column_config={
         "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
         "Time": st.column_config.TimeColumn("Source time", format="HH:mm:ss"),
         "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
-        "Quantity change": st.column_config.NumberColumn("Quantity change", format="%+.4f"),
-        "Position after": st.column_config.NumberColumn("Campaign position after", format="%+.4f"),
+        "Quantity change": st.column_config.NumberColumn("Quantity change", format=quantity_format),
+        "Position after": st.column_config.NumberColumn("Campaign position after", format=quantity_format),
         "Price": st.column_config.NumberColumn("Price (leg average)", format="$%0,.4f"),
     })
     st.caption("Quantities are signed: negative positions are short. Each row summarizes an attributed trade leg; Price is its weighted average fill price and Fills is its execution count. Position after is the campaign's quantity in that instrument, not an account total. Missing balances mean the retained evidence cannot establish them.")
