@@ -75,7 +75,7 @@ def test_preflight_is_recreated_on_each_validated_rerun() -> None:
     temp = text.index("with tempfile.TemporaryDirectory(")
     preflight = text.index("preflight = prepare_monthly_import(", temp)
     confirm = text.index("confirm = st.checkbox(", preflight)
-    execute = text.index("execution = execute_monthly_import(", confirm)
+    execute = text.index("execution = run_or_resume_finalization(", confirm)
     assert temp < preflight < confirm < execute
 
 
@@ -134,7 +134,7 @@ def test_wizard_copy_describes_four_monthly_documents() -> None:
 
 def test_wizard_reports_forex_settlement_control_after_execution() -> None:
     text = source()
-    execute = text.index("execution = execute_monthly_import(")
+    execute = text.index("execution = run_or_resume_finalization(")
     control = text.index('st.markdown("#### FOREX Settlement Control")', execute)
     final_success_text = text.index(
         "finalized successfully",
@@ -458,7 +458,7 @@ def test_operator_instrument_display_formats_options_and_symbols() -> None:
 def test_boundary_exception_is_explicit_second_pass_workflow() -> None:
     text = source()
 
-    first_execution = text.index("execution = execute_monthly_import(")
+    first_execution = text.index("execution = run_or_resume_finalization(")
     failure = text.index(
         "if not execution.closing_reconciliation.reconciled:",
         first_execution,

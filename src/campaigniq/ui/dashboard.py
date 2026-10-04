@@ -48,6 +48,7 @@ from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.persistence.crypto_month import build_crypto_month, load_preceding_crypto
 from campaigniq.ui.crypto_view import render_crypto_report
 from campaigniq.monthly_import_execution import execute_monthly_import
+from campaigniq.ui.monthly_finalization_state import run_or_resume_finalization
 from campaigniq.persistence.reconciliation_decision import (
     ACCEPT_TRANSACTION_DERIVED_STATE,
     BOUNDARY_TIMING_EXCEPTION,
@@ -935,6 +936,9 @@ def render_monthly_import_wizard():
     ):
         st.session_state["monthly_import_validated_signature"] = signature
         st.session_state["monthly_import_confirm"] = False
+        st.session_state.pop("monthly_import_blocked_execution", None)
+        for key in ("monthly_import_boundary_exception_requested", "monthly_import_boundary_exception_reason", "monthly_import_boundary_exception_evidence", "monthly_import_boundary_exception_approved"):
+            st.session_state.pop(key, None)
 
     validated_signature = st.session_state.get(
         "monthly_import_validated_signature"
@@ -1049,12 +1053,11 @@ def render_monthly_import_wizard():
         if not confirm:
             return
 
-        if not st.button(
+        finalize_clicked = st.button(
             f"Finalize {preflight.contract.period_start:%B %Y}",
             type="primary",
             key="monthly_import_execute",
-        ):
-            return
+        )
 
         execution_signature = _monthly_import_signature(
             year=year,
@@ -1071,15 +1074,23 @@ def render_monthly_import_wizard():
             return
 
         try:
-            execution = execute_monthly_import(
-                preflight,
-                authoritative_state_root=AUTHORITATIVE_STATE_DIR,
-                supplied_inputs=supplied,
-                artifact_storage=ARTIFACT_STORAGE,
-                historical_source_root=HISTORICAL_SOURCE_ROOT,
+            execution = run_or_resume_finalization(
+                st.session_state,
+                signature=execution_signature,
+                clicked=finalize_clicked,
+                execute=lambda: execute_monthly_import(
+                    preflight,
+                    authoritative_state_root=AUTHORITATIVE_STATE_DIR,
+                    supplied_inputs=supplied,
+                    artifact_storage=ARTIFACT_STORAGE,
+                    historical_source_root=HISTORICAL_SOURCE_ROOT,
+                ),
             )
         except Exception as exc:
             st.error(f"Monthly import failed: {exc}")
+            return
+
+        if execution is None:
             return
 
         if not execution.closing_reconciliation.reconciled:
@@ -1228,6 +1239,7 @@ def render_monthly_import_wizard():
                 "the persisted operator decision."
             )
 
+        st.session_state.pop("monthly_import_blocked_execution", None)
         boundary = execution.result.boundary_reconstruction
         if (
             boundary.unresolved_positions
