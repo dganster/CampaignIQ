@@ -799,7 +799,7 @@ def _display_instrument(instrument) -> str:
     """Format an instrument for operator-facing reconciliation output."""
 
     if isinstance(instrument, OptionContract):
-        strike = format(instrument.strike, "f").rstrip("0").rstrip(".")
+        strike = _display_decimal(instrument.strike)
         option_type = instrument.option_type.value.title()
         return (
             f"{instrument.underlying} "
