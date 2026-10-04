@@ -207,6 +207,11 @@ MONTHLY_UPLOAD_ROLES = (
         ("csv",),
     ),
     (
+        MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE,
+        "Next-month Schwab Brokerage Statement (optional assignment evidence)",
+        ("pdf", "txt"),
+    ),
+    (
         MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT,
         "Prior month-end Schwab Brokerage Statement (first import only)",
         ("pdf", "txt", "csv"),
@@ -464,6 +469,15 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
         forex_path = upload_dir / f"schwab_forex_transaction_report{suffix}"
         forex_path.write_bytes(forex_upload.getvalue())
         supplied[MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT] = forex_path
+
+    next_upload = uploads.get(MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE)
+    if next_upload is not None:
+        suffix = Path(next_upload.name).suffix
+        next_path = upload_dir / f"next_month_assignment_evidence{suffix}"
+        next_path.write_bytes(next_upload.getvalue())
+        if suffix.lower() == ".pdf":
+            next_path = extract_pdf_text(next_path, upload_dir / "next_month_assignment_evidence.txt")
+        supplied[MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE] = next_path
 
     return supplied
 
@@ -885,6 +899,8 @@ def render_monthly_import_wizard():
         )
         if guidance:
             st.caption(guidance)
+        if role == MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE:
+            st.caption(f"Only needed for an assignment that closes in {selected_period_start:%B} but posts in {selected_next_month:%B}. This supplies assignment evidence only; it does not import the next month.")
 
         uploads[role] = st.file_uploader(
             "Upload",
@@ -922,6 +938,7 @@ def render_monthly_import_wizard():
         role
         for role, _, _ in MONTHLY_UPLOAD_ROLES
         if role != MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
+        and role != MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE
     )
     required_uploads_supplied = all(
         uploads.get(role) is not None

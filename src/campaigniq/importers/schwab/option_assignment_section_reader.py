@@ -171,10 +171,12 @@ def _parse_trade_date(
     for index in range(assignment_index - 1, -1, -1):
         value = lines[index].strip()
 
-        if value.startswith("Trade Date:"):
-            trade_date = value.removeprefix("Trade Date:").strip()
-            month, day, short_year = trade_date.split("/")
+        explicit_date = re.search(r"\bTrade Date:\s*(\d{2})/(\d{2})/(\d{2})\b", value)
+        if explicit_date:
+            month, day, short_year = explicit_date.groups()
             return date(2000 + int(short_year), int(month), int(day))
+        if re.match(r"^\d{2}/\d{2}(?:\s|$)", value):
+            return None
 
         try:
             month, day = value.split("/")

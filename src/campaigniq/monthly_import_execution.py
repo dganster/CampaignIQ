@@ -183,6 +183,11 @@ def execute_monthly_import(
         assignment_lines = (lines,)
         boundary_assignment_lines = (lines,)
 
+    next_statement = supplied_inputs.get(MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE)
+    if next_statement is not None:
+        boundary_assignment_lines = (*boundary_assignment_lines,
+            _validated_next_month_assignment_lines(next_statement, period_end=contract.period_end))
+
     previously_applied_deliveries = _verified_prior_deliveries(
         tos_path, period_start=contract.period_start, opening_lot_book=opening_lot_book,
         storage=artifact_storage or LocalFilesystemArtifactStorage(Path(authoritative_state_root)),
@@ -417,3 +422,25 @@ def _verified_prior_deliveries(filename, *, period_start, opening_lot_book, stor
         if len(matches) == 1:
             verified.append(event)
     return tuple(verified)
+
+
+def _validated_next_month_assignment_lines(path, *, period_end):
+    """Use a validated next-month statement only as boundary assignment evidence."""
+    import calendar
+    from campaigniq.import_validation import validate_monthly_input
+    from campaigniq.importers.schwab.option_assignment_flow import read_option_assignment_events
+    next_start = period_end + timedelta(days=1)
+    next_end = next_start.replace(day=calendar.monthrange(next_start.year, next_start.month)[1])
+    validation = validate_monthly_input(
+        MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT, path,
+        period_start=next_start, period_end=next_end,
+    )
+    if not validation.valid:
+        raise ValueError("Next-month assignment statement: " + validation.message)
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    boundary = next_start
+    while boundary.weekday() >= 5:
+        boundary += timedelta(days=1)
+    if not any(e.occurred_at.date() == boundary for e in read_option_assignment_events(lines)):
+        raise ValueError("Next-month statement contains no first-business-day assignment evidence.")
+    return lines

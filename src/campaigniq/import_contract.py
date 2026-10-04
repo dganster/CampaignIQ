@@ -19,6 +19,7 @@ class MonthlyInputRole(str, Enum):
     OPENING_STATE = "opening_state"
     SCHWAB_ASSIGNMENT_EVIDENCE = "schwab_assignment_evidence"
     HISTORICAL_TRADE_EVIDENCE = "historical_trade_evidence"
+    SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE = "schwab_next_month_assignment_evidence"
 
 
 @dataclass(frozen=True, slots=True)
