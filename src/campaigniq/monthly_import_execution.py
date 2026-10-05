@@ -152,6 +152,15 @@ def execute_monthly_import(
         raise ValueError("Monthly import has no authoritative opening lot state.")
 
     contract = preflight.contract
+    forex_applicable = getattr(preflight, "forex_applicable", True)
+    crypto_applicable = getattr(preflight, "crypto_applicable", True)
+    from campaigniq.market_applicability import validate_market_applicability
+    validate_market_applicability(
+        supplied_inputs.get(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY),
+        period_start=contract.period_start, period_end=contract.period_end,
+        opening_lot_book=opening_lot_book,
+        storage=artifact_storage or LocalFilesystemArtifactStorage(Path(authoritative_state_root)),
+        forex_applicable=forex_applicable, crypto_applicable=crypto_applicable)
 
     tos_path = _required_input(
         supplied_inputs,
@@ -161,10 +170,8 @@ def execute_monthly_import(
         supplied_inputs,
         MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,
     )
-    forex_path = _required_input(
-        supplied_inputs,
-        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
-    )
+    forex_path = (_required_input(supplied_inputs, MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT)
+                  if forex_applicable else None)
     closing_path = _required_input(
         supplied_inputs,
         MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT,
@@ -315,8 +322,13 @@ def execute_monthly_import(
 
     crypto_report = (
         build_crypto_month(result.crypto_report, load_preceding_crypto(storage, contract.period_start))
-        if result.crypto_report is not None else None
+        if crypto_applicable and result.crypto_report is not None else None
     )
+    statement_path = supplied_inputs.get(MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT)
+    if statement_path is not None:
+        from campaigniq.importers.schwab.crypto_statement_reader import read_crypto_statement, attach_crypto_statement
+        crypto_report = attach_crypto_statement(crypto_report, read_crypto_statement(statement_path,
+            period_start=contract.period_start, period_end=contract.period_end))
     crypto_text = serialize_crypto_month(crypto_report) if crypto_report is not None else None
     crypto_name = crypto_month_key(contract.period_end)
 
@@ -330,6 +342,12 @@ def execute_monthly_import(
     storage.write_text(lot_name, lot_text)
     storage.write_text(journal_name, journal_text)
     storage.write_text(provenance_name, provenance_text)
+    import json
+    storage.write_text(f"{contract.period_end:%Y-%m}-market-applicability.json", json.dumps({
+        "format": "campaigniq.market_applicability", "version": 1,
+        "period_start": contract.period_start.isoformat(), "period_end": contract.period_end.isoformat(),
+        "forex_applicable": forex_applicable, "crypto_applicable": crypto_applicable,
+    }, sort_keys=True))
     storage.write_text(completeness_name, completeness_text)
     if crypto_text is not None:
         storage.write_text(crypto_name, crypto_text)

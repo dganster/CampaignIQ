@@ -126,9 +126,9 @@ def test_forex_transaction_report_uses_its_own_uploaded_report() -> None:
     assert "forex_upload = uploads.get(" in text
     assert "supplied[MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT] = forex_path" in text
 
-def test_wizard_copy_describes_four_monthly_documents() -> None:
+def test_wizard_copy_describes_applicable_monthly_documents() -> None:
     text = source()
-    assert "supply the four monthly brokerage documents" in text
+    assert "supply the applicable monthly documents" in text
     assert "supply the three documents" not in text
 
 
@@ -229,9 +229,9 @@ def test_opening_statement_participates_in_validation_signature() -> None:
     assert "digest.update(upload.getvalue())" in signature
 
 
-def test_wizard_explains_bootstrap_without_changing_four_document_workflow() -> None:
+def test_wizard_explains_bootstrap_with_applicable_documents() -> None:
     text = source()
-    assert "supply the four monthly brokerage documents" in text
+    assert "supply the applicable monthly documents" in text
     assert "No authoritative month-end position state is available yet." in text
     assert "This will be a bootstrap import." in text
     assert (

@@ -7,7 +7,14 @@ from campaigniq.ui.table_layout import render_dataframe
 def render_crypto_report(report: dict, st) -> None:
     st.subheader("Crypto")
     st.caption(f"{report['period_start']} through {report['period_end']} · Separate crypto account")
-    st.info("Crypto records are provisional export evidence. Crypto results are shown separately from the brokerage and FOREX totals.")
+    if report.get("crypto_statement"):
+        st.info("A dated Schwab Crypto Statement is retained with this month. Crypto results remain separate from brokerage and FOREX totals.")
+        if report.get("statement_fills_reconciled") and report.get("statement_ending_balances_reconciled"):
+            st.success("Statement fills, ending quantities, and ending cash match the export and computed holdings.")
+        if report.get("month_end_reconciled"):
+            st.success("Crypto statement and export controls reconcile for this month.")
+    else:
+        st.info("Crypto records are provisional export evidence. Crypto results are shown separately from the brokerage and FOREX totals.")
     fills = report["fills"]
     known_fees = sum((Decimal(row["fee_usd"]) for row in fills if row["fee_usd"] is not None), Decimal(0))
     missing_fees = sum(row["fee_usd"] is None for row in fills)

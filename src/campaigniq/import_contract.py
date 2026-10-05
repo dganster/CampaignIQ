@@ -11,6 +11,8 @@ from enum import Enum
 class MonthlyInputRole(str, Enum):
     """Semantic role played by an input to a monthly import."""
 
+    SCHWAB_CRYPTO_STATEMENT = "schwab_crypto_statement"
+    MARKET_APPLICABILITY = "market_applicability"
     THINKORSWIM_TRADE_HISTORY = "thinkorswim_trade_history"
     SCHWAB_REALIZED_GAIN_LOSS = "schwab_realized_gain_loss"
     SCHWAB_FOREX_TRANSACTION_REPORT = "schwab_forex_transaction_report"

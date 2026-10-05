@@ -248,8 +248,9 @@ def campaign_entries(entries, realized_records):
     return sorted(selected, key=lambda row: row["occurred_at"])
 
 
-def history_rows(entries, display_instrument, *, include_campaign=False, realized_records=()):
+def history_rows(entries, display_instrument, *, include_campaign=False, realized_records=(), selected_entries=None):
     rows = []
+    selected_ids = {id(row) for row in selected_entries or ()}
     realized_matches = {}
     for attribution in realized_records:
         record = attribution.record
@@ -282,5 +283,6 @@ def history_rows(entries, display_instrument, *, include_campaign=False, realize
                      "Price": None if row["price"] is None else float(Decimal(row["price"])),
                      "Fills": row["fills"], "Evidence": row["source"],
                      **({"Realized P&L": float(realized_matches[id(row)][0]) if len(realized_matches.get(id(row), [])) == 1 else None} if realized_records else {}),
-                     **({"Campaign": row["campaign_id"] or "Unavailable"} if include_campaign else {})})
+                     **({"Campaign": row["campaign_id"] or "Unavailable"} if include_campaign else {}),
+                     **({"Selected campaign": id(row) in selected_ids} if selected_entries is not None else {})})
     return rows

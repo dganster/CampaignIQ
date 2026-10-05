@@ -207,6 +207,11 @@ MONTHLY_UPLOAD_ROLES = (
         ("csv",),
     ),
     (
+        MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT,
+        "Schwab Crypto Statement (optional)",
+        ("pdf", "txt"),
+    ),
+    (
         MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE,
         "Next-month Schwab Brokerage Statement (optional assignment evidence)",
         ("pdf", "txt"),
@@ -367,8 +372,8 @@ def _position_evidence():
     return cached[1]
 
 
-def _render_position_history(entries, *, include_campaign=False, realized_records=(), lifecycle_rows=()):
-    rows = history_rows(entries, _display_instrument, include_campaign=include_campaign, realized_records=realized_records)
+def _render_position_history(entries, *, include_campaign=False, realized_records=(), lifecycle_rows=(), selected_entries=None):
+    rows = history_rows(entries, _display_instrument, include_campaign=include_campaign, realized_records=realized_records, selected_entries=selected_entries)
     for row in lifecycle_rows:
         if row["Transition"] in {"CORPORATE ACTION", "COVERED POSITION"}:
             rows.append({"Date": row["Date"], "Time": row["Time"], "Action": row["Transition"].title(),
@@ -382,7 +387,11 @@ def _render_position_history(entries, *, include_campaign=False, realized_record
     quantity_values = [value for column in ("Quantity change", "Position after")
                        for value in frame[column].dropna()]
     quantity_format = "%+d" if all(float(value).is_integer() for value in quantity_values) else "%+.4f"
-    render_dataframe(st, frame, hide_index=True, width="stretch", column_config={
+    display_frame = frame
+    if selected_entries is not None:
+        frame["Selected campaign"] = frame.get("Selected campaign", False).fillna(False) if "Selected campaign" in frame else False
+        display_frame = frame.style.apply(lambda row: ["background-color: #dbeafe; color: #172554" if row["Selected campaign"] else "" for _ in row], axis=1)
+    render_dataframe(st, display_frame, hide_index=True, width="stretch", column_config={
         "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
         "Time": st.column_config.TimeColumn("Source time", format="HH:mm:ss"),
         "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
@@ -393,6 +402,22 @@ def _render_position_history(entries, *, include_campaign=False, realized_record
     st.caption("Quantities are signed: negative positions are short. Each row summarizes an attributed trade leg; Price is its weighted average fill price and Fills is its execution count. Position after is the campaign's quantity in that instrument, not an account total. Missing balances mean the retained evidence cannot establish them.")
     if any(row["Action"] == "Carried position" for row in rows):
         st.caption("Carried position marks a verified starting balance. Its original opening trade is not available in this history.")
+
+
+def _choose_history_scope(entries, lifecycle_rows, *, key):
+    from campaigniq.ui.history_scope import scope_history, history_coverage
+
+    scope = st.radio("History range", ("Selected period", "All history"), horizontal=True, key=key)
+    start = st.session_state.get("campaigniq_range_start")
+    end = st.session_state.get("campaigniq_range_end")
+    if start is None or end is None:
+        months = sorted(start.strftime("%Y-%m") for start, _ in history_monthly_attributions)
+        start, end = (months[0], months[-1]) if months else ("0001-01", "9999-12")
+    entries, lifecycle_rows = scope_history(entries, lifecycle_rows, start, end, all_history=scope == "All history")
+    if scope == "Selected period":
+        st.caption(f"Selected reporting period: {start} through {end}. Position balances retain their saved meaning; they are not reset at the range boundary.")
+    st.caption(history_coverage(entries, lifecycle_rows))
+    return entries, lifecycle_rows
 
 
 def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
@@ -479,12 +504,22 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
             next_path = extract_pdf_text(next_path, upload_dir / "next_month_assignment_evidence.txt")
         supplied[MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE] = next_path
 
+    crypto_upload = uploads.get(MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT)
+    if crypto_upload is not None:
+        suffix = Path(crypto_upload.name).suffix
+        crypto_path = upload_dir / f"schwab_crypto_statement{suffix}"
+        crypto_path.write_bytes(crypto_upload.getvalue())
+        if suffix.lower() == ".pdf":
+            crypto_path = extract_pdf_text(crypto_path, upload_dir / "schwab_crypto_statement.txt")
+        supplied[MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT] = crypto_path
+
     return supplied
 
 
-def _monthly_import_signature(*, year, month, uploads):
+def _monthly_import_signature(*, year, month, uploads, forex_applicable=True, crypto_applicable=True):
     digest = hashlib.sha256()
     digest.update(f"{int(year):04d}-{int(month):02d}".encode())
+    digest.update(f"forex={forex_applicable};crypto={crypto_applicable}".encode())
 
     for role, _, _ in MONTHLY_UPLOAD_ROLES:
         upload = uploads.get(role)
@@ -573,6 +608,12 @@ def _show_monthly_preflight(preflight):
         label="Prior month-end Schwab Brokerage Statement",
         required=False,
     )
+
+    for validation in preflight.validations:
+        if validation.role == MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT:
+            _show_validation(validation, label="Schwab Crypto Statement")
+        if validation.role == MonthlyInputRole.MARKET_APPLICABILITY:
+            _show_validation(validation, label="Crypto / Forex applicability")
 
     _show_validation(
         preflight.validation_for(MonthlyInputRole.OPENING_STATE),
@@ -816,7 +857,7 @@ def _display_instrument(instrument) -> str:
 def render_monthly_import_wizard():
     st.subheader("Monthly Import")
     st.caption(
-        "Choose the month and supply the four monthly brokerage documents. "
+        "Choose the month and supply the applicable monthly documents. "
         "When opening inventory is not yet available, also supply the prior "
         "month-end Schwab Brokerage Statement (five files in total). "
         "CampaignIQ processes them against the authoritative position state. "
@@ -859,13 +900,13 @@ def render_monthly_import_wizard():
     if predecessor is None:
         prior_month_end = _month_start(int(year), int(month)) - date.resolution
         st.caption(
-            f"Supply five required files: the four monthly documents for "
+            f"Supply the monthly documents for "
             f"{_month_start(int(year), int(month)):%B %Y}, plus the "
             f"{prior_month_end:%B %Y} Schwab Brokerage Statement to establish "
             "opening inventory."
         )
     else:
-        st.caption("Supply the four brokerage documents for the selected month.")
+        st.caption("Supply Account Trade History, Realized Gain/Loss, and the Brokerage Statement. Add the Forex report when applicable.")
 
     selected_period_start = _month_start(int(year), int(month))
     if selected_period_start.month == 12:
@@ -882,6 +923,11 @@ def render_monthly_import_wizard():
         )
     selected_period_end = selected_next_month - date.resolution
 
+    forex_applicable = st.radio("Forex for this month", ("Applicable", "Not applicable"), horizontal=True,
+                                key=f"monthly_forex_applicable_{year}_{month}") == "Applicable"
+    crypto_applicable = st.radio("Crypto for this month", ("Applicable", "Not applicable"), horizontal=True,
+                                 key=f"monthly_crypto_applicable_{year}_{month}") == "Applicable"
+    st.caption("Choose Not applicable only when there is no activity, cash balance, or open position to account for. Crypto activity comes from Account Trade History; add the optional Schwab Crypto Statement to check fills and dated ending balances.")
     uploads = {}
 
     for role, label, file_types in MONTHLY_UPLOAD_ROLES:
@@ -891,6 +937,10 @@ def render_monthly_import_wizard():
         ):
             continue
 
+        if role == MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT and not crypto_applicable:
+            continue
+        if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT and not forex_applicable:
+            continue
         st.markdown(f"**{label}**")
         guidance = _monthly_document_guidance(
             role,
@@ -932,6 +982,8 @@ def render_monthly_import_wizard():
         year=year,
         month=month,
         uploads=uploads,
+        forex_applicable=forex_applicable,
+        crypto_applicable=crypto_applicable,
     )
 
     required_upload_roles = tuple(
@@ -939,6 +991,8 @@ def render_monthly_import_wizard():
         for role, _, _ in MONTHLY_UPLOAD_ROLES
         if role != MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
         and role != MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE
+        and role != MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT
+        and (forex_applicable or role != MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT)
     )
     required_uploads_supplied = all(
         uploads.get(role) is not None
@@ -963,21 +1017,21 @@ def render_monthly_import_wizard():
     if validated_signature != signature:
         if validated_signature is not None:
             st.info(
-                "The month or an uploaded document changed. "
+                "The month, applicability choice, or an uploaded document changed. "
                 "Validate the monthly import again."
             )
         else:
             if predecessor is None:
                 prior_month_end = selected_period_start - date.resolution
                 st.info(
-                    f"Supply all five required files above: four monthly documents "
+                    f"Supply the required monthly documents above "
                     f"for {selected_period_start:%B %Y} and the "
                     f"{prior_month_end:%B %Y} Schwab Brokerage Statement. "
                     "Then select Validate monthly import."
                 )
             else:
                 st.info(
-                    "Supply the four monthly documents above, then validate. "
+                    "Supply the applicable monthly documents above, then validate. "
                     "CampaignIQ will use the existing opening inventory."
                 )
         return
@@ -997,6 +1051,8 @@ def render_monthly_import_wizard():
                 int(month),
                 authoritative_state_root=AUTHORITATIVE_STATE_DIR,
                 supplied_inputs=supplied,
+                forex_applicable=forex_applicable,
+                crypto_applicable=crypto_applicable,
                 artifact_storage=ARTIFACT_STORAGE,
             )
         except Exception as exc:
@@ -1004,7 +1060,7 @@ def render_monthly_import_wizard():
             return
 
         _show_monthly_preflight(preflight)
-        if preflight.validation_for(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY).valid:
+        if crypto_applicable and preflight.validation_for(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY).valid:
             try:
                 crypto_preview = read_crypto_report(
                     supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY],
@@ -1013,10 +1069,14 @@ def render_monthly_import_wizard():
                 )
                 if crypto_preview is not None:
                     with st.expander("Review crypto activity from the same export", expanded=True):
-                        render_crypto_report(build_crypto_month(
-                            crypto_preview,
-                            load_preceding_crypto(ARTIFACT_STORAGE, preflight.contract.period_start),
-                        ), st)
+                        preview_month = build_crypto_month(crypto_preview,
+                            load_preceding_crypto(ARTIFACT_STORAGE, preflight.contract.period_start))
+                        if MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT in supplied:
+                            from campaigniq.importers.schwab.crypto_statement_reader import read_crypto_statement, attach_crypto_statement
+                            preview_month = attach_crypto_statement(preview_month, read_crypto_statement(
+                                supplied[MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT], period_start=preflight.contract.period_start,
+                                period_end=preflight.contract.period_end))
+                        render_crypto_report(preview_month, st)
             except (ValueError, OSError) as exc:
                 st.error(f"Unable to review crypto evidence: {exc}")
                 return
@@ -1080,6 +1140,8 @@ def render_monthly_import_wizard():
             year=year,
             month=month,
             uploads=uploads,
+            forex_applicable=forex_applicable,
+            crypto_applicable=crypto_applicable,
         )
         if execution_signature != st.session_state.get(
             "monthly_import_validated_signature"
@@ -1823,8 +1885,17 @@ if view == "Campaigns":
         else:
             realized_records = campaign_realized_attributions(history_monthly_attributions, selected_id)
             selected_history = campaign_entries(evidence, realized_records)
-        _render_position_history(selected_history, realized_records=realized_records)
-        st.caption(f"History includes this campaign\'s retained activity across months. The realized P&L summary and Accounting details cover its closes in {campaign_month(selected)}.")
+        underlying_history = [row for row in evidence
+                              if underlying_symbol(_deserialize_instrument(row["instrument"])) in selected.symbols]
+        lifecycle_rows = [row for item in lifecycle_summary.symbols if item.symbol in selected.symbols
+                          for row in lifecycle_timeline_rows(item)]
+        underlying_history, lifecycle_rows = _choose_history_scope(
+            underlying_history, lifecycle_rows, key=f"campaigniq_history_scope_{selected_id}")
+        all_realized_records = tuple(a for attrs in history_monthly_attributions.values() for a in attrs
+                                    if underlying_symbol(a.record.instrument) in selected.symbols)
+        _render_position_history(underlying_history, include_campaign=True, realized_records=all_realized_records,
+                                 lifecycle_rows=lifecycle_rows, selected_entries=selected_history)
+        st.caption(f"Highlighted rows and the Selected campaign column identify the campaign you opened. Other rows provide underlying context. The realized P&L summary and Accounting details cover this campaign's closes in {campaign_month(selected)}.")
         if history_gaps:
             st.warning("Some published months lack verifiable full position history. Available evidence is shown; openings and campaign links are not guessed.")
             with st.expander("History coverage"):
@@ -1920,24 +1991,6 @@ if view == "Campaigns":
                             },
                         )
                 st.caption("Record numbers link broker close results, proceeds, cost basis, and lot allocations.")
-        if len(selected.symbols) == 1:
-            symbol = selected.symbols[0]
-            lifecycle_symbols = {item.symbol for item in lifecycle_summary.symbols} | {underlying_symbol(_deserialize_instrument(row["instrument"])) for row in evidence}
-            if symbol in lifecycle_symbols:
-                st.caption("The position timeline covers all published activity for this symbol, including other campaigns.")
-
-                def open_symbol_lifecycle(underlying):
-                    remember_return(st)
-                    st.session_state["campaigniq_lifecycle_symbol"] = underlying
-                    st.session_state["campaigniq_primary_view"] = "Positions"
-                    publish_route(st)
-
-                st.button(
-                    f"View all {symbol} position history",
-                    on_click=open_symbol_lifecycle,
-                    args=(symbol,),
-                    key="campaigniq_campaign_to_positions",
-                )
     st.stop()
 
 if view == "Positions":
@@ -2058,11 +2111,14 @@ if view == "Positions":
         st.markdown(f"#### {lifecycle_symbol}")
         underlying_history = [row for row in evidence
                               if underlying_symbol(_deserialize_instrument(row["instrument"])) == lifecycle_symbol]
+        underlying_history, scoped_lifecycle_rows = _choose_history_scope(
+            underlying_history, lifecycle_timeline_rows(selected_lifecycle) if selected_lifecycle is not None else (),
+            key="campaigniq_underlying_history_scope")
         _render_position_history(underlying_history, include_campaign=True,
             realized_records=tuple(a for attrs in history_monthly_attributions.values() for a in attrs
                 if underlying_symbol(a.record.instrument) == lifecycle_symbol),
-            lifecycle_rows=lifecycle_timeline_rows(selected_lifecycle) if selected_lifecycle is not None else ())
-        st.caption("This history spans all published months and campaigns for the selected underlying.")
+            lifecycle_rows=scoped_lifecycle_rows)
+        st.caption("This history includes all campaigns for the selected underlying within the chosen history range.")
         if history_gaps:
             with st.expander("History coverage"):
                 for gap in history_gaps:

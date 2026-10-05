@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Mapping
@@ -10,6 +10,7 @@ from typing import Mapping
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.import_contract import (
     MonthlyImportContract,
+    MonthlyInputRequirement,
     MonthlyInputRole,
     monthly_import_contract,
 )
@@ -38,6 +39,8 @@ class MonthlyImportPreflight:
     validations: tuple[MonthlyInputValidation, ...]
     opening_state: AuthoritativeOpeningState | None
     bootstrap_opening_lot_book: LotBook | None = None
+    forex_applicable: bool = True
+    crypto_applicable: bool = True
 
     @property
     def ready(self) -> bool:
@@ -77,9 +80,15 @@ def prepare_monthly_import(
     authoritative_state_root: str | Path,
     supplied_inputs: Mapping[MonthlyInputRole, str | Path],
     artifact_storage: ArtifactStorage | None = None,
+    forex_applicable: bool = True,
+    crypto_applicable: bool = True,
 ) -> MonthlyImportPreflight:
     """Combine the monthly contract, file validation, and predecessor discovery."""
     contract = monthly_import_contract(year, month)
+    if not forex_applicable:
+        contract = replace(contract, requirements=tuple(
+            replace(req, required=False) if req.role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT else req
+            for req in contract.requirements))
     if artifact_storage is None:
         opening_state = load_preceding_authoritative_state(
             authoritative_state_root,
@@ -182,6 +191,9 @@ def prepare_monthly_import(
             continue
 
         path = supplied_inputs.get(role)
+        if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT and not forex_applicable:
+            validations.append(MonthlyInputValidation(role=role, valid=True, message="Not applicable: no separate Forex report requested."))
+            continue
 
         if (
             role is MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
@@ -222,9 +234,44 @@ def prepare_monthly_import(
             )
         )
 
+    if not forex_applicable or not crypto_applicable:
+        from campaigniq.market_applicability import validate_market_applicability
+        from campaigniq.persistence.artifact_storage import LocalFilesystemArtifactStorage
+        contract = replace(contract, requirements=(*contract.requirements,
+            MonthlyInputRequirement(role=MonthlyInputRole.MARKET_APPLICABILITY, required=True,
+                                    user_supplied=False, description="Verify markets declared not applicable.")))
+        try:
+            validate_market_applicability(
+                supplied_inputs.get(MonthlyInputRole.THINKORSWIM_TRADE_HISTORY),
+                period_start=contract.period_start, period_end=contract.period_end,
+                opening_lot_book=opening_state.lot_book if opening_state else bootstrap_opening_lot_book,
+                storage=artifact_storage or LocalFilesystemArtifactStorage(Path(authoritative_state_root)),
+                forex_applicable=forex_applicable, crypto_applicable=crypto_applicable)
+            validations.append(MonthlyInputValidation(role=MonthlyInputRole.MARKET_APPLICABILITY, valid=True,
+                message="Not-applicable choices verified against retained activity and opening positions."))
+        except (ValueError, OSError, KeyError) as exc:
+            validations.append(MonthlyInputValidation(role=MonthlyInputRole.MARKET_APPLICABILITY, valid=False, message=str(exc)))
+
+    statement_path = supplied_inputs.get(MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT)
+    if statement_path is not None:
+        contract = replace(contract, requirements=(*contract.requirements,
+            MonthlyInputRequirement(role=MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT, required=True,
+                                    user_supplied=True, description="Validate the supplied optional Crypto Statement.")))
+        try:
+            from campaigniq.importers.schwab.crypto_statement_reader import read_crypto_statement
+            if not crypto_applicable:
+                raise ValueError("Crypto Statement cannot be supplied when Crypto is Not applicable.")
+            read_crypto_statement(statement_path, period_start=contract.period_start, period_end=contract.period_end)
+            validations.append(MonthlyInputValidation(role=MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT, valid=True,
+                message="Statement account, period, cash balances, holdings, and transaction layout recognized. Matching occurs in crypto review."))
+        except (ValueError, OSError) as exc:
+            validations.append(MonthlyInputValidation(role=MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT, valid=False, message=str(exc)))
+
     return MonthlyImportPreflight(
         contract=contract,
         validations=tuple(validations),
         opening_state=opening_state,
         bootstrap_opening_lot_book=bootstrap_opening_lot_book,
+        forex_applicable=forex_applicable,
+        crypto_applicable=crypto_applicable,
     )
