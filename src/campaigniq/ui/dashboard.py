@@ -370,8 +370,8 @@ def _position_evidence():
 def _render_position_history(entries, *, include_campaign=False, realized_records=(), lifecycle_rows=()):
     rows = history_rows(entries, _display_instrument, include_campaign=include_campaign, realized_records=realized_records)
     for row in lifecycle_rows:
-        if row["Event"] in {"CORPORATE ACTION", "COVERED POSITION"}:
-            rows.append({"Date": row["Date"], "Time": row["Time"], "Action": row["Event"].title(),
+        if row["Transition"] in {"CORPORATE ACTION", "COVERED POSITION"}:
+            rows.append({"Date": row["Date"], "Time": row["Time"], "Action": row["Transition"].title(),
                          "Instrument": row["Details"], "Quantity change": None, "Position after": None,
                          "Price": None, "Fills": None, "Evidence": "Published lifecycle evidence"})
     rows.sort(key=lambda row: (row["Date"], row["Time"]))
