@@ -23,11 +23,11 @@ def render_assignment_outcomes(ui, outcomes):
                      'Contracts': int(outcome['contracts']), 'Outcome': status,
                      'Share change': int(outcome['shares']),
                      'Cash at strike': float(outcome['strike_cash']) if outcome['linked'] else None,
-                     'Acquired shares still open': int(remaining) if remaining is not None else None,
+                     'Acquired shares still open': str(int(remaining)) if remaining is not None else ('Not applicable' if not acquired and outcome['linked'] else 'Unavailable'),
                      'Linked stock realized P&L': float(outcome['realized']) if outcome['realized'] is not None else None,
                      'Linked broker closes': outcome['broker_records']})
     frame = pd.DataFrame(rows)
-    for column in ('Contracts', 'Share change', 'Acquired shares still open', 'Linked broker closes'):
+    for column in ('Contracts', 'Share change', 'Linked broker closes'):
         frame[column] = frame[column].astype('Int64')
     render_money_table(ui, frame, ('Cash at strike', 'Linked stock realized P&L'))
     ui.caption('Cash at strike is the contractual stock payment or receipt before premiums and fees; it is not adjusted cost basis or profit. Linked stock realized P&L uses only broker closes matched to the affected lots and may include assignment premiums already embedded by the broker. It can be partial when broker records or history are missing. No separate premium is added.')

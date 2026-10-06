@@ -2572,6 +2572,10 @@ with campaigns_tab:
         "Underlyings are sorted by realized P&L, worst first; click column headers to re-sort the table."
     )
 
+    from campaigniq.analytics.profit_concentration import summarize_profit_concentration
+    from campaigniq.ui.profit_concentration_view import render_profit_concentration
+    render_profit_concentration(st, summarize_profit_concentration(monthly_attributions))
+
 
 with risk_tab:
     st.subheader("Realized Drawdown")

@@ -125,3 +125,15 @@ def test_outcomes_from_actual_assignment_journal_replay(kind):
 def test_assignment_reachable_from_delivered_stock_campaign():
     o,s=event('CALL','-100');o['campaign_id']='2026-06:APD:CAMP-2'
     result=assignment_outcomes([o,s],[s]);assert len(result)==1 and result[0]['linked']
+
+@pytest.mark.parametrize('kind,shares,linked,expected',[('CALL','-100',True,'Not applicable'),('PUT','100',False,'Unavailable')])
+def test_remaining_share_labels(kind,shares,linked,expected):
+    from campaigniq.ui.assignment_outcomes_view import render_assignment_outcomes
+    class UI:
+        def markdown(self,*a):pass
+        def caption(self,*a):pass
+        def dataframe(self,frame,**k):self.frame=frame.data
+    o,s=event(kind,shares)
+    if not linked:s['occurred_at']='2026-06-19T00:00:01'
+    ui=UI();render_assignment_outcomes(ui,assignment_outcomes([o,s],[o]))
+    assert ui.frame['Acquired shares still open'].iloc[0]==expected
