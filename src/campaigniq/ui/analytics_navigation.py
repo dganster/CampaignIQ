@@ -3,6 +3,8 @@
 from datetime import date
 import json
 
+from campaigniq.ui.preferences import PERIOD_KEY
+
 
 FIELDS = {
     "view": "campaigniq_primary_view",
@@ -124,6 +126,9 @@ def preset_range(months, preset, year):
 
 def render_date_range(ui, months):
     start, end = default_range(months)
+    preferred = preset_range(months, ui.session_state.get(PERIOD_KEY, "YTD"), months[-1][:4])
+    if preferred:
+        start, end = preferred
     for key, fallback in (("campaigniq_range_start", start), ("campaigniq_range_end", end)):
         if ui.session_state.get(key) not in months:
             ui.session_state[key] = fallback

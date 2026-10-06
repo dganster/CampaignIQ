@@ -87,7 +87,7 @@ from campaigniq.ui.analytics_navigation import (
     render_date_range, render_return_button, restore_browser_route,
 )
 from campaigniq.ui.table_layout import FIT_KEY, render_dataframe
-from campaigniq.ui.preferences import render_preferences
+from campaigniq.ui.preferences import render_preferences, preferred_timezone
 from campaigniq.ui.position_history_view import (
     load_position_evidence, evidence_fingerprint, campaign_entries, history_rows,
 )
@@ -1517,13 +1517,13 @@ if view == "Access History":
         st.stop()
     st.subheader("Access History")
     st.caption("Authorized browser sessions recorded since access logging was enabled.")
-    viewer_zone, timezone_fallback = resolve_viewer_timezone(
-        getattr(getattr(st, "context", None), "timezone", None)
+    viewer_zone, timezone_fallback = preferred_timezone(
+        st.session_state, getattr(getattr(st, "context", None), "timezone", None)
     )
     if timezone_fallback:
         st.caption("Times shown in UTC because your browser timezone is unavailable.")
     else:
-        st.caption(f"All visit times shown in your browser timezone: {viewer_zone.key}.")
+        st.caption(f"All visit times shown in your display time zone: {viewer_zone.key}.")
     st.caption("Opening a new browser session counts as a visit; changing filters does not.")
     if ACCESS_HISTORY_ERROR:
         st.warning(ACCESS_HISTORY_ERROR)

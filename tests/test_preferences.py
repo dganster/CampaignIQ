@@ -37,6 +37,7 @@ class UI:
     def __enter__(self): return self
     def __exit__(self, *args): pass
     def checkbox(self, *args, **kwargs): self.changed = kwargs["on_change"]
+    def selectbox(self, *args, **kwargs): self.changed = kwargs["on_change"]
     def caption(self, text): pass
     def warning(self, text): self.warnings.append(text)
 
