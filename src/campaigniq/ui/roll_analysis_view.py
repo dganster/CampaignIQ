@@ -35,7 +35,7 @@ def render_roll_analysis(ui, rolls, warnings):
                          'Net before fees':float(roll.net_cash_flow),'Cumulative before fees':float(running),
                          'Strike change':('+' if roll.strike_change>0 else '-' if roll.strike_change<0 else '')+'$'+_decimal(abs(roll.strike_change)) if roll.strike_change is not None else 'Multiple legs / type change',
                          'Expiration shift':f'{roll.expiration_change_days:+d} days' if roll.expiration_change_days is not None else 'Multiple legs / type change',
-                         'Contract quantity change':f'{roll.contract_quantity_change:+f}' if roll.contract_quantity_change is not None else 'Multiple legs / type change'})
+                         'Contract quantity change':(f'{int(roll.contract_quantity_change):+d}' if roll.contract_quantity_change == roll.contract_quantity_change.to_integral_value() else f'{roll.contract_quantity_change:+f}') if roll.contract_quantity_change is not None else 'Multiple legs / type change'})
         render_money_table(ui,rows,('Net before fees','Cumulative before fees'))
         for number,roll in enumerate(rolls,1):
             with ui.expander(f'Roll {number} · {roll.occurred_at:%b %d, %Y} · leg details'):
@@ -45,7 +45,7 @@ def render_roll_analysis(ui, rolls, warnings):
                         quantity=leg_quantity(leg)
                         price=sum((abs(e.quantity)*e.execution_price for e in leg.executions),Decimal('0'))/quantity
                         legs.append({'Phase':phase,'Buy / Sell':leg.side.value.title(),'Contract':contract_label(leg.instrument),
-                                     'Contracts':float(quantity),'Fills':len(leg.executions),'Average execution price':float(price),
+                                     'Contracts':int(quantity) if quantity == quantity.to_integral_value() else float(quantity),'Fills':len(leg.executions),'Average execution price':float(price),
                                      'Gross cash flow':float(leg_cash_flow(leg))})
                 render_money_table(ui,legs,('Average execution price','Gross cash flow'))
     ui.caption('Credits and debits are execution cash flows before fees, not realized P&L or evidence that a roll improved the trade. Cumulative values include only the verified rolls shown. Separate roll fees are unavailable.')
