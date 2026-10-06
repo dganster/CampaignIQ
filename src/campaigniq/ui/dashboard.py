@@ -1896,6 +1896,11 @@ if view == "Campaigns":
             from campaigniq.ui.roll_analysis_view import render_roll_analysis
             rolls, roll_warnings = load_campaign_rolls(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, evidence, economics_history)
             render_roll_analysis(st, rolls, roll_warnings)
+            from campaigniq.analytics.assignment_outcomes import assignment_outcomes
+            from campaigniq.ui.assignment_outcomes_view import render_assignment_outcomes
+            assignment_records = tuple(a for (start, end), attrs in history_monthly_attributions.items() for a in attrs
+                                       if start <= a.record.closed_date <= end)
+            render_assignment_outcomes(st, assignment_outcomes(evidence, economics_history, assignment_records))
             if history_gaps:
                 st.warning("Campaign cash-flow evidence is incomplete for some published months; reported broker results remain available.")
 
