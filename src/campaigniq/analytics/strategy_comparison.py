@@ -87,6 +87,7 @@ class ObservedStrategy:
     basis: str
     observed_at: datetime | None
     reason: str
+    observed_legs: str = ''
 
 
 def observed_order_label(trade, *, covered_call=False):
@@ -132,6 +133,7 @@ def compare_strategies(campaigns, entry_evidence, open_status, *, observed_evide
             if label == 'Unclassified' and basis != 'Unavailable' and 'supported' not in reason:
                 reason += ' Observed shape is outside supported strategy definitions.'
         details.append(dict(campaign=campaign,strategy=label,evidence=reason,basis=basis,observed_at=observed_at,
+                            observed_legs=observed.observed_legs if observed else '',
                             open=open_status.get((campaign.underlying,campaign.campaign_id))))
     groups=[]
     for label in sorted({r['strategy'] for r in details}):
@@ -161,7 +163,8 @@ def unclassified_review(details):
         rows.append({'Underlying': campaign.underlying, 'Campaign': campaign.campaign_id,
                      'Reporting detail': campaign.drilldown_id, 'Realized P&L': campaign.realized_pnl,
                      'Position status': 'Open' if item['open'] is True else 'Closed' if item['open'] is False else 'Unavailable',
-                     'Reason': reason, 'Classification basis': item.get('basis', 'Original entry'),
+                     'Reason': reason, 'First observation journal legs': item.get('observed_legs', ''),
+                     'Classification basis': item.get('basis', 'Original entry'),
                      'Observation date': item.get('observed_at').isoformat() if item.get('observed_at') else ''})
     return (tuple(sorted(totals.values(), key=lambda r: (-r['Campaigns'], r['Reason']))),
             tuple(sorted(rows, key=lambda r: (r['Reason'], r['Underlying'], r['Campaign']))))

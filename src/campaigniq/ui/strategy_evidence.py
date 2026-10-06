@@ -113,6 +113,61 @@ def campaign_open_status(storage,period_end,campaigns):
             for c in campaigns if re.match(r'^\d{4}-\d{2}:',c.campaign_id)}
 
 
+
+def _verified_roll_execution_groups(storage, root, month_rows, campaign_rows, initial):
+    """Verify complete same-contract roll execution groups against journal totals.
+
+    No records are deduplicated and no nearby orders are paired. Each source
+    group already contains its opening and closing legs. This returns only an
+    observed opening position shape, not a claim about one original order.
+    """
+    from collections import defaultdict
+    from campaigniq.domain.leg import Leg
+    from campaigniq.domain.trade import Trade
+    month=initial[0]['period_start'][:7]
+    start=date.fromisoformat(month+'-01');end=start.replace(day=calendar.monthrange(start.year,start.month)[1])
+    try:
+        if not storage.exists(f'{month}-import-provenance.json') or not _source_matches_manifest(storage,root,start,end):
+            return None
+        reader=ThinkorswimTradeReader(ThinkorswimSourceReader(),ThinkorswimTradeHistoryReader())
+        trades=reader.read(Path(root)/f'Account Trade History {start:%B %Y}.csv',start=start,end=end)
+    except (OSError,ValueError,KeyError,TypeError):return None
+    def leg_key(leg):
+        return (leg.instrument,leg.side,leg.position_effect,min(e.executed_at for e in leg.executions).isoformat())
+    def row_key(row):
+        q=Decimal(row['quantity_change'])
+        return (_deserialize_instrument(row['instrument']),Side.BUY if q>0 else Side.SELL,
+                PositionEffect.OPEN if row['action']=='Roll: open' else PositionEffect.CLOSE,row['occurred_at'])
+    initial_keys={row_key(r) for r in initial}
+    candidates=[]
+    for trade in trades:
+        if {l.position_effect for l in trade.legs}!={PositionEffect.OPEN,PositionEffect.CLOSE}:continue
+        opens=[l for l in trade.legs if l.position_effect is PositionEffect.OPEN]
+        if opens and all(leg_key(l) in initial_keys for l in opens):
+            candidates.append(trade)
+    if len(candidates)<2:return None
+    opening_legs=[l for t in candidates for l in t.legs if l.position_effect is PositionEffect.OPEN]
+    if len({(l.instrument,l.side) for l in opening_legs})!=1:return None
+    expected=defaultdict(lambda:[Decimal('0'),Decimal('0')])
+    for trade in candidates:
+        for leg in trade.legs:
+            values=expected[leg_key(leg)]
+            values[0]+=quantity(leg)
+            values[1]+=sum((abs(e.quantity)*e.execution_price for e in leg.executions),Decimal('0'))
+    observed=defaultdict(lambda:[Decimal('0'),Decimal('0')])
+    for row in month_rows:
+        if row['action'] not in {'Roll: open','Roll: close'} or row.get('price') is None:continue
+        if row['action']=='Roll: open' and row['campaign_id']!=initial[0]['campaign_id']:continue
+        key=row_key(row)
+        if key in expected:
+            q=abs(Decimal(row['quantity_change']))
+            observed[key][0]+=q;observed[key][1]+=q*Decimal(row['price'])
+    if observed!=expected:return None
+    if not initial_keys.issubset({leg_key(l) for l in opening_legs}):return None
+    instrument,side=next(iter({(l.instrument,l.side) for l in opening_legs}))
+    leg=Leg(instrument,side,PositionEffect.OPEN,tuple(e for l in opening_legs for e in l.executions))
+    return Trade((leg,)),len(candidates)
+
 def load_observed_strategies(storage, root, evidence, campaigns, period_end, original_entries):
     """Keep the first available verified snapshot/order separate from original entry.
 
@@ -178,6 +233,12 @@ def load_observed_strategies(storage, root, evidence, campaigns, period_end, ori
                 trade=candidates[0];covered=_covered(month_rows,trade)
                 results[key]=ObservedStrategy(observed_order_label(trade,covered_call=covered),'Verified roll opening legs',at,
                     'Opening legs of one complete verified roll order match this campaign; the closing legs were also verified. This is an observed roll strategy, not proof of the original entry.');continue
+            grouped = _verified_roll_execution_groups(storage,root,month_rows,rows,initial)
+            if grouped is not None:
+                trade,count=grouped
+                results[key]=ObservedStrategy(observed_order_label(trade,covered_call=_covered(month_rows,trade)),
+                    'Verified roll execution groups',at,
+                    f'{count} complete same-contract source roll execution groups match all retained opening and closing quantities and prices. This establishes an observed position shape; no single-order identity or original entry is inferred.');continue
             results[key]=ObservedStrategy('Unclassified','Unavailable',at,'First roll cannot be linked to one complete verified order.');continue
         if month not in orders:
             start=date.fromisoformat(month+'-01');end=start.replace(day=calendar.monthrange(start.year,start.month)[1])
@@ -200,4 +261,19 @@ def load_observed_strategies(storage, root, evidence, campaigns, period_end, ori
                 'Complete verified opening order matches the earliest retained campaign event; original entry identity remains unproven.')
         else:
             results[key]=ObservedStrategy('Unclassified','Unavailable',at,'First observed opening order is not uniquely verified.')
+    # Export actual retained first-event legs for the remaining review cases.
+    # This adds audit detail without changing a classification or source row.
+    from dataclasses import replace
+    import json
+    for key, result in tuple(results.items()):
+        symbol,cid=key;raw_cid=cid;legacy_month=None
+        if re.match(r'^\d{4}-\d{2}/',cid):legacy_month,raw_cid=cid.split('/',1)
+        first_rows=[r for r in verified if result.observed_at is not None
+                    and r['occurred_at']==result.observed_at.isoformat() and r['campaign_id']==raw_cid
+                    and underlying_symbol(_deserialize_instrument(r['instrument']))==symbol
+                    and (legacy_month is None or r['period_start'][:7]==legacy_month)]
+        legs=[{'instrument':r['instrument'],'action':r['action'],'quantity_change':r['quantity_change'],
+               'position_after':r.get('position_after'),'price':r.get('price'),
+               'retained_lot_quantity':str(sum((Decimal(l['quantity']) for l in r['lots']),Decimal('0')))} for r in first_rows]
+        results[key]=replace(result,observed_legs=json.dumps(legs,sort_keys=True))
     return results
