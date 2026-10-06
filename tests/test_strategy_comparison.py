@@ -121,6 +121,7 @@ def test_ui_numeric_results_and_row_navigation():
         def caption(self,*a):pass
         def markdown(self,*a):pass
         def dataframe(self,table,**kwargs):self.captured.append((table,kwargs))
+        def download_button(self,*a,**k):self.download=(a,k)
     c=campaign();scope=ProfitConcentration((c,),D('100'),D('0'),D('100'),0,D('0'))
     ui=UI();render_strategy_comparison(ui,scope,{('APD',CID):(Trade((leg('PUT'),)),False,'verified')},{('APD',CID):False},date(2026,5,31))
     assert ui.captured[0][0].data['Realized P&L'].dtype.kind=='f'
@@ -135,3 +136,39 @@ def test_unassigned_month_end_lot_prevents_false_closed_status(monkeypatch):
     storage=SimpleNamespace(read_text=lambda key:text)
     monkeypatch.setattr(source,'is_month_published_in_storage',lambda *a,**k:True)
     assert source.campaign_open_status(storage,date(2026,5,31),(campaign(),))[('APD',CID)] is None
+
+
+def test_review_counts_and_dollars_reconcile_without_including_classified_campaigns():
+    from campaigniq.analytics.strategy_comparison import unclassified_review
+    details=[dict(campaign=campaign('100'), strategy='Unclassified', evidence='Missing entry', open=True),
+             dict(campaign=campaign('-50',CID+'2'), strategy='Unclassified', evidence='Missing entry', open=False),
+             dict(campaign=campaign('20',CID+'3'), strategy='Unclassified', evidence='Source changed', open=None),
+             dict(campaign=campaign('900',CID+'4'), strategy='Covered call', evidence='Verified', open=False)]
+    groups,rows=unclassified_review(details)
+    assert groups[0]=={'Reason':'Missing entry','Campaigns':2,'Realized P&L':D('50')}
+    assert len(rows)==3 and sum(r['Realized P&L'] for r in rows)==70
+    assert {r['Position status'] for r in rows}=={'Open','Closed','Unavailable'}
+    assert all(r['Reporting detail'].startswith('2026-05/') for r in rows)
+
+
+def test_review_empty_when_all_classified():
+    from campaigniq.analytics.strategy_comparison import unclassified_review
+    assert unclassified_review([dict(campaign=campaign(),strategy='Short put',evidence='Verified',open=False)])==((),())
+
+
+def test_review_export_preserves_reason_and_pnl():
+    import csv,io
+    from campaigniq.ui.strategy_comparison_view import render_strategy_comparison
+    class UI:
+        session_state={}
+        def subheader(self,*a):pass
+        def caption(self,*a):pass
+        def markdown(self,*a):pass
+        def dataframe(self,*a,**k):pass
+        def download_button(self,*a,**k):self.download=(a,k)
+    c=campaign('-123.45');scope=ProfitConcentration((c,),D('0'),D('123.45'),D('-123.45'),0,D('0'))
+    ui=UI();render_strategy_comparison(ui,scope,{}, {}, date(2026,5,31))
+    args,kwargs=ui.download
+    rows=list(csv.DictReader(io.StringIO(args[1].decode('utf-8'))))
+    assert rows[0]['Realized P&L']=='-123.45' and rows[0]['Reason']=='Original entry order is not verified.'
+    assert rows[0]['Position status']=='Unavailable' and kwargs['mime']=='text/csv'

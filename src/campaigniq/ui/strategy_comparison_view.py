@@ -2,8 +2,8 @@
 import hashlib
 import json
 import pandas as pd
-from campaigniq.analytics.strategy_comparison import compare_strategies
-from campaigniq.ui.financial_format import display_money
+from campaigniq.analytics.strategy_comparison import compare_strategies, unclassified_review
+from campaigniq.ui.financial_format import display_money, render_money_table
 from campaigniq.ui.table_layout import render_dataframe,selection_table_key
 from campaigniq.ui.analytics_navigation import remember_return,publish_route
 
@@ -23,6 +23,16 @@ def render_strategy_comparison(ui,scope,entries,status,period_end):
     render_dataframe(ui,styled,hide_index=True,use_container_width=True)
     ui.caption('Win rate is the fraction of confirmed closed campaigns with positive realized P&L in the selected range; breakevens stay in the denominator. It is not a lifetime win rate when the range omits earlier closes. Totals, averages, and medians include all eligible campaigns with realized closes, including open and status-unknown campaigns. Campaigns without any selected-period realized closes are absent.')
     ui.caption('Short put does not establish cash collateral. Covered call requires a matching stock purchase in the opening order or verified prior stock coverage after allowing for existing short calls. Stock entry describes an initial stock order, not a promise that the campaign remained stock-only. Unclassified campaigns remain visible.')
+    review_groups, review_rows = unclassified_review(details)
+    if review_rows:
+        ui.markdown('##### Why campaigns are Unclassified')
+        render_money_table(ui, [dict(r, **{'Realized P&L': float(r['Realized P&L'])}) for r in review_groups], ('Realized P&L',))
+        ui.caption('These counts use the actual explanations for the selected campaigns. The review does not change classifications or broker results.')
+        review = pd.DataFrame(review_rows)
+        review['Realized P&L'] = review['Realized P&L'].map(lambda value: format(value, '.2f'))
+        ui.download_button('Download Unclassified campaign review', review.to_csv(index=False).encode('utf-8'),
+                           file_name=f'campaigniq_unclassified_review_through_{period_end:%Y-%m}.csv',
+                           mime='text/csv', key=f'campaigniq_unclassified_review_download_{period_end}')
     ui.markdown('##### Campaign classifications')
     details=tuple(sorted(details,key=lambda r:(r['strategy'],-r['campaign'].realized_pnl,r['campaign'].campaign_id)))
     rows=[{'Entry strategy':r['strategy'],'Underlying':r['campaign'].underlying,'Campaign':r['campaign'].campaign_id,

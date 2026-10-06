@@ -87,3 +87,23 @@ def compare_strategies(campaigns, entry_evidence, open_status):
                            win_rate=Decimal(wins)/len(closed) if closed else None,
                            realized=sum(values,ZERO),average=sum(values,ZERO)/len(values),median=median(values)))
     return tuple(groups),tuple(details)
+
+
+def unclassified_review(details):
+    """Summarize the actual retained classification explanations, without relabeling."""
+    totals = {}
+    rows = []
+    for item in details:
+        if item['strategy'] != 'Unclassified':
+            continue
+        campaign = item['campaign']
+        reason = item['evidence']
+        group = totals.setdefault(reason, {'Reason': reason, 'Campaigns': 0, 'Realized P&L': ZERO})
+        group['Campaigns'] += 1
+        group['Realized P&L'] += campaign.realized_pnl
+        rows.append({'Underlying': campaign.underlying, 'Campaign': campaign.campaign_id,
+                     'Reporting detail': campaign.drilldown_id, 'Realized P&L': campaign.realized_pnl,
+                     'Position status': 'Open' if item['open'] is True else 'Closed' if item['open'] is False else 'Unavailable',
+                     'Reason': reason})
+    return (tuple(sorted(totals.values(), key=lambda r: (-r['Campaigns'], r['Reason']))),
+            tuple(sorted(rows, key=lambda r: (r['Reason'], r['Underlying'], r['Campaign']))))
