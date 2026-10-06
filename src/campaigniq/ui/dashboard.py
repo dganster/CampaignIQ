@@ -88,6 +88,7 @@ from campaigniq.ui.analytics_navigation import (
 )
 from campaigniq.ui.table_layout import FIT_KEY, render_dataframe
 from campaigniq.ui.preferences import render_preferences, preferred_timezone
+from campaigniq.ui.forex_upload_guidance import forex_upload_guidance
 from campaigniq.ui.position_history_view import (
     load_position_evidence, evidence_fingerprint, campaign_entries, history_rows,
 )
@@ -950,6 +951,8 @@ def render_monthly_import_wizard():
         )
         if guidance:
             st.caption(guidance)
+        if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
+            st.info(forex_upload_guidance(selected_period_start, selected_period_end))
         if role == MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE:
             st.caption(f"Only needed for an assignment that closes in {selected_period_start:%B} but posts in {selected_next_month:%B}. This supplies assignment evidence only; it does not import the next month.")
 
