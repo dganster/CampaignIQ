@@ -87,6 +87,7 @@ from campaigniq.ui.analytics_navigation import (
     render_date_range, render_return_button, restore_browser_route,
 )
 from campaigniq.ui.table_layout import FIT_KEY, render_dataframe
+from campaigniq.ui.preferences import render_preferences
 from campaigniq.ui.position_history_view import (
     load_position_evidence, evidence_fingerprint, campaign_entries, history_rows,
 )
@@ -1484,8 +1485,6 @@ st.set_page_config(
 apply_performance_typography(st)
 st.session_state["campaigniq_table_render_number"] = 0
 st.title("CampaignIQ")
-st.sidebar.checkbox("Fit columns to contents", key=FIT_KEY,
-    help="Fits every table column to its heading and displayed values. You can still resize individual columns.")
 
 if authentication_mode() == AUTH_MODE_OIDC:
     if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
@@ -1510,6 +1509,7 @@ view = st.sidebar.radio(
     on_change=route_changed,
 )
 render_return_button(st, navigation_views)
+render_preferences(st, ARTIFACT_STORAGE, ACCESS)
 
 if view == "Access History":
     if not is_access_admin(ACCESS):
