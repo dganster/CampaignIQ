@@ -1892,6 +1892,10 @@ if view == "Campaigns":
             render_campaign_economics(st, selected_records=realized_records,
                 campaign_records=economics_records, campaign_entries=economics_history,
                 lifetime_scope=lifetime_scope, reporting_month=campaign_month(selected))
+            from campaigniq.ui.roll_evidence import load_campaign_rolls
+            from campaigniq.ui.roll_analysis_view import render_roll_analysis
+            rolls, roll_warnings = load_campaign_rolls(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, evidence, economics_history)
+            render_roll_analysis(st, rolls, roll_warnings)
             if history_gaps:
                 st.warning("Campaign cash-flow evidence is incomplete for some published months; reported broker results remain available.")
 
@@ -1932,12 +1936,13 @@ if view == "Campaigns":
                 st.caption("Broker settled FOREX P&L included in the monthly result; financing and interest are excluded.")
             else:
                 realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
+                from campaigniq.ui.roll_evidence import closed_side_from_journal
                 closing_trades, direction_incomplete = read_closing_trades(
                     HISTORICAL_SOURCE_ROOT, [a.record.closed_date for a in realized_records]
                 )
                 st.caption("Quantity closed is a positive count of shares or contracts closed, not a signed open position. Long/Short identifies the position that was closed.")
                 if direction_incomplete:
-                    st.caption("Some retained trade evidence could not be read; position direction is unavailable.")
+                    st.caption("Some archived exports could not be read. Long/Short uses exact saved journal evidence where available; otherwise it remains unavailable.")
                 if len(realized_records) != selected.record_count:
                     st.warning("Campaign summary and underlying record counts differ; review the published data.")
                 else:
@@ -1948,7 +1953,9 @@ if view == "Campaigns":
                         "Instrument": _display_instrument(attribution.record.instrument),
                         "Quantity closed": float(attribution.record.quantity),
                         "Units": closed_quantity_units(attribution.record.instrument),
-                        "Long/Short": closed_position_side(attribution.record, closing_trades),
+                        "Long/Short": (closed_side_from_journal(attribution, selected_history)
+                                       if closed_side_from_journal(attribution, selected_history) != "Unavailable"
+                                       else closed_position_side(attribution.record, closing_trades)),
                         "Realized P&L": float(attribution.record.gain_loss),
                         "Status": (
                             "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
