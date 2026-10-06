@@ -1874,7 +1874,6 @@ if view == "Campaigns":
         st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
         st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
         evidence, history_gaps = _position_evidence()
-        st.markdown("#### Position history")
         realized_records = ()
         if selected_id in forex_campaign_records:
             forex_ids = {a.campaign_id for a in forex_campaign_records[selected_id]}
@@ -1885,6 +1884,18 @@ if view == "Campaigns":
         else:
             realized_records = campaign_realized_attributions(history_monthly_attributions, selected_id)
             selected_history = campaign_entries(evidence, realized_records)
+        if selected_id not in forex_campaign_records:
+            from campaigniq.analytics.campaign_economics import campaign_record_scope
+            from campaigniq.ui.campaign_economics_view import render_campaign_economics
+            economics_records, lifetime_scope = campaign_record_scope(history_monthly_attributions, selected_id)
+            economics_history = campaign_entries(evidence, economics_records)
+            render_campaign_economics(st, selected_records=realized_records,
+                campaign_records=economics_records, campaign_entries=economics_history,
+                lifetime_scope=lifetime_scope, reporting_month=campaign_month(selected))
+            if history_gaps:
+                st.warning("Campaign cash-flow evidence is incomplete for some published months; reported broker results remain available.")
+
+        st.markdown("#### Position history")
         underlying_history = [row for row in evidence
                               if underlying_symbol(_deserialize_instrument(row["instrument"])) in selected.symbols]
         lifecycle_rows = [row for item in lifecycle_summary.symbols if item.symbol in selected.symbols
