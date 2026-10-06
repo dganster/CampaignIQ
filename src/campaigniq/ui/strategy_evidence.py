@@ -168,6 +168,53 @@ def _verified_roll_execution_groups(storage, root, month_rows, campaign_rows, in
     leg=Leg(instrument,side,PositionEffect.OPEN,tuple(e for l in opening_legs for e in l.executions))
     return Trade((leg,)),len(candidates)
 
+
+def _verified_open_execution_groups(storage,root,month_rows,initial):
+    """Accept partial execution groups only with identical instrument ratios.
+
+    Each archived group must itself contain the complete same opening shape.
+    Separate nearby stock and option orders are never assembled into a strategy.
+    Source quantities and price-weighted totals must equal the campaign journal.
+    """
+    from collections import defaultdict
+    from campaigniq.domain.leg import Leg
+    from campaigniq.domain.trade import Trade
+    month=initial[0]['period_start'][:7]
+    start=date.fromisoformat(month+'-01');end=start.replace(day=calendar.monthrange(start.year,start.month)[1])
+    try:
+        if not storage.exists(f'{month}-import-provenance.json') or not _source_matches_manifest(storage,root,start,end):return None
+        reader=ThinkorswimTradeReader(ThinkorswimSourceReader(),ThinkorswimTradeHistoryReader())
+        trades=reader.read(Path(root)/f'Account Trade History {start:%B %Y}.csv',start=start,end=end)
+    except (OSError,ValueError,KeyError,TypeError):return None
+    at=initial[0]['occurred_at'];cid=initial[0]['campaign_id']
+    def key(leg):return (leg.instrument,leg.side)
+    def row_key(row):return (_deserialize_instrument(row['instrument']),Side.BUY if Decimal(row['quantity_change'])>0 else Side.SELL)
+    initial_keys={row_key(r) for r in initial}
+    candidates=[];shapes=[]
+    for trade in trades:
+        if not trade.legs or any(l.position_effect is not PositionEffect.OPEN for l in trade.legs):continue
+        if any(min(e.executed_at for e in l.executions).isoformat()!=at for l in trade.legs):continue
+        quantities=defaultdict(Decimal)
+        for l in trade.legs:quantities[key(l)]+=quantity(l)
+        if set(quantities)!=initial_keys or any(q<=0 for q in quantities.values()):continue
+        ordered=sorted(quantities,key=lambda k:(repr(k[0]),k[1].value));unit=quantities[ordered[0]]
+        shapes.append(tuple((repr(k[0]),k[1].value,quantities[k]/unit) for k in ordered));candidates.append(trade)
+    if len(candidates)<2 or len(set(shapes))!=1:return None
+    expected=defaultdict(lambda:[Decimal('0'),Decimal('0')]);executions=defaultdict(list)
+    for trade in candidates:
+        for leg in trade.legs:
+            k=key(leg);expected[k][0]+=quantity(leg)
+            expected[k][1]+=sum((abs(e.quantity)*e.execution_price for e in leg.executions),Decimal('0'))
+            executions[k].extend(leg.executions)
+    observed=defaultdict(lambda:[Decimal('0'),Decimal('0')])
+    for row in month_rows:
+        if row['campaign_id']!=cid or row['occurred_at']!=at:continue
+        if row['action']!='Open / add' or row.get('price') is None:return None
+        k=row_key(row);q=abs(Decimal(row['quantity_change']))
+        observed[k][0]+=q;observed[k][1]+=q*Decimal(row['price'])
+    if observed!=expected:return None
+    return Trade(tuple(Leg(i,side,PositionEffect.OPEN,tuple(executions[(i,side)])) for i,side in sorted(executions,key=lambda k:(repr(k[0]),k[1].value)))),len(candidates)
+
 def load_observed_strategies(storage, root, evidence, campaigns, period_end, original_entries):
     """Keep the first available verified snapshot/order separate from original entry.
 
@@ -260,7 +307,14 @@ def load_observed_strategies(storage, root, evidence, campaigns, period_end, ori
             results[key]=ObservedStrategy(observed_order_label(trade,covered_call=covered),'Verified observed opening order',at,
                 'Complete verified opening order matches the earliest retained campaign event; original entry identity remains unproven.')
         else:
-            results[key]=ObservedStrategy('Unclassified','Unavailable',at,'First observed opening order is not uniquely verified.')
+            grouped = _verified_open_execution_groups(storage,root,month_rows,initial)
+            if grouped is not None:
+                trade,count=grouped
+                results[key]=ObservedStrategy(observed_order_label(trade,covered_call=_covered(month_rows,trade)),
+                    'Verified opening execution groups',at,
+                    f'{count} complete opening execution groups have identical instrument ratios and match all retained campaign quantities and price-weighted totals. No separate orders were paired into a strategy.')
+            else:
+                results[key]=ObservedStrategy('Unclassified','Unavailable',at,'First observed opening order is not uniquely verified.')
     # Export actual retained first-event legs for the remaining review cases.
     # This adds audit detail without changing a classification or source row.
     from dataclasses import replace

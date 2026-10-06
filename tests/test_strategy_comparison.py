@@ -46,7 +46,7 @@ def test_supported_entry_shapes(legs,expected):assert classify_entry(Trade(tuple
     [leg(),leg(strike='280',side=Side.BUY,expiry=date(2026,7,17))],
     [leg(effect=PositionEffect.CLOSE),leg(strike='280')],
     [leg(qty='0.5')],[leg('STOCK',side=Side.BUY,qty='99'),leg()],
-    [leg('PUT','260'),leg('CALL','250')]])
+    [leg('PUT','260'),leg('CALL','250',qty='2')]])
 def test_unsupported_shapes_remain_unclassified(legs):assert classify_entry(Trade(tuple(legs)))=='Unclassified'
 
 def test_covered_call_requires_coverage_evidence():

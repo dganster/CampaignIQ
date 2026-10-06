@@ -63,6 +63,7 @@ def _classify_legs(legs, *, covered_call=False):
             p,c=puts[0].instrument.strike,calls[0].instrument.strike
             if p==c:return 'Short straddle'
             if p<c:return 'Short strangle'
+            if p>c:return 'Inverted short strangle'
     if len(options)==4:
         puts=sorted((l for l in options if l.instrument.option_type is OptionType.PUT),key=lambda l:l.instrument.strike)
         calls=sorted((l for l in options if l.instrument.option_type is OptionType.CALL),key=lambda l:l.instrument.strike)
