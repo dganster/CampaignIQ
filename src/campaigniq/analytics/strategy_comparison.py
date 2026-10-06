@@ -1,4 +1,6 @@
 """Evidence-based entry labels and selected-period realized strategy summaries."""
+from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from statistics import median
 from campaigniq.domain.option_contract import OptionContract
@@ -10,12 +12,17 @@ ZERO=Decimal('0')
 
 
 def quantity(leg):
+    if isinstance(leg, PositionShapeLeg):
+        return leg.observed_quantity
     return sum((abs(e.quantity) for e in leg.executions),ZERO)
 
 
 def classify_entry(trade, *, covered_call=False):
     """Classify a complete verified opening order, never nearby executions."""
-    legs=trade.legs
+    return _classify_legs(trade.legs, covered_call=covered_call)
+
+
+def _classify_legs(legs, *, covered_call=False):
     if not legs or any(l.position_effect is not PositionEffect.OPEN for l in legs):
         return 'Unclassified'
     symbols={getattr(l.instrument,'underlying',None) or l.instrument.symbol for l in legs}
@@ -66,7 +73,47 @@ def classify_entry(trade, *, covered_call=False):
     return 'Unclassified'
 
 
-def compare_strategies(campaigns, entry_evidence, open_status):
+@dataclass(frozen=True, slots=True)
+class PositionShapeLeg:
+    instrument: object
+    side: Side
+    observed_quantity: Decimal
+    position_effect: PositionEffect = PositionEffect.OPEN
+
+
+@dataclass(frozen=True, slots=True)
+class ObservedStrategy:
+    strategy: str
+    basis: str
+    observed_at: datetime | None
+    reason: str
+
+
+def observed_order_label(trade, *, covered_call=False):
+    label = classify_entry(trade, covered_call=covered_call)
+    return {'Stock entry': 'Stock position', 'Short stock entry': 'Short stock position'}.get(label, label)
+
+
+def classify_holdings(holdings, *, covered_call=False):
+    """Describe a simultaneous retained position snapshot, not an opening trade."""
+    totals = {}
+    for instrument, signed_quantity in holdings:
+        totals[instrument] = totals.get(instrument, ZERO) + signed_quantity
+    legs = tuple(PositionShapeLeg(i, Side.BUY if q > ZERO else Side.SELL, abs(q))
+                 for i, q in totals.items() if q)
+    # Extra long shares still cover a single short call position.
+    options = [l for l in legs if isinstance(l.instrument, OptionContract)]
+    stocks = [l for l in legs if not isinstance(l.instrument, OptionContract)]
+    if (len(options) == len(stocks) == 1 and options[0].side is Side.SELL
+            and options[0].instrument.option_type is OptionType.CALL
+            and stocks[0].side is Side.BUY and quantity(stocks[0]) >= quantity(options[0])*100
+            and stocks[0].instrument.symbol == options[0].instrument.underlying):
+        return 'Covered call'
+    label = _classify_legs(legs, covered_call=covered_call)
+    return {'Stock entry': 'Stock position', 'Short stock entry': 'Short stock position'}.get(label, label)
+
+
+def compare_strategies(campaigns, entry_evidence, open_status, *, observed_evidence=None):
     """Group realized P&L; win rate uses only confirmed closed campaigns."""
     details=[]
     for campaign in campaigns:
@@ -74,7 +121,17 @@ def compare_strategies(campaigns, entry_evidence, open_status):
         label=classify_entry(trade,covered_call=covered) if trade is not None else 'Unclassified'
         if trade is not None and label == 'Unclassified':
             reason += ' Opening shape is outside the supported strategy definitions.'
-        details.append(dict(campaign=campaign,strategy=label,evidence=reason,
+        observed = observed_evidence.get((campaign.underlying, campaign.campaign_id)) if observed_evidence is not None else None
+        basis = 'Original entry' if label != 'Unclassified' else 'Original entry unavailable'
+        observed_at = min(e.executed_at for l in trade.legs for e in l.executions) if trade is not None and trade.legs else None
+        if observed_evidence is not None:
+            label = observed.strategy if observed else 'Unclassified'
+            reason = observed.reason if observed else 'No complete verified observation is available.'
+            basis = observed.basis if observed else 'Unavailable'
+            observed_at = observed.observed_at if observed else None
+            if label == 'Unclassified' and basis != 'Unavailable' and 'supported' not in reason:
+                reason += ' Observed shape is outside supported strategy definitions.'
+        details.append(dict(campaign=campaign,strategy=label,evidence=reason,basis=basis,observed_at=observed_at,
                             open=open_status.get((campaign.underlying,campaign.campaign_id))))
     groups=[]
     for label in sorted({r['strategy'] for r in details}):
@@ -104,6 +161,7 @@ def unclassified_review(details):
         rows.append({'Underlying': campaign.underlying, 'Campaign': campaign.campaign_id,
                      'Reporting detail': campaign.drilldown_id, 'Realized P&L': campaign.realized_pnl,
                      'Position status': 'Open' if item['open'] is True else 'Closed' if item['open'] is False else 'Unavailable',
-                     'Reason': reason})
+                     'Reason': reason, 'Classification basis': item.get('basis', 'Original entry'),
+                     'Observation date': item.get('observed_at').isoformat() if item.get('observed_at') else ''})
     return (tuple(sorted(totals.values(), key=lambda r: (-r['Campaigns'], r['Reason']))),
             tuple(sorted(rows, key=lambda r: (r['Reason'], r['Underlying'], r['Campaign']))))
