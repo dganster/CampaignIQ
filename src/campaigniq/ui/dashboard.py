@@ -2574,7 +2574,16 @@ with campaigns_tab:
 
     from campaigniq.analytics.profit_concentration import summarize_profit_concentration
     from campaigniq.ui.profit_concentration_view import render_profit_concentration
-    render_profit_concentration(st, summarize_profit_concentration(monthly_attributions))
+    concentration_scope = summarize_profit_concentration(monthly_attributions)
+    render_profit_concentration(st, concentration_scope)
+    from campaigniq.ui.strategy_evidence import load_strategy_entries, campaign_open_status
+    from campaigniq.ui.strategy_comparison_view import render_strategy_comparison
+    strategy_history, strategy_history_gaps = _position_evidence()
+    strategy_entries = load_strategy_entries(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, strategy_history, concentration_scope.campaigns)
+    strategy_status = campaign_open_status(ARTIFACT_STORAGE, summaries[-1].period_end, concentration_scope.campaigns)
+    render_strategy_comparison(st, concentration_scope, strategy_entries, strategy_status, summaries[-1].period_end)
+    if strategy_history_gaps:
+        st.caption("Some retained position history is incomplete; unsupported entry classifications remain Unclassified.")
 
 
 with risk_tab:

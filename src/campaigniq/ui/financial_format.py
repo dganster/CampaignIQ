@@ -4,6 +4,8 @@ from campaigniq.ui.table_layout import render_dataframe
 
 
 def display_money(value):
+    if value == 0:
+        return '$0.00'
     return f'-${abs(value):,.2f}' if value < 0 else f'${value:,.2f}'
 
 
