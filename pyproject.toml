@@ -14,7 +14,7 @@ authors = [
     { name = "Dennis Ganster" }
 ]
 
-dependencies = []
+dependencies = ["psycopg[binary]>=3.2,<4"]
 
 [project.optional-dependencies]
 ui = [
