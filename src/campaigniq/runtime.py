@@ -80,6 +80,7 @@ def build_local_runtime(
         artifact_storage = PostgresArtifactStorage(
             dsn, namespace=workspace_id if workspace_id is not None else "shared"
         )
+        artifact_storage.initialize()
     else:
         raise ValueError(f"Unsupported CAMPAIGNIQ_STORAGE_BACKEND: {backend!r}")
 
