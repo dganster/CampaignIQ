@@ -66,8 +66,25 @@ def build_local_runtime(
     authoritative_state_root.mkdir(parents=True, exist_ok=True)
     historical_source_root.mkdir(parents=True, exist_ok=True)
 
+    backend = os.environ.get("CAMPAIGNIQ_STORAGE_BACKEND", "filesystem").strip().lower()
+    if backend == "filesystem":
+        artifact_storage = LocalFilesystemArtifactStorage(authoritative_state_root)
+    elif backend == "postgres":
+        dsn = os.environ.get("CAMPAIGNIQ_DEV_DATABASE_URL")
+        if not dsn:
+            raise ValueError(
+                "CAMPAIGNIQ_DEV_DATABASE_URL is required when "
+                "CAMPAIGNIQ_STORAGE_BACKEND=postgres"
+            )
+        from campaigniq.persistence.postgres_artifact_storage import PostgresArtifactStorage
+        artifact_storage = PostgresArtifactStorage(
+            dsn, namespace=workspace_id if workspace_id is not None else "shared"
+        )
+    else:
+        raise ValueError(f"Unsupported CAMPAIGNIQ_STORAGE_BACKEND: {backend!r}")
+
     return CampaignIQRuntime(
-        artifact_storage=LocalFilesystemArtifactStorage(authoritative_state_root),
+        artifact_storage=artifact_storage,
         authoritative_state_root=authoritative_state_root,
         historical_source_root=historical_source_root,
     )
