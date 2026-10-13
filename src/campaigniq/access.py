@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 
@@ -24,7 +25,15 @@ def resolve_access_context(
     do not supply a requested workspace ID.
     """
     workspace_id = workspace_by_identity.get(identity_id)
-    if workspace_id is None:
+    if not isinstance(workspace_id, str) or not workspace_id:
+        return None
+
+    workspace_path = Path(workspace_id)
+    if (
+        workspace_path.is_absolute()
+        or len(workspace_path.parts) != 1
+        or workspace_id in {".", ".."}
+    ):
         return None
 
     return AccessContext(

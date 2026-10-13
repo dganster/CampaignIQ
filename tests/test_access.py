@@ -51,3 +51,30 @@ def test_workspace_cannot_be_selected_through_resolver_arguments() -> None:
 
     assert access is not None
     assert access.workspace_id == "workspace-andrew"
+
+
+def test_resolve_access_context_denies_unsafe_workspace() -> None:
+    for workspace_id in (
+        "",
+        ".",
+        "..",
+        "../workspace-dennis",
+        "nested/workspace",
+        "/tmp/workspace",
+    ):
+        assert resolve_access_context(
+            "identity-test",
+            {"identity-test": workspace_id},
+        ) is None
+
+
+def test_resolve_access_context_accepts_isolated_test_workspace() -> None:
+    access = resolve_access_context(
+        "identity-test",
+        {"identity-test": "oidc-test"},
+    )
+
+    assert access == AccessContext(
+        identity_id="identity-test",
+        workspace_id="oidc-test",
+    )
