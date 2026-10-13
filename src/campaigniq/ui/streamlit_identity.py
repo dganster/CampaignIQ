@@ -23,4 +23,7 @@ def oidc_claims_from_streamlit_user(
     if not isinstance(claims, Mapping):
         return {}
 
+    if claims.get("is_logged_in") is not True:
+        return {}
+
     return claims

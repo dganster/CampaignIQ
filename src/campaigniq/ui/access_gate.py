@@ -29,7 +29,9 @@ def authentication_mode() -> str:
 
     value = value.strip().lower()
     if value not in {AUTH_MODE_PASSWORD, AUTH_MODE_OIDC}:
-        return AUTH_MODE_PASSWORD
+        raise ValueError(
+            f"Unsupported CAMPAIGNIQ_AUTH_MODE: {value!r}"
+        )
 
     return value
 

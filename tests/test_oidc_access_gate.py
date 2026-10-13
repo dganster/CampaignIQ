@@ -67,7 +67,7 @@ class FakeStreamlitUser:
 
 def test_authorized_streamlit_user_resolves_workspace() -> None:
     access = authorized_streamlit_access(
-        FakeStreamlitUser({"sub": "google-subject-dennis"}),
+        FakeStreamlitUser({"sub": "google-subject-dennis", "is_logged_in": True}),
         {"google-subject-dennis": "workspace-dennis"},
     )
 
@@ -89,6 +89,27 @@ def test_unauthenticated_streamlit_user_is_denied() -> None:
 def test_streamlit_user_without_claim_interface_is_denied() -> None:
     access = authorized_streamlit_access(
         object(),
+        {"google-subject-dennis": "workspace-dennis"},
+    )
+
+    assert access is None
+
+
+def test_streamlit_user_with_subject_but_not_logged_in_is_denied() -> None:
+    access = authorized_streamlit_access(
+        FakeStreamlitUser({
+            "sub": "google-subject-dennis",
+            "is_logged_in": False,
+        }),
+        {"google-subject-dennis": "workspace-dennis"},
+    )
+
+    assert access is None
+
+
+def test_streamlit_user_with_subject_but_missing_login_status_is_denied() -> None:
+    access = authorized_streamlit_access(
+        FakeStreamlitUser({"sub": "google-subject-dennis"}),
         {"google-subject-dennis": "workspace-dennis"},
     )
 

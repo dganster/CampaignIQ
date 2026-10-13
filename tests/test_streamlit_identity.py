@@ -12,6 +12,7 @@ class FakeStreamlitUser:
 def test_returns_streamlit_oidc_claims() -> None:
     claims = {
         "sub": "google-subject-123",
+        "is_logged_in": True,
         "email": "person@example.com",
         "name": "Example Person",
     }

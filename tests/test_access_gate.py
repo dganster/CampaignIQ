@@ -72,10 +72,13 @@ def test_authentication_mode_normalizes_whitespace_and_case(monkeypatch) -> None
     assert authentication_mode() == AUTH_MODE_OIDC
 
 
-def test_unknown_authentication_mode_falls_back_to_password(monkeypatch) -> None:
+def test_unknown_authentication_mode_fails_closed(monkeypatch) -> None:
+    import pytest
+
     monkeypatch.setenv("CAMPAIGNIQ_AUTH_MODE", "something-else")
 
-    assert authentication_mode() == AUTH_MODE_PASSWORD
+    with pytest.raises(ValueError, match="Unsupported CAMPAIGNIQ_AUTH_MODE"):
+        authentication_mode()
 
 
 def test_authorized_oidc_dashboard_exposes_sign_out() -> None:
