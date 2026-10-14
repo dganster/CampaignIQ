@@ -60,6 +60,10 @@ from campaigniq.persistence.lifecycle_history import (
     load_lifecycle_history_from_storage,
 )
 from campaigniq.persistence.monthly_publication import is_month_published_in_storage
+from campaigniq.persistence.monthly_publication import (
+    finalized_month_marker_key,
+    publication_cutover_from_storage,
+)
 from campaigniq.persistence.persisted_multi_month_analytics import (
     load_persisted_monthly_campaign_attributions_from_storage,
 )
@@ -1437,6 +1441,7 @@ def render_monthly_import_wizard():
 
 def _published_artifact_keys(*, suffix: str):
     keys = []
+    cutover = publication_cutover_from_storage(ARTIFACT_STORAGE)
     for key in ARTIFACT_STORAGE.list_keys(suffix=suffix):
         month_text = key.removesuffix(suffix)
         try:
@@ -1448,7 +1453,9 @@ def _published_artifact_keys(*, suffix: str):
         else:
             next_month = date(month_start.year, month_start.month + 1, 1)
         period_end = next_month - date.resolution
-        if is_month_published_in_storage(ARTIFACT_STORAGE, period_end=period_end):
+        if cutover is None or period_end < cutover or ARTIFACT_STORAGE.exists(
+            finalized_month_marker_key(period_end=period_end)
+        ):
             keys.append(key)
     return tuple(keys)
 
