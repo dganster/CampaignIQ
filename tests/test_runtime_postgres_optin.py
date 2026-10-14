@@ -15,6 +15,7 @@ def test_default_remains_filesystem(tmp_path, monkeypatch):
 def test_explicit_postgres_workspace_namespaces(tmp_path, monkeypatch):
     monkeypatch.setenv("CAMPAIGNIQ_STORAGE_BACKEND", "postgres")
     monkeypatch.setenv("CAMPAIGNIQ_DEV_DATABASE_URL", "postgresql://example.invalid/dev")
+    monkeypatch.setattr(PostgresArtifactStorage, "initialize", lambda self: None)
     for workspace, expected in [(None, "shared"), ("workspace-andrew", "workspace-andrew"), ("workspace-dennis", "workspace-dennis")]:
         runtime = build_local_runtime(project_root=tmp_path, workspace_id=workspace)
         assert isinstance(runtime.artifact_storage, PostgresArtifactStorage)

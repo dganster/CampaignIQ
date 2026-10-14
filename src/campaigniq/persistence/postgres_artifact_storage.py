@@ -1,7 +1,30 @@
 """Development-only PostgreSQL implementation of CampaignIQ's ArtifactStorage contract."""
 from __future__ import annotations
 
+from functools import lru_cache
+
 from campaigniq.persistence.artifact_storage import _validate_key
+
+
+@lru_cache(maxsize=8)
+def _pool_for_dsn(dsn: str):
+    """One bounded pool per DSN, shared by all workspace storage instances."""
+    from psycopg_pool import ConnectionPool
+
+    return ConnectionPool(conninfo=dsn, min_size=0, max_size=3, timeout=15)
+
+
+@lru_cache(maxsize=8)
+def _initialize_schema(dsn: str) -> None:
+    """Run schema setup once per DSN per process, after successful completion."""
+    with _pool_for_dsn(dsn).connection() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS artifact_storage_dev (
+            namespace text NOT NULL,
+            artifact_key text NOT NULL,
+            content text NOT NULL,
+            updated_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (namespace, artifact_key)
+        )""")
 
 
 class PostgresArtifactStorage:
@@ -14,18 +37,12 @@ class PostgresArtifactStorage:
         self.namespace = namespace
 
     def _connect(self):
-        import psycopg
-        return psycopg.connect(self.dsn)
+        # Pool context commits on success, rolls back on failure, then returns
+        # the connection for reuse; callers retain their existing with-blocks.
+        return _pool_for_dsn(self.dsn).connection()
 
     def initialize(self) -> None:
-        with self._connect() as conn:
-            conn.execute("""CREATE TABLE IF NOT EXISTS artifact_storage_dev (
-                namespace text NOT NULL,
-                artifact_key text NOT NULL,
-                content text NOT NULL,
-                updated_at timestamptz NOT NULL DEFAULT now(),
-                PRIMARY KEY (namespace, artifact_key)
-            )""")
+        _initialize_schema(self.dsn)
 
     def exists(self, key: str) -> bool:
         _validate_key(key)
