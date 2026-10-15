@@ -1768,7 +1768,7 @@ if view == "Overview":
     st.caption(f"{first_period} – {last_period} · Published analytics through {latest_available_analytics_period:%B %Y}")
     o1, o2, o3, o4 = st.columns(4)
     o1.metric("Realized P&L", money(combined_realized_pnl))
-    o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
+    o2.metric("Equity/Options Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
     win_rate = multi_month_campaign_performance.win_rate
     o3.metric("Campaign Win Rate", f"{float(win_rate):.1%}" if win_rate is not None else "—")
     o4.metric(
@@ -1799,7 +1799,7 @@ if view == "Overview":
 
 if view == "Campaigns":
     st.subheader("Campaigns")
-    st.caption(f"Realized campaigns · {first_period} – {last_period}")
+    st.caption(f"Equity/options and FOREX realized campaigns · {first_period} – {last_period}")
     forex_campaigns, forex_campaign_records = forex_drilldowns(monthly_forex_attributions)
     campaign_drilldowns = (*campaign_drilldowns, *forex_campaigns)
     if not campaign_drilldowns:
@@ -1843,7 +1843,7 @@ if view == "Campaigns":
     ]
     visible.sort(key=lambda item: (item.last_closed_date, item.campaign_id), reverse=True)
     publish_route(st)
-    st.caption(f"{len(visible):,} of {len(campaign_drilldowns):,} realized campaigns")
+    st.caption(f"{len(visible):,} of {len(campaign_drilldowns):,} equity/options and FOREX realized campaigns")
     if selected_month != "All months":
         monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
         st.metric("Month realized P&L", money(monthly_summary.combined_realized_pnl))
@@ -2240,7 +2240,7 @@ with summary_tab:
         money(combined_realized_pnl),
     )
     metric2.metric(
-        "Campaigns",
+        "Equity/Options Campaigns",
         f"{multi_month_campaign_performance.campaign_count:,}",
     )
     metric3.metric(
