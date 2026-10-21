@@ -201,6 +201,10 @@ def execute_monthly_import(
         historical_source_root=historical_source_root,
     )
 
+    closing_lines = (
+        Path(closing_path).read_text(encoding="utf-8").splitlines()
+        if Path(closing_path).is_file() else []
+    )
     result = PeriodImportPipeline().run(
         campaign_namespace=f"{contract.period_start:%Y-%m}",
         previously_applied_deliveries=previously_applied_deliveries,
@@ -209,13 +213,13 @@ def execute_monthly_import(
         thinkorswim_trade_history=tos_path,
         carried_opening_lot_book=opening_lot_book,
         assignment_lines=assignment_lines,
+        expiration_lines=(closing_lines,),
         boundary_assignment_lines=boundary_assignment_lines,
         realized_gain_loss_report=realized_path,
         forex_transaction_report=forex_path,
         historical_source_root=historical_source_root,
     )
 
-    closing_lines = Path(closing_path).read_text(encoding="utf-8").splitlines()
     closing_rows = read_position_snapshot_section(
         closing_lines,
         snapshot_at=datetime.combine(contract.period_end, datetime.max.time()),

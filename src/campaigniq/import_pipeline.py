@@ -140,6 +140,7 @@ class PeriodImportPipeline:
         opening_snapshot_at: datetime | None = None,
         carried_opening_lot_book: LotBook | None = None,
         assignment_lines: tuple[list[str], ...] = (),
+        expiration_lines: tuple[list[str], ...] = (),
         boundary_assignment_lines: tuple[list[str], ...] = (),
         realized_gain_loss_report: str | Path | None = None,
         forex_transaction_report: str | Path | None = None,
@@ -163,6 +164,7 @@ class PeriodImportPipeline:
                 opening_snapshot_at=opening_snapshot_at,
                 carried_opening_lot_book=carried_opening_lot_book,
                 assignment_lines=assignment_lines,
+                expiration_lines=expiration_lines,
                 boundary_assignment_lines=boundary_assignment_lines,
                 realized_gain_loss_report=realized_gain_loss_report,
                 forex_transaction_report=forex_transaction_report,
@@ -181,6 +183,7 @@ class PeriodImportPipeline:
             opening_snapshot_at=opening_snapshot_at,
             carried_opening_lot_book=carried_opening_lot_book,
             assignment_lines=assignment_lines,
+            expiration_lines=expiration_lines,
             boundary_assignment_lines=boundary_assignment_lines,
             realized_gain_loss_report=realized_gain_loss_report,
             forex_transaction_report=forex_transaction_report,
@@ -253,6 +256,7 @@ class PeriodImportPipeline:
             opening_snapshot_at=opening_snapshot_at,
             carried_opening_lot_book=carried_opening_lot_book,
             assignment_lines=assignment_lines,
+            expiration_lines=expiration_lines,
             boundary_assignment_lines=boundary_assignment_lines,
             realized_gain_loss_report=realized_gain_loss_report,
             forex_transaction_report=forex_transaction_report,
@@ -335,6 +339,7 @@ class PeriodImportPipeline:
         opening_snapshot_at: datetime | None,
         carried_opening_lot_book: LotBook | None,
         assignment_lines: tuple[list[str], ...],
+        expiration_lines: tuple[list[str], ...],
         boundary_assignment_lines: tuple[list[str], ...],
         realized_gain_loss_report: str | Path | None,
         forex_transaction_report: str | Path | None,
@@ -428,15 +433,33 @@ class PeriodImportPipeline:
             end=period_end,
         )
 
+        from campaigniq.importers.schwab.option_expiration_reader import read_option_expiration_events
+        schwab_expirations = tuple(dict.fromkeys(
+            event for lines in expiration_lines
+            for event in read_option_expiration_events(lines, start=period_start, end=period_end)
+        ))
+        # Thinkorswim EXP cash-balance records represent stock deliveries;
+        # Schwab expiration records represent option-contract offsets.
+        # Do not apply the same contract/quantity/date twice.
+        existing = {
+            (change.instrument, change.quantity, event.occurred_at.date())
+            for event in expiration_events for change in event.changes
+        }
+        schwab_expirations = tuple(
+            event for event in schwab_expirations
+            if not all((change.instrument, change.quantity, event.occurred_at.date()) in existing
+                       for change in event.changes)
+        )
+
         original_position_events = self._position_event_reconciler.reconcile(
-            (*assignment_events, *expiration_events),
+            (*assignment_events, *expiration_events, *schwab_expirations),
             corroborating_assignments=boundary_assignment_events,
         )
         position_events = self._position_event_reconciler.reconcile(
             (*carry_assignment_deliveries(
                 assignment_events, previously_applied_deliveries,
                 period_start=period_start,
-            ), *expiration_events),
+            ), *expiration_events, *schwab_expirations),
             corroborating_assignments=boundary_assignment_events,
         )
 
