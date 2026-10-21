@@ -1496,6 +1496,11 @@ apply_performance_typography(st)
 st.session_state["campaigniq_table_render_number"] = 0
 st.title("CampaignIQ")
 
+# Display the source revision deployed by Render.
+import os
+build_id = os.environ.get("RENDER_GIT_COMMIT", "local")
+st.caption(f"Build: {build_id[:7]}")
+
 if authentication_mode() == AUTH_MODE_OIDC:
     if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
         st.logout()
