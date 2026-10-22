@@ -142,6 +142,7 @@ def execute_monthly_import(
     historical_source_root: str | Path | None = None,
     artifact_storage: ArtifactStorage | None = None,
     reconciliation_decision: ReconciliationDecision | None = None,
+    preview_only: bool = False,
 ) -> MonthlyImportExecution:
     """Run and finalize after reconciliation or an exact reviewed exception."""
     if not preflight.ready:
@@ -235,6 +236,15 @@ def execute_monthly_import(
         forex_report=result.forex_transaction_report,
         opening_lot_book=opening_lot_book,
     )
+
+    # Preview returns before any archive, publication marker, or artifact write.
+    # Keep the exact same pipeline and closing-inventory reconciliation as finalization.
+    if preview_only:
+        return MonthlyImportExecution(
+            result=result,
+            closing_reconciliation=reconciliation,
+            authoritative_state_path=None,
+        )
 
     accepted_decision: ReconciliationDecision | None = None
 
