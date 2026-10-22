@@ -226,7 +226,30 @@ class RealizedLotAttributor:
                     campaign_id=assignment_campaign_id,
                 )
 
-                if allocations and change.quantity < 0:
+                # Expiration offsets may close either long (+lot) or short
+                # (-lot) options.  A short-option offset has a positive signed
+                # change, so checking change.quantity < 0 drops its realized
+                # closing activity even when the lot book closed a short lot.
+                if (
+                    event.kind == PositionEventKind.EXPIRATION
+                    and isinstance(change.instrument, OptionContract)
+                    and allocations
+                ):
+                    activities.append(
+                        _ClosingActivity(
+                            closed_date=event.occurred_at.date(),
+                            instrument=change.instrument,
+                            quantity=sum(
+                                (allocation.quantity for allocation in allocations),
+                                Decimal("0"),
+                            ),
+                            allocations=allocations,
+                            # Preserve the existing event-date reconciliation
+                            # for broker expiration posting dates.
+                            is_assignment=True,
+                        )
+                    )
+                elif allocations and change.quantity < 0:
                     activities.append(
                         _ClosingActivity(
                             closed_date=event.occurred_at.date(),
