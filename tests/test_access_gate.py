@@ -49,7 +49,7 @@ def test_dashboard_requires_access_before_runtime_construction() -> None:
 
     assert gate_position < runtime_position
     assert (
-        "workspace_id=ACCESS.workspace_id if ACCESS is not None else None"
+        "workspace_id=LOCAL_IMPORT_WORKSPACE"
         in dashboard
     )
 

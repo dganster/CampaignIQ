@@ -79,10 +79,29 @@ def _forex_closing_quantities(
     Financing records do not change units. Crypto is a separate account.
     """
     period_start = period_end.replace(day=1)
-    if report.period_end != period_end or report.period_start not in {
-        period_start, period_start - date.resolution,
-    }:
+    standard_period = (
+        report.period_start == period_start - date.resolution
+        and report.period_end == period_end
+    )
+    alternative_period = (
+        report.period_start == period_start
+        and report.period_end == period_end + date.resolution
+    )
+    if not (standard_period or alternative_period):
         raise ValueError("FOREX closing control requires the complete selected-month report.")
+
+    if alternative_period:
+        transaction_dates = (
+            [row.trade_at.date() for row in report.new_transactions]
+            + [row.settlement_at.date() for row in report.new_transactions]
+            + [row.trade_at.date() for row in report.settlements]
+            + [row.settlement_at.date() for row in report.settlements]
+            + [row.occurred_at.date() for row in report.financing]
+        )
+        if any(not period_start <= day <= period_end for day in transaction_dates):
+            raise ValueError(
+                "FOREX closing control contains transactions outside the selected month."
+            )
     positions = {
         instrument: quantity
         for instrument, quantity in _lot_book_quantities(opening_lot_book).items()

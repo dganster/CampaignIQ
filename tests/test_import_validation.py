@@ -147,3 +147,42 @@ def test_forex_validation_counts_new_transactions(tmp_path):
     assert result.valid is True
     assert result.record_count == 1
     assert "1 new transaction(s)" in result.message
+
+
+def test_accepts_forex_next_month_boundary_with_in_month_activity(tmp_path):
+    path = tmp_path / "fx_alternative.csv"
+    path.write_text(
+        '"Transaction Report since Mar 1, 2025 through Apr 1, 2025"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="100","Mar 18, 2025 15:05:18","Mar 18, 2025 17:00:00",'
+        'new,EUR/USD,Buy,1.16505,"+100,000","-116,505",'
+        '0.00,1.16505,,"+100,000",,\n'
+    )
+    result = validate_monthly_input(
+        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
+        path,
+        period_start=date(2025, 3, 1),
+        period_end=date(2025, 3, 31),
+    )
+    assert result.valid is True
+    assert result.record_count == 1
+
+
+def test_rejects_forex_next_month_boundary_with_out_of_month_activity(tmp_path):
+    path = tmp_path / "fx_outside.csv"
+    path.write_text(
+        '"Transaction Report since Mar 1, 2025 through Apr 1, 2025"\n'
+        '"MTD Settled PL, USD:",0.00\n'
+        '"MTD fee, USD:",0.00\n'
+        '="101","Apr 1, 2025 15:05:18","Apr 1, 2025 17:00:00",'
+        'new,EUR/USD,Buy,1.16505,"+100,000","-116,505",'
+        '0.00,1.16505,,"+100,000",,\n'
+    )
+    result = validate_monthly_input(
+        MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,
+        path,
+        period_start=date(2025, 3, 1),
+        period_end=date(2025, 3, 31),
+    )
+    assert result.valid is False

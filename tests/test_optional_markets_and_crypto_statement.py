@@ -105,13 +105,15 @@ def test_execution_without_forex_report_reaches_pipeline(tmp_path,monkeypatch):
     preflight=SimpleNamespace(ready=True,opening_lot_book=LotBook(),forex_applicable=False,crypto_applicable=False,
                              contract=SimpleNamespace(period_start=START,period_end=END))
     inputs={role:tmp_path/'file' for role in (MonthlyInputRole.THINKORSWIM_TRADE_HISTORY,MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT)}
+    # Provide the closing statement consumed before the mocked pipeline.
+    (tmp_path / 'file').write_text('Test closing statement\n', encoding='utf-8')
     def pipeline(self,**kwargs):
         assert kwargs['forex_transaction_report'] is None
         raise RuntimeError('No-Forex pipeline reached')
     monkeypatch.setattr(execution.PeriodImportPipeline,'run',pipeline)
     with pytest.raises(RuntimeError,match='No-Forex pipeline reached'):
         execution.execute_monthly_import(preflight,authoritative_state_root=tmp_path,supplied_inputs=inputs)
-    assert not list(tmp_path.iterdir())
+    assert {p.name for p in tmp_path.iterdir()} == {'file'}
 
 def test_scope_and_choices_are_passed_to_both_signature_checks():
     tree=ast.parse(Path('src/campaigniq/ui/dashboard.py').read_text())

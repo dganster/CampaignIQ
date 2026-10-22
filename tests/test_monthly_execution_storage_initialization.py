@@ -11,6 +11,8 @@ def test_local_storage_is_initialized_before_prior_delivery_lookup(tmp_path, mon
     from campaigniq.persistence.artifact_storage import LocalFilesystemArtifactStorage
     preflight = SimpleNamespace(ready=True,opening_lot_book=LotBook(),contract=SimpleNamespace(period_start=date(2026,6,1),period_end=date(2026,6,30)))
     inputs = {role: tmp_path/'unused.txt' for role in (MonthlyInputRole.THINKORSWIM_TRADE_HISTORY,MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS,MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT,MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT)}
+    # Monthly execution reads the closing statement before invoking the pipeline.
+    (tmp_path / 'unused.txt').write_text('Test closing statement\n', encoding='utf-8')
     observed = []
     def verified(filename, **kwargs):
         storage = kwargs['storage']
