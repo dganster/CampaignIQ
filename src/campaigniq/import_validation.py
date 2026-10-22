@@ -180,9 +180,36 @@ def validate_monthly_input(
         if role is MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
             report = read_forex_transaction_report(source)
             expected_report_start = period_start - period_start.resolution
-            if (report.period_start, report.period_end) != (
-                expected_report_start,
-                period_end,
+            next_month_start = period_end + timedelta(days=1)
+
+            standard_period = (
+                report.period_start == expected_report_start
+                and report.period_end == period_end
+            )
+            alternative_period = (
+                report.period_start == period_start
+                and report.period_end == next_month_start
+            )
+
+            transaction_dates = [
+                timestamp.date()
+                for timestamp in (
+                    [row.trade_at for row in report.settlements]
+                    + [row.settlement_at for row in report.settlements]
+                    + [row.occurred_at for row in report.financing]
+                    + [row.trade_at for row in report.new_transactions]
+                    + [row.settlement_at for row in report.new_transactions]
+                )
+            ]
+
+            dates_within_month = all(
+                period_start <= day <= period_end
+                for day in transaction_dates
+            )
+
+            if not (
+                standard_period
+                or (alternative_period and dates_within_month)
             ):
                 return MonthlyInputValidation(
                     role,

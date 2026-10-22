@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import tempfile
 from datetime import date
@@ -44,6 +45,8 @@ from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_preflight import prepare_monthly_import
+from campaigniq.import_draft_bridge import restore_uploads, assert_revision_unchanged
+from campaigniq.persistence.import_drafts import ImportDraftRepository, DraftConflict
 from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.persistence.crypto_month import build_crypto_month, load_preceding_crypto
 from campaigniq.ui.crypto_view import render_crypto_report
@@ -174,9 +177,21 @@ def require_dashboard_access() -> AccessContext | None:
 
 ACCESS = require_dashboard_access()
 
+# Local development only: explicitly select the same workspace for both
+# authoritative artifacts and persistent upload drafts. Never permit a
+# workspace override on Render or when an authenticated identity exists.
+from campaigniq.local_import_workspace import resolve_local_import_workspace
+LOCAL_IMPORT_WORKSPACE = resolve_local_import_workspace(
+    access_workspace=ACCESS.workspace_id if ACCESS is not None else None,
+    backend=os.environ.get("CAMPAIGNIQ_STORAGE_BACKEND", "filesystem"),
+    dsn=os.environ.get("CAMPAIGNIQ_DEV_DATABASE_URL", ""),
+    requested=os.environ.get("CAMPAIGNIQ_LOCAL_IMPORT_WORKSPACE", ""),
+    on_render=bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID")),
+)
+
 RUNTIME = build_local_runtime(
     project_root=PROJECT_ROOT,
-    workspace_id=ACCESS.workspace_id if ACCESS is not None else None,
+    workspace_id=LOCAL_IMPORT_WORKSPACE,
 )
 AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
 HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
@@ -522,6 +537,17 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
     return supplied
 
 
+def _monthly_upload_media_type(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pdf":
+        return "application/pdf"
+    if suffix == ".csv":
+        return "text/csv"
+    if suffix == ".txt":
+        return "text/plain"
+    raise ValueError("Unsupported monthly import document format")
+
+
 def _monthly_import_signature(*, year, month, uploads, forex_applicable=True, crypto_applicable=True):
     digest = hashlib.sha256()
     digest.update(f"{int(year):04d}-{int(month):02d}".encode())
@@ -674,6 +700,8 @@ def _render_analytics_data_status(*, analytics_period_end: date) -> None:
     """Render operator-facing analytics and authoritative-state currency."""
 
     authoritative_periods = _authoritative_lot_period_ends()
+    st.caption(f"Active workspace: {ARTIFACT_STORAGE.namespace}" if hasattr(ARTIFACT_STORAGE, "namespace") else "Filesystem workspace")
+    st.info("Historical uploads are saved as drafts. Uploading files does not publish a month; existing authoritative months remain protected.")
     latest_authoritative = (
         authoritative_periods[-1] if authoritative_periods else None
     )
@@ -875,7 +903,11 @@ def render_monthly_import_wizard():
 
     authoritative_periods = _authoritative_lot_period_ends()
 
-    if authoritative_periods:
+    if os.environ.get("CAMPAIGNIQ_LOCAL_IMPORT_WORKSPACE") and LOCAL_IMPORT_WORKSPACE:
+        # Backfill operators start at the first historical month, not the
+        # month after the latest published authoritative record.
+        default_start = date(2025, 1, 1)
+    elif authoritative_periods:
         default_start = _next_month(authoritative_periods[-1])
     else:
         default_start = date.today().replace(day=1)
@@ -902,6 +934,11 @@ def render_monthly_import_wizard():
         month=int(month),
     )
 
+    st.caption(
+        f"Active workspace: {ARTIFACT_STORAGE.namespace}"
+        if hasattr(ARTIFACT_STORAGE, "namespace")
+        else "Active workspace: filesystem"
+    )
     st.markdown("#### 1. Supply monthly documents")
     if predecessor is None:
         prior_month_end = _month_start(int(year), int(month)) - date.resolution
@@ -934,6 +971,34 @@ def render_monthly_import_wizard():
     crypto_applicable = st.radio("Crypto for this month", ("Applicable", "Not applicable"), horizontal=True,
                                  key=f"monthly_crypto_applicable_{year}_{month}") == "Applicable"
     st.caption("Choose Not applicable only when there is no activity, cash balance, or open position to account for. Crypto activity comes from Account Trade History; add the optional Schwab Crypto Statement to check fills and dated ending balances.")
+    # Import drafts are available only for authenticated PostgreSQL workspaces.
+    # Filesystem development retains the existing upload behavior.
+    draft_repo = None
+    draft = None
+    saved_uploads = {}
+    if os.environ.get("CAMPAIGNIQ_STORAGE_BACKEND", "filesystem").lower() == "postgres":
+        try:
+            workspace = LOCAL_IMPORT_WORKSPACE or "shared"
+            if workspace != getattr(ARTIFACT_STORAGE, "namespace", workspace):
+                st.error("Workspace mismatch between saved drafts and authoritative storage.")
+                return
+            draft_repo = ImportDraftRepository(
+                os.environ["CAMPAIGNIQ_DEV_DATABASE_URL"], workspace
+            )
+            draft_repo.initialize()
+            existing_drafts = draft_repo.list_drafts()
+            if existing_drafts:
+                st.caption("Saved draft months: " + ", ".join(
+                    f"{d.year:04d}-{d.month:02d}" for d in existing_drafts
+                ))
+            draft = draft_repo.create_or_resume(int(year), int(month))
+            saved_uploads = restore_uploads(draft_repo, draft.id)
+            if saved_uploads:
+                st.caption("Previously uploaded documents are saved and can be reused.")
+        except Exception as exc:
+            st.error(f"Unable to load saved import documents: {exc}")
+            return
+
     uploads = {}
 
     for role, label, file_types in MONTHLY_UPLOAD_ROLES:
@@ -960,12 +1025,40 @@ def render_monthly_import_wizard():
         if role == MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE:
             st.caption(f"Only needed for an assignment that closes in {selected_period_start:%B} but posts in {selected_next_month:%B}. This supplies assignment evidence only; it does not import the next month.")
 
-        uploads[role] = st.file_uploader(
-            "Upload",
+        role_key = role.value if isinstance(role, MonthlyInputRole) else role
+        stored = saved_uploads.get(role)
+        if stored is not None:
+            st.caption(f"Saved: {stored.name}")
+        new_upload = st.file_uploader(
+            "Upload or replace",
             type=list(file_types),
-            key=f"monthly_import_{role}",
+            key=f"monthly_import_{int(year)}_{int(month)}_{role_key}",
             label_visibility="collapsed",
         )
+        if draft_repo is not None and new_upload is not None:
+            try:
+                # A different document requires explicit user confirmation.
+                draft_repo.upload(
+                    draft.id, role_key, new_upload.name,
+                    _monthly_upload_media_type(new_upload.name),
+                    new_upload.getvalue(),
+                    replace=st.session_state.get(
+                        f"monthly_import_replace_{year}_{month}_{role_key}", False
+                    ),
+                )
+                stored = restore_uploads(draft_repo, draft.id).get(role)
+                if stored is not None:
+                    st.caption(f"Saved now: {stored.name}")
+            except DraftConflict:
+                st.warning("A different document is already saved. Check Replace saved document to confirm.")
+                st.checkbox(
+                    "Replace saved document",
+                    key=f"monthly_import_replace_{year}_{month}_{role_key}",
+                )
+            except Exception as exc:
+                st.error(f"Unable to save {label}: {exc}")
+                return
+        uploads[role] = stored if draft_repo is not None else new_upload
 
     if predecessor is not None:
         predecessor_end, _, _ = predecessor
@@ -1014,6 +1107,9 @@ def render_monthly_import_wizard():
         disabled=not required_uploads_supplied,
     ):
         st.session_state["monthly_import_validated_signature"] = signature
+        st.session_state["monthly_import_validated_draft_revision"] = (
+            draft_repo.get(draft.id).revision if draft_repo is not None else None
+        )
         st.session_state["monthly_import_confirm"] = False
         st.session_state.pop("monthly_import_blocked_execution", None)
         for key in ("monthly_import_boundary_exception_requested", "monthly_import_boundary_exception_reason", "monthly_import_boundary_exception_evidence", "monthly_import_boundary_exception_approved"):
@@ -1100,6 +1196,39 @@ def render_monthly_import_wizard():
             f"{preflight.contract.period_start:%B %Y} is ready to process."
         )
 
+        st.markdown("##### Read-only closing reconciliation preview")
+        st.caption("Reconstruct January or the selected month's closing inventory without publishing any authoritative data.")
+        if st.button("Preview closing reconciliation", key="monthly_import_preview"):
+            try:
+                if draft_repo is not None:
+                    assert_revision_unchanged(
+                        draft_repo, draft.id,
+                        st.session_state["monthly_import_validated_draft_revision"],
+                    )
+                preview = execute_monthly_import(
+                    preflight,
+                    authoritative_state_root=AUTHORITATIVE_STATE_DIR,
+                    supplied_inputs=supplied,
+                    artifact_storage=ARTIFACT_STORAGE,
+                    historical_source_root=HISTORICAL_SOURCE_ROOT,
+                    preview_only=True,
+                )
+                if preview.closing_reconciliation.reconciled:
+                    st.success("Closing inventory reconciles with the supplied evidence. Nothing was published.")
+                else:
+                    st.warning("Closing inventory does not reconcile. Nothing was published.")
+                    render_dataframe(st, [
+                        {
+                            "Instrument": _display_instrument(item.instrument),
+                            "Computed": str(item.computed_quantity),
+                            "Snapshot": str(item.snapshot_quantity),
+                            "Difference": str(item.difference),
+                        }
+                        for item in preview.closing_reconciliation.mismatches
+                    ], use_container_width=True)
+            except Exception as exc:
+                st.error(f"Unable to preview closing reconciliation: {exc}")
+
         st.markdown("##### What happens during finalization")
         st.write(
             "CampaignIQ will reconstruct the selected month's activity and "
@@ -1128,6 +1257,21 @@ def render_monthly_import_wizard():
             "reconcile, the ordinary finalization attempt remains blocked "
             "and CampaignIQ will show the exact discrepancies for review."
         )
+
+        # Backfill is intentionally blocked until a separate, audited publication
+        # workflow can establish effects on later authoritative periods.
+        from campaigniq.historical_backfill_guard import assess_backfill
+        backfill = assess_backfill(
+            preflight.contract.period_end,
+            _authoritative_lot_period_ends(),
+        )
+        if backfill.blocked:
+            st.error(backfill.message)
+            st.caption(
+                "Read-only validation and reconciliation preview remain available. "
+                "Neither ordinary nor exceptional finalization is permitted."
+            )
+            return
 
         confirm = st.checkbox(
             f"I understand that finalizing "
@@ -1159,6 +1303,16 @@ def render_monthly_import_wizard():
                 "Validate the monthly import again."
             )
             return
+
+        if draft_repo is not None:
+            try:
+                assert_revision_unchanged(
+                    draft_repo, draft.id,
+                    st.session_state["monthly_import_validated_draft_revision"],
+                )
+            except (ValueError, KeyError) as exc:
+                st.error(f"Documents changed; validate again. {exc}")
+                return
 
         try:
             execution = run_or_resume_finalization(
@@ -1288,6 +1442,11 @@ def render_monthly_import_wizard():
             )
 
             try:
+                if draft_repo is not None:
+                    assert_revision_unchanged(
+                        draft_repo, draft.id,
+                        st.session_state["monthly_import_validated_draft_revision"],
+                    )
                 execution = execute_monthly_import(
                     preflight,
                     authoritative_state_root=AUTHORITATIVE_STATE_DIR,

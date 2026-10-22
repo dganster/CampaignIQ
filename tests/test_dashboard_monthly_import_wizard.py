@@ -107,7 +107,7 @@ def test_monthly_import_runtime_state_is_separate_from_test_fixtures() -> None:
     assert "from campaigniq.runtime import build_local_runtime" in text
     assert "RUNTIME = build_local_runtime(" in text
     assert (
-        "workspace_id=ACCESS.workspace_id if ACCESS is not None else None"
+        "workspace_id=LOCAL_IMPORT_WORKSPACE"
         in text
     )
     assert (
@@ -371,7 +371,7 @@ def test_monthly_uploaders_use_separate_guidance_labels() -> None:
     text = source()
 
     assert 'st.markdown(f"**{label}**")' in text
-    assert '"Upload",' in text
+    assert '"Upload or replace",' in text
     assert 'label_visibility="collapsed"' in text
 
 

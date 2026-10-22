@@ -73,3 +73,28 @@ def test_exp_rejects_non_exp_transaction() -> None:
         assert "not an EXP" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_spx_weekly_expiration_changes_option_contract() -> None:
+    from campaigniq.domain.option_contract import OptionContract
+    from campaigniq.domain.option_type import OptionType
+
+    event = to_expiration_event(
+        make_row(
+            "BOT 10.0 SPX 100 (Weeklys) 26 MAR 25 5760 PUT "
+            "UPON PUT S & P 500 INDEX $5760 EXP 03/26/25"
+        )
+    )
+
+    assert event.kind == PositionEventKind.EXPIRATION
+    assert event.changes == (
+        PositionChange(
+            instrument=OptionContract(
+                underlying="SPX",
+                expiration=date(2025, 3, 26),
+                strike=Decimal("5760"),
+                option_type=OptionType.PUT,
+            ),
+            quantity=Decimal("10"),
+        ),
+    )

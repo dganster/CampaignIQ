@@ -131,9 +131,14 @@ def prepare_monthly_import(
                         datetime.max.time(),
                     ),
                 )
-                bootstrap_opening_lot_book = LotBook()
-                for lot in to_lots(list(rows)):
-                    bootstrap_opening_lot_book.seed(lot)
+                from campaigniq.pending_opening_inventory import (
+                    reconstruct_pending_opening_inventory,
+                )
+                bootstrap_opening_lot_book = reconstruct_pending_opening_inventory(
+                    rows,
+                    Path(bootstrap_path).read_text(encoding='utf-8').splitlines(),
+                    period_end=snapshot_end,
+                )
 
     for requirement in contract.requirements:
         role = requirement.role
