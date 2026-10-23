@@ -377,6 +377,12 @@ class PeriodImportPipeline:
             )
         )
 
+        from campaigniq.importers.schwab.pre_split_contract_evidence import corroborate_pre_split_contracts
+        trades = corroborate_pre_split_contracts(
+            trades, (*assignment_lines, *expiration_lines),
+            start=period_start, end=period_end,
+        )
+
         supplemental = tuple(
             trade for lines in assignment_lines
             for trade in recover_statement_allocations(
