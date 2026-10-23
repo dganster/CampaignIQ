@@ -1,0 +1,234 @@
+"""Development-only whole-year preview over an immutable workspace capture.
+
+No publishing API is called. A successful inventory check is not authorization.
+"""
+import base64
+import calendar
+from dataclasses import replace
+from datetime import date
+from decimal import Decimal
+from hashlib import sha256
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from campaigniq.historical_backfill_bundle import validate, encode
+from campaigniq.historical_backfill_draft_preview import _FrozenStorage, _prepare_uploads
+from campaigniq.import_contract import MonthlyInputRole
+from campaigniq.import_draft_bridge import RestoredUpload, SUPPORTED_UPLOAD_KEYS
+from campaigniq.import_preflight import prepare_monthly_import
+from campaigniq.monthly_import_execution import execute_monthly_import
+from campaigniq.pdf_text import extract_pdf_text
+from campaigniq.persistence.lot_book_store import serialize_lot_book, deserialize_lot_book, _deserialize_instrument
+from campaigniq.persistence.monthly_publication import is_month_published_in_storage
+from campaigniq.persistence.position_journal import capture_position_journal, deserialize_position_journal
+
+
+def quantities(book):
+    result = {}
+    for instrument in book.instruments():
+        quantity = sum((lot.quantity for lot in book.lots(instrument)), Decimal(0))
+        if not quantity.is_finite():
+            raise ValueError('Non-finite position quantity.')
+        if quantity:
+            result[repr(instrument)] = quantity
+    return result
+
+
+def differences(left, right):
+    return [dict(instrument=k, prior=str(left.get(k, Decimal(0))), following=str(right.get(k, Decimal(0))))
+            for k in sorted(left.keys() | right.keys()) if left.get(k, Decimal(0)) != right.get(k, Decimal(0))]
+
+
+def _state(book, end):
+    return serialize_lot_book(period_end=end, lot_book=book)
+
+
+def _uploads(documents, root):
+    supported = {getattr(role, 'value', role): role for role in SUPPORTED_UPLOAD_KEYS}
+    unknown = sorted({doc['role'] for doc in documents} - supported.keys())
+    if unknown:
+        raise ValueError('Unsupported saved document roles: ' + ', '.join(unknown))
+    uploads = {supported[d['role']]: RestoredUpload(d['filename'], d['media_type'], base64.b64decode(d['content_base64']))
+               for d in documents}
+    supplied = _prepare_uploads(upload_dir=root, uploads=uploads)
+    role = MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT
+    if role in uploads:
+        upload = uploads[role]
+        path = root / ('forex_monthly' + Path(upload.name).suffix)
+        path.write_bytes(upload.getvalue())
+        if path.suffix.lower() == '.pdf':
+            path = extract_pdf_text(path, root / 'forex_monthly.txt')
+        supplied[role] = path
+    return supplied
+
+
+def _execution_report(execution, start):
+    if execution.finalized:
+        raise RuntimeError('Preview unexpectedly finalized.')
+    capture_position_journal(execution.result, start)  # independently replay exact lots
+    reconciliation = execution.closing_reconciliation
+    blockers = []
+    if not reconciliation.reconciled:
+        blockers.append('Closing inventory does not reconcile.')
+    blockers.extend(reconciliation.forex_source_findings)
+    controls = {}
+    for name in ('settlement', 'pl_total', 'commission', 'financing'):
+        value = getattr(execution, 'forex_' + name + '_control_reconciled')
+        controls[name] = value
+        if value is False:
+            blockers.append('Forex monetary control failed: ' + name)
+    boundary = execution.result.boundary_reconstruction
+    if boundary.unresolved_positions or boundary.unresolved_campaigns or boundary.historical_requirements:
+        blockers.append('Historical opening/campaign evidence remains incomplete.')
+    return dict(closing_reconciled=reconciliation.reconciled,
+                closing_mismatches=[dict(instrument=repr(m.instrument), computed=str(m.computed_quantity), broker=str(m.snapshot_quantity))
+                                    for m in reconciliation.mismatches],
+                forex_controls=controls, forex_resolution=execution.forex_resolution,
+                journal_replay_verified=True, blocking_findings=blockers)
+
+
+def downstream(storage, december):
+    """Compare actual published journal openings, never month-end as opening."""
+    rows = []
+    prior = december
+    for month in range(1, 10):
+        start = date(2026, month, 1)
+        end = date(2026, month, calendar.monthrange(2026, month)[1])
+        key = f'{end:%Y-%m}'
+        row = dict(month=key, quantity_continuity_verified=False, identity_continuity_verified=False,
+                   basis_continuity_verified=False, blocking_findings=[])
+        try:
+            if not is_month_published_in_storage(storage, period_end=end):
+                raise ValueError('Protected month is not published.')
+            closing = deserialize_lot_book(storage.read_text(key + '-lot-book.json'))
+            if closing.period_end != end:
+                raise ValueError('Published closing period differs.')
+            entries = deserialize_position_journal(storage.read_text(key + '-position-journal.json'), period_start=start, period_end=end)
+            opening = {}; identities = []
+            for item in entries:
+                if item['action'] != 'Carried position':
+                    continue
+                instrument = repr(_deserialize_instrument(item['instrument']))
+                quantity = Decimal(item['quantity_change'])
+                opening[instrument] = opening.get(instrument, Decimal(0)) + quantity
+                refs = item.get('opening_refs')
+                if not isinstance(refs, list) or sum((Decimal(r['quantity']) for r in refs), Decimal(0)) != quantity:
+                    raise ValueError('Published journal lacks consistent opening lot references.')
+                for ref in refs:
+                    q = Decimal(ref['quantity'])
+                    if not q.is_finite():
+                        raise ValueError('Invalid journal opening quantity.')
+                    identities.append((instrument, ref['lot_id'], q, ref['opened_at'], item['campaign_id'] or ''))
+            opening = {k: v for k, v in opening.items() if v}
+            if prior is None:
+                raise ValueError('Previous closing state is unavailable.')
+            row['quantity_differences'] = differences(quantities(prior), opening)
+            row['quantity_continuity_verified'] = not row['quantity_differences']
+            expected = [(repr(lot.instrument), lot.lot_id, lot.quantity, lot.opened_at.isoformat(), lot.campaign_id or '')
+                        for instrument in prior.instruments() for lot in prior.lots(instrument)]
+            row['identity_continuity_verified'] = sorted(expected) == sorted(identities)
+            if not row['quantity_continuity_verified']:
+                row['blocking_findings'].append('Published opening quantities differ from previous closing.')
+            if not row['identity_continuity_verified']:
+                row['blocking_findings'].append('Published opening lot/campaign identities differ; reviewed identity mapping required.')
+            row['blocking_findings'].append('Published journal does not preserve opening basis; basis continuity is unverified.')
+        except Exception as error:
+            row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
+        # A missing edge must not conceal checks between later published months.
+        try:
+            persisted = deserialize_lot_book(storage.read_text(key + '-lot-book.json'))
+            prior = persisted.lot_book if persisted.period_end == end and is_month_published_in_storage(storage, period_end=end) else None
+        except Exception:
+            prior = None
+        rows.append(row)
+    return rows
+
+
+def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), progress=None):
+    validate(bundle)
+    allowed = {f'2025-{month:02}' for month in range(1, 13)}
+    if not set(forex_not_applicable) <= allowed or not set(crypto_not_applicable) <= allowed:
+        raise ValueError('Applicability declarations must name 2025 months.')
+    before = sha256(encode(bundle)).hexdigest()
+    storage = _FrozenStorage(bundle)
+    drafts = {(d['year'], d['month']): d for d in bundle['drafts'] if d['state'] == 'draft'}
+    rows = []; carried = None; chain = True
+    for month in range(1, 13):
+        key = f'2025-{month:02}'
+        draft = drafts.get((2025, month))
+        row = dict(month=key, draft_id=None, revision=None, documents=[],
+                   independent_preview=None, continuous_preview=None, blocking_findings=[])
+        next_carried = None
+        try:
+            if draft is None:
+                raise ValueError('No saved active draft.')
+            row.update(draft_id=draft['id'], revision=draft['revision'])
+            docs = [d for d in bundle['documents'] if d['draft_id'] == draft['id'] and not d['superseded']]
+            row['documents'] = [{k: d[k] for k in ('id', 'role', 'filename', 'revision', 'sha256')} for d in docs]
+            with TemporaryDirectory(prefix='campaigniq-year-preflight-') as directory:
+                root = Path(directory)
+                supplied = _uploads(docs, root)
+                prepared_hashes = {r.value: sha256(p.read_bytes()).hexdigest() for r, p in supplied.items()}
+                preflight = prepare_monthly_import(2025, month, authoritative_state_root=root / 'state',
+                    supplied_inputs=supplied, artifact_storage=storage,
+                    forex_applicable=key not in forex_not_applicable, crypto_applicable=key not in crypto_not_applicable)
+                row['validations'] = [dict(role=v.role.value, valid=v.valid, message=v.message) for v in preflight.validations]
+                if not preflight.ready or preflight.opening_lot_book is None:
+                    raise ValueError('Required inputs or opening inventory are not ready; see validations.')
+                def execute(prepared):
+                    return execute_monthly_import(prepared, authoritative_state_root=root / 'state', supplied_inputs=supplied,
+                                                  artifact_storage=storage, preview_only=True)
+                independent = execute(preflight)
+                row['independent_preview'] = _execution_report(independent, preflight.contract.period_start)
+                row['blocking_findings'].extend(row['independent_preview']['blocking_findings'])
+                if month == 1:
+                    continuous = independent
+                elif carried is not None:
+                    row['opening_quantity_differences'] = differences(quantities(carried), quantities(independent.result.opening_lot_book))
+                    if row['opening_quantity_differences']:
+                        row['blocking_findings'].append('Previous closing and independently evidenced opening quantities differ.')
+                    continuous = execute(replace(preflight, opening_state=None, bootstrap_opening_lot_book=carried.clone()))
+                    previous_end = preflight.contract.period_start - date.resolution
+                    row['exact_opening_state_carried'] = _state(carried, previous_end) == _state(continuous.result.opening_lot_book, previous_end)
+                    if not row['exact_opening_state_carried']:
+                        row['blocking_findings'].append('Pipeline changed carried opening state; provenance/basis review required.')
+                else:
+                    raise ValueError('Continuous replay unavailable because the previous draft did not pass.')
+                row['continuous_preview'] = _execution_report(continuous, preflight.contract.period_start)
+                row['blocking_findings'].extend(row['continuous_preview']['blocking_findings'])
+                row['closing_quantity_differences'] = differences(quantities(continuous.result.ending_lot_book), quantities(independent.result.ending_lot_book))
+                if row['closing_quantity_differences']:
+                    row['blocking_findings'].append('Continuous closing differs from the independent monthly preview.')
+                if prepared_hashes != {r.value: sha256(p.read_bytes()).hexdigest() for r, p in supplied.items()}:
+                    raise ValueError('Prepared source bytes changed during preview.')
+                row['prepared_source_sha256'] = prepared_hashes
+                row['closing_state_sha256'] = sha256(_state(continuous.result.ending_lot_book, preflight.contract.period_end).encode()).hexdigest()
+                if not row['blocking_findings']:
+                    next_carried = continuous.result.ending_lot_book.clone()
+        except Exception as error:
+            row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
+        carried = next_carried
+        chain = chain and carried is not None
+        row['blocking_findings'] = list(dict.fromkeys(row['blocking_findings']))
+        rows.append(row)
+        if progress:
+            progress(row)
+    protected = {k: sha256(v.encode()).hexdigest() for k, v in bundle['artifacts'].items()
+                 if len(k) >= 7 and k[:4].isdigit() and int(k[:4]) >= 2026}
+    edges = downstream(storage, carried if chain else None)
+    if sha256(encode(bundle)).hexdigest() != before:
+        raise RuntimeError('Frozen workspace capture changed.')
+    blockers = [r['month'] + ': ' + b for r in rows + edges for b in r['blocking_findings']]
+    blockers += ['Physical PostgreSQL restore and rollback have not been tested.',
+                 'A separately authorized transactional historical publisher has not been implemented.']
+    return dict(format='campaigniq.whole_year_backfill_preflight', version=1, diagnostic_only=True,
+                workspace=bundle['workspace'], captured_at=bundle['captured_at'], capture_sha256=before,
+                months=rows, downstream=edges, all_2025_drafts_passed=chain,
+                protected_artifact_sha256=protected, captured_bytes_unchanged=True,
+                full_portfolio_continuity_verified=False, publication_authorized=False,
+                applicability_declarations=dict(forex_not_applicable=sorted(forex_not_applicable), crypto_not_applicable=sorted(crypto_not_applicable)),
+                blocking_findings=blockers,
+                limitations=['Workspace artifacts and all draft document versions only; not a full database or persistent-disk backup.',
+                             'Read-only snapshot cannot establish that production remained unchanged after capture.',
+                             'Crypto reporting and source completeness require independent review.'])
