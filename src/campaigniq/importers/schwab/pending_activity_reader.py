@@ -13,6 +13,36 @@ ACTION=re.compile(r"\b(?P<action>Cover Short|Short Sale)\s+(?P<symbol>[A-Z][A-Z0
 EXP=re.compile(r"(?P<x>\d{2}/\d{2}/\d{4})")
 STRIKE=re.compile(r"(?P<x>[\d,]+(?:\.\d+)?)\s+[CP]\b")
 
+def _pending_lines_with_dates(lines: list[str]):
+    """Carry activity dates across all pending rows and continued pages.
+
+    Only dates at the start of an activity row can establish the date;
+    settlement dates and option contract details must never supply it.
+    """
+    inside = False
+    current_date = None
+    dated_row = re.compile(
+        r"^\s*(?:Pending\s+)?(\d{2})/(\d{2})\s+"
+        r"(?:Purchase|Sale|Short Sale|Cover Short|Qual Div|Cash Dividend|Cash)\b"
+    )
+    for index, line in enumerate(lines):
+        text = line.strip()
+        if text.startswith("Pending / Open Activity"):
+            if "(continued)" not in text or not inside:
+                current_date = None
+            inside = True
+            continue
+        if text.startswith(("Total Pending Transactions", "Endnotes For Your Account")):
+            inside = False
+            current_date = None
+        if not inside:
+            continue
+        match = dated_row.match(line)
+        if match:
+            current_date = (int(match[1]), int(match[2]))
+        yield index, line, current_date
+
+
 @dataclass(frozen=True, slots=True)
 class SchwabPendingOptionActivity:
     instrument: OptionContract
@@ -21,14 +51,8 @@ class SchwabPendingOptionActivity:
     settlement_date: date | None = None
 
 def read_pending_option_activity(lines: list[str]) -> tuple[SchwabPendingOptionActivity,...]:
-    out=[]; inside=False; current_date=None
-    for i,line in enumerate(lines):
-        text=line.strip()
-        if text.startswith("Pending / Open Activity"):
-            inside=True; continue
-        if inside and text.startswith("Endnotes For Your Account"):
-            break
-        if not inside: continue
+    out=[]
+    for i, line, current_date in _pending_lines_with_dates(lines):
         m=ACTION.search(line)
         if not m: continue
         em=sm=None
@@ -44,7 +68,7 @@ def read_pending_option_activity(lines: list[str]) -> tuple[SchwabPendingOptionA
         prefix = line[: line.find(m.group("action"))]
         dm=re.search(r"\b(\d{2})/(\d{2})\b",prefix)
         if dm:
-            current_date=date(expiration.year,int(dm.group(1)),int(dm.group(2)))
+            current_date=(int(dm.group(1)),int(dm.group(2)))
         suffix = line[line.find(m.group("action")):]
         settlement_match = re.search(r"\b(\d{2})/(\d{2})\b", suffix)
         settlement_date = (
@@ -60,7 +84,7 @@ def read_pending_option_activity(lines: list[str]) -> tuple[SchwabPendingOptionA
         change=qty if m.group("action")=="Cover Short" else -qty
         out.append(SchwabPendingOptionActivity(
             OptionContract(m.group("symbol"),expiration,Decimal(sm.group("x").replace(",","")),OptionType[m.group("type")]),
-            change,current_date,settlement_date))
+            change,(date(expiration.year, *current_date) if current_date else None),settlement_date))
     return tuple(out)
 
 
@@ -117,18 +141,10 @@ def read_pending_position_activity(
         r"\b(?P<action>Purchase|Sale)\s+(?P<symbol>[A-Z][A-Z0-9.]*)\s+"
         r"(?P<description>.*?)\s+(?P<qty>[\d,]+\.\d{4})\b"
     )
-    inside = False
-    current_date = None
-    for line in lines:
-        text = line.strip()
-        if text.startswith("Pending / Open Activity"):
-            inside = True
-            current_date = None
-            continue
-        if text.startswith(("Total Pending Transactions", "Endnotes For Your Account")):
-            inside = False
-        if not inside:
-            continue
+    for _, line, inherited_date in _pending_lines_with_dates(lines):
+        current_date = (
+            _activity_date(*inherited_date, period_end) if inherited_date else None
+        )
         option_match = ACTION.search(line)
         match = equity.search(line)
         action_match = option_match or match
