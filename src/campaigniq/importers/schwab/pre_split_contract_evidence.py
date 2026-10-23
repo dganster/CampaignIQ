@@ -1,8 +1,8 @@
-"""Corroborate October 2025 NFLX export strikes against actual Schwab trades.
+"""Corroborate September/October 2025 NFLX export strikes against actual Schwab trades.
 
 Some later TOS exports divide historical strikes by ten without changing the
 execution quantities or prices. This is a source-identity repair, not a split
-of lots or cash. Only this verified pre-split month/layout is supported. Original
+of lots or cash. Only these verified pre-split months/layouts is supported. Original
 source bytes and every execution fact remain unchanged.
 """
 from collections import defaultdict
@@ -20,9 +20,13 @@ from campaigniq.importers.schwab.option_assignment_section_reader import _read_s
 
 
 START, END = date(2025, 10, 1), date(2025, 10, 31)
-# Exact execution/processing pairs corroborated by the supplied October records.
+# Exact execution/processing pairs corroborated by the supplied broker records.
 # October 10 processed October 14; do not generalize this to arbitrary holidays.
-PROCESSING = {date(2025, 10, 9): date(2025, 10, 10),
+SUPPORTED = {(date(2025, 9, 1), date(2025, 9, 30)), (START, END)}
+PROCESSING = {date(2025, 9, 4): date(2025, 9, 5),
+              date(2025, 9, 9): date(2025, 9, 10),
+              date(2025, 9, 26): date(2025, 9, 29),
+              date(2025, 10, 9): date(2025, 10, 10),
               date(2025, 10, 10): date(2025, 10, 14),
               date(2025, 10, 30): date(2025, 10, 31)}
 ROW = re.compile(
@@ -37,7 +41,7 @@ def number(value):
     return Decimal(value.replace(',', '').replace('(', '-').replace(')', ''))
 
 
-def statement_rows(lines):
+def statement_rows(lines, *, start=START, end=END):
     rows = []
     processed = None
     active = False
@@ -55,8 +59,8 @@ def statement_rows(lines):
         category, action, kind, strike, signed_qty, price, fee, cash = m.groups()
         if (category, action) not in {('Sale', 'Short Sale'), ('Purchase', 'Cover Short')}:
             raise ValueError('Contradictory NFLX transaction action.')
-        if processed is None or not START <= processed <= END or i + 2 >= len(lines):
-            raise ValueError('Missing October NFLX processing date or contract details.')
+        if processed is None or not start <= processed <= end or i + 2 >= len(lines):
+            raise ValueError('Missing selected-month NFLX processing date or contract details.')
         dates = re.findall(r"\b(\d{2}/\d{2}/\d{4}|\d{2}/\d{2}/\d{2})\b", lines[i+1])
         from datetime import datetime
         expirations = {datetime.strptime(d, '%m/%d/%Y' if len(d) == 10 else '%m/%d/%y').date() for d in dates}
@@ -86,7 +90,7 @@ def corroborate_pre_split_contracts(trades, statements, *, start, end):
     exactly one independent transaction; incomplete or ambiguous evidence blocks.
     """
     trades = tuple(trades)
-    if (start, end) != (START, END):
+    if (start, end) not in SUPPORTED:
         return trades
     groups = defaultdict(list)
     for trade in trades:
@@ -94,7 +98,7 @@ def corroborate_pre_split_contracts(trades, statements, *, start, end):
             if isinstance(leg.instrument, OptionContract) and leg.instrument.underlying == 'NFLX':
                 for execution in leg.executions:
                     groups[(execution.executed_at.date(), leg.instrument, leg.side, leg.position_effect)].append(execution)
-    if not groups:
+    if not groups or not any(start <= key[0] <= end for key in groups):
         return trades
     # Repeated copies of the same whole statement are one evidence source.
     sources = list(dict.fromkeys(tuple(lines) for lines in statements))
@@ -102,9 +106,9 @@ def corroborate_pre_split_contracts(trades, statements, *, start, end):
     for lines in sources:
         if not any(ROW.match(line) for line in lines):
             continue
-        if _read_statement_period(list(lines)) != (START, END):
-            raise ValueError('NFLX contract evidence must cover October 2025 exactly.')
-        candidates.append(statement_rows(lines))
+        if _read_statement_period(list(lines)) != (start, end):
+            raise ValueError('NFLX contract evidence must cover the selected supported month exactly.')
+        candidates.append(statement_rows(lines, start=start, end=end))
     if not candidates:
         return trades
     if len(candidates) != 1:
