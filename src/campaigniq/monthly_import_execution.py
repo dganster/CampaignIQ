@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from campaigniq.persistence.position_journal import serialize_position_journal
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from shutil import copyfile
@@ -71,6 +71,7 @@ class MonthlyImportExecution:
     authoritative_state_path: Path | None
     reconciliation_decision: ReconciliationDecision | None = None
     crypto_report: dict | None = None
+    forex_resolution: dict | None = None
 
     @property
     def finalized(self) -> bool:
@@ -221,6 +222,7 @@ def execute_monthly_import(
         historical_source_root=historical_source_root,
     )
 
+    resolution_audit = None
     evidence = None
     monthly_forex = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
     if monthly_forex is not None:
@@ -228,6 +230,15 @@ def execute_monthly_import(
         evidence = read_forex_opening_statement(Path(monthly_forex).read_text(encoding="utf-8"),
             trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
         verify_forex_ending(result.ending_lot_book, evidence)
+        if (contract.period_end.year, contract.period_end.month) in ((2025,8),(2025,9)):
+            from campaigniq.forex_statement_resolution import resolve_forex_statement
+            from campaigniq.domain.forex_settlement_attribution import attribute_forex_settlements
+            resolved, resolution_audit = resolve_forex_statement(Path(monthly_forex).read_text(encoding="utf-8"),
+                trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
+            attrs = attribute_forex_settlements(result.campaigns, resolved.settlements)
+            if {a.settlement.order_id for a in attrs} != {s.order_id for s in resolved.settlements}:
+                raise ValueError("Resolved Forex closes lack unambiguous campaign attribution.")
+            result = replace(result, forex_transaction_report=resolved, forex_settlement_attributions=attrs)
 
     closing_rows = read_position_snapshot_section(
         closing_lines,
@@ -251,6 +262,7 @@ def execute_monthly_import(
     if preview_only:
         return MonthlyImportExecution(
             result=result,
+            forex_resolution=resolution_audit,
             closing_reconciliation=reconciliation,
             authoritative_state_path=None,
         )
@@ -265,6 +277,7 @@ def execute_monthly_import(
         if reconciliation_decision is None:
             return MonthlyImportExecution(
                 result=result,
+            forex_resolution=resolution_audit,
                 closing_reconciliation=reconciliation,
                 authoritative_state_path=None,
             )
@@ -277,6 +290,7 @@ def execute_monthly_import(
         ):
             return MonthlyImportExecution(
                 result=result,
+            forex_resolution=resolution_audit,
                 closing_reconciliation=reconciliation,
                 authoritative_state_path=None,
             )
@@ -365,6 +379,10 @@ def execute_monthly_import(
     )
     storage.write_text(realized_name, realized_text)
     storage.write_text(forex_name, forex_text)
+    if resolution_audit is not None:
+        import json
+        storage.write_text(f"{contract.period_end:%Y-%m}-forex-source-resolution.json",
+                           json.dumps(resolution_audit, indent=2, sort_keys=True)+"\n")
     storage.write_text(lifecycle_name, lifecycle_text)
     storage.write_text(lot_name, lot_text)
     storage.write_text(journal_name, journal_text)
@@ -394,6 +412,7 @@ def execute_monthly_import(
 
     return MonthlyImportExecution(
         result=result,
+        forex_resolution=resolution_audit,
         closing_reconciliation=reconciliation,
         authoritative_state_path=state_path,
         reconciliation_decision=accepted_decision,

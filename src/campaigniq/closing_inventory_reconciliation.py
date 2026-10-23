@@ -96,7 +96,7 @@ def _forex_closing_quantities(
             [row.trade_at.date() for row in report.new_transactions]
             + [row.settlement_at.date() for row in report.new_transactions]
             + [row.trade_at.date() for row in report.settlements]
-            + [row.settlement_at.date() for row in report.settlements]
+            + [(row.settlement_at or row.trade_at).date() for row in report.settlements]
             + [row.occurred_at.date() for row in report.financing]
         )
         if any(not period_start <= day <= period_end for day in transaction_dates):
@@ -110,7 +110,7 @@ def _forex_closing_quantities(
     } if opening_lot_book is not None else {}
     events = sorted(
         (*report.new_transactions, *report.settlements),
-        key=lambda row: (row.trade_at, row.settlement_at),
+        key=lambda row: (row.trade_at, row.settlement_at or row.trade_at),
     )
     for row in events:
         # The report's declared interval defines the closing control. Avoid

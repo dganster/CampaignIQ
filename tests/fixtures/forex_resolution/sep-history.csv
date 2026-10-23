@@ -1,0 +1,55 @@
+Account Statement test
+
+Cash Balance
+DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE
+
+Account Trade History
+Notes,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type
+
+Forex Statements
+,Date,Time,Type,Ref #,Description,Commissions & Fees,Amount,Amount(USD),Balance
+,8/31/25,23:00:00,BAL,--,Cash balance at the start of the business day 01.09 CST.,--,--,--,"$10,905.42"
+,9/1/25,15:12:24,DOI,="102130330371","Interest paid on -200,000.00 EUR/USD @ 1.1712",--,--,--,"$10,905.42"
+,9/1/25,23:00:00,BAL,--,Cash balance at the start of the business day 02.09 CST.,--,--,--,"$10,905.42"
+,9/2/25,15:14:42,DOI,="102203346958","Interest paid on -200,000.00 EUR/USD @ 1.1642",--,10.52,$10.52,"$10,915.94"
+,9/2/25,23:00:00,BAL,--,Cash balance at the start of the business day 03.09 CST.,--,--,--,"$10,915.94"
+,9/3/25,15:13:02,DOI,="102278535603","Interest paid on -200,000.00 EUR/USD @ 1.1661",--,31.61,$31.61,"$10,947.55"
+,9/3/25,23:00:00,BAL,--,Cash balance at the start of the business day 04.09 CST.,--,--,--,"$10,947.55"
+,9/4/25,15:12:27,DOI,="102354670141","Interest paid on -200,000.00 EUR/USD @ 1.1651",--,10.53,$10.53,"$10,958.08"
+,9/4/25,23:00:00,BAL,--,Cash balance at the start of the business day 05.09 CST.,--,--,--,"$10,958.08"
+,9/5/25,15:12:57,DOI,="102436868480","Interest paid on -200,000.00 EUR/USD @ 1.1718",--,10.52,$10.52,"$10,968.60"
+,9/5/25,23:00:00,BAL,--,Cash balance at the start of the business day 06.09 CST.,--,--,--,"$10,968.60"
+,9/6/25,23:00:00,BAL,--,Cash balance at the start of the business day 07.09 CST.,--,--,--,"$10,968.60"
+,9/7/25,23:00:00,BAL,--,Cash balance at the start of the business day 08.09 CST.,--,--,--,"$10,968.60"
+,9/8/25,15:15:06,DOI,="102512471714","Interest paid on -200,000.00 EUR/USD @ 1.1763",--,10.63,$10.63,"$10,979.23"
+,9/8/25,23:00:00,BAL,--,Cash balance at the start of the business day 09.09 CST.,--,--,--,"$10,979.23"
+,9/9/25,15:15:21,DOI,="102590347615","Interest paid on -200,000.00 EUR/USD @ 1.1709",--,10.58,$10.58,"$10,989.81"
+,9/9/25,23:00:00,BAL,--,Cash balance at the start of the business day 10.09 CST.,--,--,--,"$10,989.81"
+,9/10/25,15:12:53,DOI,="102673340106","Interest paid on -200,000.00 EUR/USD @ 1.1695",--,31.89,$31.89,"$11,021.70"
+,9/10/25,23:00:00,BAL,--,Cash balance at the start of the business day 11.09 CST.,--,--,--,"$11,021.70"
+,9/11/25,15:12:46,DOI,="102754066524","Interest paid on -200,000.00 EUR/USD @ 1.1736",--,11.50,$11.50,"$11,033.20"
+,9/11/25,23:00:00,BAL,--,Cash balance at the start of the business day 12.09 CST.,--,--,--,"$11,033.20"
+,9/12/25,15:12:41,DOI,="102833528689","Interest paid on -200,000.00 EUR/USD @ 1.1734",--,10.60,$10.60,"$11,043.80"
+,9/12/25,23:00:00,BAL,--,Cash balance at the start of the business day 13.09 CST.,--,--,--,"$11,043.80"
+,9/13/25,23:00:00,BAL,--,Cash balance at the start of the business day 14.09 CST.,--,--,--,"$11,043.80"
+,9/14/25,23:00:00,BAL,--,Cash balance at the start of the business day 15.09 CST.,--,--,--,"$11,043.80"
+,9/15/25,15:13:10,DOI,="102917573945","Interest paid on -200,000.00 EUR/USD @ 1.176",--,10.63,$10.63,"$11,054.43"
+,9/15/25,23:00:00,BAL,--,Cash balance at the start of the business day 16.09 CST.,--,--,--,"$11,054.43"
+,9/16/25,15:14:07,DOI,="102996623890","Interest paid on -200,000.00 EUR/USD @ 1.1867",--,10.72,$10.72,"$11,065.15"
+,9/16/25,23:00:00,BAL,--,Cash balance at the start of the business day 17.09 CST.,--,--,--,"$11,065.15"
+,9/17/25,02:00:17,TRD,="1004170891583","BOT +200,000 EUR/USD @1.18412",--,"-4,638.00","($4,638.00)","$6,427.15"
+,9/17/25,15:12:18,SETL,--,Settlement,--,--,--,"$6,427.15"
+,9/17/25,23:00:00,BAL,--,Cash balance at the start of the business day 18.09 CST.,--,--,--,"$6,427.15"
+,9/18/25,23:00:00,BAL,--,Cash balance at the start of the business day 19.09 CST.,--,--,--,"$6,427.15"
+,9/19/25,23:00:00,BAL,--,Cash balance at the start of the business day 20.09 CST.,--,--,--,"$6,427.15"
+,9/20/25,23:00:00,BAL,--,Cash balance at the start of the business day 21.09 CST.,--,--,--,"$6,427.15"
+,9/21/25,23:00:00,BAL,--,Cash balance at the start of the business day 22.09 CST.,--,--,--,"$6,427.15"
+,9/22/25,23:00:00,BAL,--,Cash balance at the start of the business day 23.09 CST.,--,--,--,"$6,427.15"
+,9/23/25,23:00:00,BAL,--,Cash balance at the start of the business day 24.09 CST.,--,--,--,"$6,427.15"
+,9/24/25,23:00:00,BAL,--,Cash balance at the start of the business day 25.09 CST.,--,--,--,"$6,427.15"
+,9/25/25,23:00:00,BAL,--,Cash balance at the start of the business day 26.09 CST.,--,--,--,"$6,427.15"
+,9/26/25,23:00:00,BAL,--,Cash balance at the start of the business day 27.09 CST.,--,--,--,"$6,427.15"
+,9/27/25,23:00:00,BAL,--,Cash balance at the start of the business day 28.09 CST.,--,--,--,"$6,427.15"
+,9/28/25,23:00:00,BAL,--,Cash balance at the start of the business day 29.09 CST.,--,--,--,"$6,427.15"
+,9/29/25,23:00:00,BAL,--,Cash balance at the start of the business day 30.09 CST.,--,--,--,"$6,427.15"
+

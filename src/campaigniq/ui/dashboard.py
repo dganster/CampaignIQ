@@ -1232,6 +1232,10 @@ def render_monthly_import_wizard():
                     historical_source_root=HISTORICAL_SOURCE_ROOT,
                     preview_only=True,
                 )
+                if preview.forex_resolution is not None:
+                    st.info("Forex financial records resolved from the corroborated monthly statement and trade history. "
+                            "Original CSV discrepancies remain recorded in the source-resolution audit. "
+                            f"Resolved P/L: ${preview.forex_resolution['resolved_pl_usd']}; financing: ${preview.forex_resolution['financing_usd']}.")
                 for finding in preview.closing_reconciliation.forex_source_findings:
                     st.warning(finding)
                 if preview.closing_reconciliation.reconciled:
@@ -2124,7 +2128,7 @@ if get_script_run_ctx(suppress_warning=True) is not None:
                 if selected_id in forex_campaign_records:
                     st.markdown("#### Broker FOREX Settlement Records")
                     render_dataframe(st, pd.DataFrame([{
-                        "Settlement Date": a.settlement.settlement_at.date(),
+                        "Settlement Date": a.settlement.settlement_at.date() if a.settlement.settlement_at is not None else "Not reported",
                         "Pair": a.settlement.instrument,
                         "Broker Side": a.settlement.side,
                         "Settlement amount": float(abs(a.settlement.amount)),

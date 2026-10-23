@@ -162,7 +162,7 @@ def forex_drilldowns(monthly):
             records.setdefault(cid, []).append(attribution)
     summaries = []
     for cid, attributions in records.items():
-        dates = [a.settlement.settlement_at.date() for a in attributions]
+        dates = [(a.settlement.settlement_at or a.settlement.trade_at).date() for a in attributions]
         summaries.append(CampaignDrilldownSummary(
             campaign_id=cid,
             symbols=tuple(sorted({a.settlement.instrument for a in attributions})),

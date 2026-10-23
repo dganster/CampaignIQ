@@ -1,0 +1,65 @@
+"Transaction Report since Aug 31, 2025 16:00:00 (EDT)  through Sep 30, 2025 16:00:00 (EDT) "
+
+ 
+
+"Account (USD): 1234567, 	|	Base currency: (USD)"
+
+ 
+
+Report Period
+"Aug 31, 2025 16:00:00 (EDT) ",	-	,"Sep 30, 2025 16:00:00 (EDT) "
+,,
+
+ 
+
+PL and Fees
+,
+"MTD Settled PL, USD:","-4,638.00"
+"YTD Settled PL, USD:","-8,027.25"
+"MTD fee, USD:",0.00
+"YTD fee, USD:",0.00
+
+ 
+
+All times in GMT
+
+Transactions
+Order ID,Trade Date/Time,Settlement,Type,Instrument,B/S,Rate,Amount,Counter Amount,"Fee, USD",Average Acquisition FX Rate,Settlement Amount,Total Position,"Financing Amount, USD",Delivery Amount
+="102130330371","Sep 1, 2025 17:12:24","Sep 1, 2025 17:12:24",financing,USD$FX,,1.1712,,,,,,,0.00,0.00 USD
+="102203346958","Sep 2, 2025 17:14:42","Sep 2, 2025 17:14:42",financing,USD$FX,,1.1642,,,,,,,+10.52,+10.52 USD
+="102278535603","Sep 3, 2025 17:13:02","Sep 3, 2025 17:13:02",financing,USD$FX,,1.1661,,,,,,,+31.61,+31.61 USD
+="102354670141","Sep 4, 2025 17:12:27","Sep 4, 2025 17:12:27",financing,USD$FX,,1.1651,,,,,,,+10.53,+10.53 USD
+="102436868480","Sep 5, 2025 17:12:57","Sep 5, 2025 17:12:57",financing,USD$FX,,1.1718,,,,,,,+10.52,+10.52 USD
+="102512471714","Sep 8, 2025 17:15:06","Sep 8, 2025 17:15:06",financing,USD$FX,,1.1763,,,,,,,+10.63,+10.63 USD
+="102590347615","Sep 9, 2025 17:15:21","Sep 9, 2025 17:15:21",financing,USD$FX,,1.1709,,,,,,,+10.58,+10.58 USD
+="102673340106","Sep 10, 2025 17:12:53","Sep 10, 2025 17:12:53",financing,USD$FX,,1.1695,,,,,,,+31.89,+31.89 USD
+="102754066524","Sep 11, 2025 17:12:46","Sep 11, 2025 17:12:46",financing,USD$FX,,1.1736,,,,,,,+11.50,+11.50 USD
+="102833528689","Sep 12, 2025 17:12:41","Sep 12, 2025 17:12:41",financing,USD$FX,,1.1734,,,,,,,+10.60,+10.60 USD
+="102917573945","Sep 15, 2025 17:13:10","Sep 15, 2025 17:13:10",financing,USD$FX,,1.176,,,,,,,+10.63,+10.63 USD
+="102996623890","Sep 16, 2025 17:14:07","Sep 16, 2025 17:14:07",financing,USD$FX,,1.1867,,,,,,,+10.72,+10.72 USD
+="103083971928","Sep 18, 2025 04:49:20","Sep 18, 2025 04:49:20",financing,US$,,0,,,,,,,"+1,150.00","+1,150.00 USD"
+="103771190838","Sep 29, 2025 20:15:53","Sep 29, 2025 20:15:53",financing,US$,,0,,,,,,,+51.80,+51.80 USD
+"Total Financing, USD:",US$,"+1,201.80",,,,,,,,,,,,
+,USD$FX,+159.73,,,,,,,,,,,,
+"PL Total*, USD:",,0.00,,,,,,,,,,,,
+"Commission Total, USD:",,0.00,,,,,,,,,,,,
+
+ 
+
+* Profit/Loss may fluctuate prior ti settlement due to currency conversion
+
+ 
+
+http://www.schwab.com
+
+ 
+
+PLEASE REPORT ANY DIFFERENCES IMMEDIATELY. YOUR FAILURE TO REPORT AN ERROR OR OMISSION IMMEDIATELY COULD RESULT IN A WAIVER OF YOUR RIGHT TO HAVE AN ERROR OR OMISSION CORRECTED. Charles Schwab Futures and Forex LLC IS THE COUNTER-PARTY TO ALL FOREX TRADES EXECUTED THROUGH THIS PLATFORM.
+
+"The data above is for reporting purposes only, please refer to your Forex customer statement available on the Charles Schwab website (www.schwab.com)."
+
+Additional execution data available by request by contacting the Trade Desk.
+
+ 
+
+Accounts Carried by Charles Schwab Futures and Forex LLC

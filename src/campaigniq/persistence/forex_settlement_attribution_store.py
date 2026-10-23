@@ -43,7 +43,7 @@ def serialize_forex_settlement_attributions(
     )
     payload = {
         "format": _FORMAT,
-        "version": _VERSION,
+        "version": 2 if any(a.settlement.evidence_source or a.settlement.settlement_at is None for a in persisted.attributions) else _VERSION,
         "period_start": persisted.period_start.isoformat(),
         "period_end": persisted.period_end.isoformat(),
         "attributions": [
@@ -52,7 +52,8 @@ def serialize_forex_settlement_attributions(
                 "settlement": {
                     "order_id": item.settlement.order_id,
                     "trade_at": item.settlement.trade_at.isoformat(),
-                    "settlement_at": item.settlement.settlement_at.isoformat(),
+                    "settlement_at": item.settlement.settlement_at.isoformat() if item.settlement.settlement_at is not None else None,
+                    **({"evidence_source": item.settlement.evidence_source, "fee_usd": str(item.settlement.fee_usd)} if item.settlement.evidence_source else {}),
                     "instrument": item.settlement.instrument,
                     "side": item.settlement.side,
                     "rate": str(item.settlement.rate),
@@ -74,7 +75,7 @@ def deserialize_forex_settlement_attributions(
 
     if payload.get("format") != _FORMAT:
         raise ValueError("Unsupported FOREX settlement attribution persistence format.")
-    if payload.get("version") != _VERSION:
+    if payload.get("version") not in (1,2):
         raise ValueError(
             "Unsupported FOREX settlement attribution persistence version: "
             f"{payload.get('version')!r}"
@@ -152,12 +153,17 @@ def _deserialize_attribution(payload: dict[str, object]) -> ForexSettlementAttri
     if not isinstance(settlement, dict):
         raise ValueError("FOREX attribution settlement must be an object.")
 
+    if settlement.get("settlement_at") is None and not settlement.get("evidence_source"):
+        raise ValueError("An unreported settlement date requires source evidence.")
+
     return ForexSettlementAttribution(
         campaign_id=str(payload["campaign_id"]),
         settlement=SchwabForexSettlement(
             order_id=str(settlement["order_id"]),
             trade_at=datetime.fromisoformat(str(settlement["trade_at"])),
-            settlement_at=datetime.fromisoformat(str(settlement["settlement_at"])),
+            settlement_at=datetime.fromisoformat(str(settlement["settlement_at"])) if settlement["settlement_at"] is not None else None,
+            evidence_source=settlement.get("evidence_source"),
+            fee_usd=Decimal(str(settlement.get("fee_usd", "0"))),
             instrument=str(settlement["instrument"]),
             side=str(settlement["side"]),
             rate=Decimal(str(settlement["rate"])),
