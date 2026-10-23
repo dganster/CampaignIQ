@@ -18,10 +18,13 @@ def read_option_assignment_section(
 
     rows: list[SchwabOptionAssignmentRow] = []
 
+    statement_period = _read_statement_period(lines) if any(
+        "Assignment" in line for line in lines
+    ) else None
     index = 0
 
     while index < len(lines):
-        layout_row = _read_layout_assignment(lines, index)
+        layout_row = _read_layout_assignment(lines, index, statement_period=statement_period)
         if layout_row is not None:
             row, index = layout_row
             rows.append(row)
@@ -47,6 +50,7 @@ def read_option_assignment_section(
             lines,
             index,
             year=expiration.year,
+            statement_period=statement_period,
         )
 
         trade_date = _parse_trade_date(
@@ -89,6 +93,7 @@ def read_option_assignment_section(
 
 def _read_layout_assignment(
     lines: list[str], index: int,
+    *, statement_period: tuple[date, date] | None = None,
 ) -> tuple[SchwabOptionAssignmentRow, int] | None:
     """Read an explicitly labeled assignment from Poppler's table layout."""
     line = lines[index]
@@ -127,7 +132,10 @@ def _read_layout_assignment(
     for previous in reversed(lines[:index + 1]):
         dated = re.match(r"\s*(\d{2})/(\d{2})(?:\s|$)", previous)
         if dated:
-            transaction_date = date(expiration.year, int(dated[1]), int(dated[2]))
+            transaction_date = _resolve_transaction_date(
+                int(dated[1]), int(dated[2]),
+                fallback_year=expiration.year, statement_period=statement_period,
+            )
             break
     if transaction_date is None:
         raise ValueError("Could not find transaction date for Option Assignment.")
@@ -146,6 +154,7 @@ def _parse_transaction_date(
     assignment_index: int,
     *,
     year: int,
+    statement_period: tuple[date, date] | None = None,
 ) -> date:
     """Find the statement transaction date associated with an assignment."""
 
@@ -154,9 +163,12 @@ def _parse_transaction_date(
 
         try:
             month, day = value.split("/")
-            return date(year, int(month), int(day))
+            month, day = int(month), int(day)
         except (ValueError, TypeError):
             continue
+        return _resolve_transaction_date(
+            month, day, fallback_year=year, statement_period=statement_period,
+        )
 
     raise ValueError(
         "Could not find transaction date for Option Assignment."
@@ -194,3 +206,62 @@ def _parse_date(value: str) -> date:
     month, day, year = value.split("/")
 
     return date(int(year), int(month), int(day))
+
+
+_MONTHS = {
+    name: number for number, name in enumerate((
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ), start=1)
+}
+_MONTHLY_PERIOD = re.compile(
+    r"\b(" + "|".join(_MONTHS) + r")\s+(\d{1,2})\s*[-–]\s*"
+    r"(\d{1,2}),\s*(\d{4})\b"
+)
+
+
+def _read_statement_period(lines: list[str]) -> tuple[date, date] | None:
+    """Read explicit monthly statement headers, never an option's expiry year.
+
+    Headerless legacy text fragments retain their existing year convention.
+    A full statement with an unreadable or conflicting period fails closed.
+    """
+    periods = set()
+    for index, line in enumerate(lines):
+        if not (line.lstrip().startswith("Statement Period") or re.search(
+            r"\bStatement Period(?:\s*$|\s+(?:" + "|".join(_MONTHS) + r")\b)",
+            line,
+        )):
+            continue
+        match = _MONTHLY_PERIOD.search(" ".join(lines[index:index + 6]))
+        if match is None:
+            raise ValueError("Unreadable statement period for Option Assignment.")
+        month, first, last, year = match.groups()
+        start = date(int(year), _MONTHS[month], int(first))
+        end = date(int(year), _MONTHS[month], int(last))
+        if end < start:
+            raise ValueError("Invalid statement period for Option Assignment.")
+        periods.add((start, end))
+    if len(periods) > 1:
+        raise ValueError("Conflicting statement periods for Option Assignment.")
+    return next(iter(periods), None)
+
+
+def _resolve_transaction_date(
+    month: int, day: int, *, fallback_year: int,
+    statement_period: tuple[date, date] | None,
+) -> date:
+    if statement_period is None:
+        return date(fallback_year, month, day)
+    start, end = statement_period
+    candidates = []
+    for year in range(start.year, end.year + 1):
+        try:
+            candidate = date(year, month, day)
+        except ValueError:
+            continue
+        if start <= candidate <= end:
+            candidates.append(candidate)
+    if len(candidates) != 1:
+        raise ValueError("Option Assignment transaction date is outside statement period.")
+    return candidates[0]
