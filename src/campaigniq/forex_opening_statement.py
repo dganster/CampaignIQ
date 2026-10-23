@@ -66,6 +66,8 @@ class ForexOpeningEvidence:
     source_sha256: str
     history_sha256: str
     report_sha256: str
+    period_end: date
+    execution_ids: tuple[str, ...]
 
 
 def read_forex_opening_statement(text, *, trade_history, transaction_report, period_end):
@@ -172,7 +174,8 @@ def read_forex_opening_statement(text, *, trade_history, transaction_report, per
     if {k: v for k, v in positions.items() if v} != closing:
         raise ValueError('Forex statement opening, executions, and closing positions do not reconcile.')
     return ForexOpeningEvidence(tuple(sorted(opening.items())), tuple(sorted(closing.items())),
-        sha256(text.encode()).hexdigest(), sha256(history_bytes).hexdigest(), sha256(report_bytes).hexdigest())
+        sha256(text.encode()).hexdigest(), sha256(history_bytes).hexdigest(), sha256(report_bytes).hexdigest(),
+        period_end, tuple(details))
 
 
 def attach_forex_opening(book, evidence, *, period_start, authoritative):

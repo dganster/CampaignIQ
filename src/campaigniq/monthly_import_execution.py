@@ -221,6 +221,7 @@ def execute_monthly_import(
         historical_source_root=historical_source_root,
     )
 
+    evidence = None
     monthly_forex = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
     if monthly_forex is not None:
         from campaigniq.forex_opening_statement import read_forex_opening_statement, verify_forex_ending
@@ -242,6 +243,7 @@ def execute_monthly_import(
         period_end=contract.period_end,
         forex_report=result.forex_transaction_report,
         opening_lot_book=opening_lot_book,
+        forex_closing_evidence=evidence,
     )
 
     # Preview returns before any archive, publication marker, or artifact write.
@@ -252,6 +254,10 @@ def execute_monthly_import(
             closing_reconciliation=reconciliation,
             authoritative_state_path=None,
         )
+
+    if reconciliation.forex_source_findings:
+        raise ValueError("Forex source discrepancies remain unresolved; inventory preview does not authorize publication. "
+                         + " ".join(reconciliation.forex_source_findings))
 
     accepted_decision: ReconciliationDecision | None = None
 
