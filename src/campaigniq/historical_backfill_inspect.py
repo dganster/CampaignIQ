@@ -65,12 +65,23 @@ def _connection_parameters(dsn):
     if parameters.get("dbname") != "campaigniq_dev" or parameters.get("service"):
         raise ValueError("explicit campaigniq_dev database required; services are prohibited")
     host = parameters.get("host", "localhost")
-    if host not in {"localhost", "127.0.0.1", "::1"}:
-        raise ValueError("only a local TCP development database is permitted")
-    expected_address = "::1" if host == "::1" else "127.0.0.1"
-    if parameters.get("hostaddr", expected_address) != expected_address:
-        raise ValueError("remote or conflicting hostaddr is prohibited")
-    parameters.update(host=host, hostaddr=expected_address, dbname="campaigniq_dev",
+    socket_directories = {"/var/run/postgresql", "/run/postgresql", "/tmp"}
+    if host in socket_directories:
+        # Empty libpq options can inherit environment/service defaults. Refuse
+        # those alternate routes rather than mutate the caller's environment.
+        if parameters.get("hostaddr") or os.environ.get("PGHOSTADDR"):
+            raise ValueError("hostaddr is prohibited for Unix socket connections")
+        if os.environ.get("PGSERVICE"):
+            raise ValueError("ambient services are prohibited for Unix socket connections")
+        parameters.update(host=host, hostaddr="")
+    else:
+        if host not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("only local TCP or standard local Unix sockets are permitted")
+        expected_address = "::1" if host == "::1" else "127.0.0.1"
+        if parameters.get("hostaddr", expected_address) != expected_address:
+            raise ValueError("remote or conflicting hostaddr is prohibited")
+        parameters.update(host=host, hostaddr=expected_address)
+    parameters.update(dbname="campaigniq_dev",
                       options="-c default_transaction_read_only=on",
                       connect_timeout="10")
     # Explicit options override ambient libpq service/host routing.
