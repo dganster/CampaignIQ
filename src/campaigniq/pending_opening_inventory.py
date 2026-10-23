@@ -7,6 +7,8 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from campaigniq.domain.lot import Lot
+from campaigniq.domain.option_contract import OptionContract
+from campaigniq.domain.value_objects.instrument import Instrument
 from campaigniq.domain.lot_book import LotBook
 from campaigniq.importers.schwab.pending_activity_reader import (
     read_pending_position_activity,
@@ -75,9 +77,16 @@ def reconstruct_pending_opening_inventory(
 
         # A pending cover must reduce an existing short position.
         # Never turn an unmatched cover into a new long position.
-        if change > 0 and existing >= 0:
+        if isinstance(instrument, OptionContract) and change > 0 and existing >= 0:
             raise ValueError(
                 f"Pending close has no matching short inventory: {instrument}"
+            )
+
+        # A stock Purchase can establish a long holding. A stock Sale must
+        # reduce a long holding; it is not evidence of a new short position.
+        if isinstance(instrument, Instrument) and change < 0 and existing <= 0:
+            raise ValueError(
+                f"Pending stock sale has no matching long inventory: {instrument}"
             )
 
         # Opposite-sign activity reduces existing positions first.
