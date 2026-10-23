@@ -1,0 +1,91 @@
+"Transaction Report since Jul 31, 2025 16:00:00 (EDT)  through Aug 31, 2025 16:00:00 (EDT) "
+
+ 
+
+"Account (USD): 1234567, 	|	Base currency: (USD)"
+
+ 
+
+Report Period
+"Jul 31, 2025 16:00:00 (EDT) ",	-	,"Aug 31, 2025 16:00:00 (EDT) "
+,,
+
+ 
+
+PL and Fees
+,
+"MTD Settled PL, USD:","-3,040.11"
+"YTD Settled PL, USD:","-3,389.25"
+"MTD fee, USD:",0.00
+"YTD fee, USD:",0.00
+
+ 
+
+All times in GMT
+
+Transactions
+Order ID,Trade Date/Time,Settlement,Type,Instrument,B/S,Rate,Amount,Counter Amount,"Fee, USD",Average Acquisition FX Rate,Settlement Amount,Total Position,"Financing Amount, USD",Delivery Amount
+="100543319050","Jul 31, 2025 17:13:25","Jul 31, 2025 17:13:25",financing,USD$FX,,1.1414,,,,,,,+2.61,+2.61 USD
+="100543319051","Jul 31, 2025 17:13:25","Jul 31, 2025 17:13:25",financing,USD$FX,,1.3207,,,,,,,-1.45,-1.45 USD
+="100543319052","Jul 31, 2025 17:13:25","Jul 31, 2025 17:13:25",financing,USD$FX,,1.3857,,,,,,,+1.41,+1.41 USD
+="100628809351","Aug 1, 2025 17:12:26","Aug 1, 2025 17:12:26",financing,USD$FX,,1.1587,,,,,,,+2.60,+2.60 USD
+="100628809352","Aug 1, 2025 17:12:26","Aug 1, 2025 17:12:26",financing,USD$FX,,1.3278,,,,,,,-1.11,-1.11 USD
+="100628809353","Aug 1, 2025 17:12:26","Aug 1, 2025 17:12:26",financing,USD$FX,,1.3789,,,,,,,+1.43,+1.43 USD
+="100701527244","Aug 4, 2025 17:12:43","Aug 4, 2025 17:12:43",financing,USD$FX,,1.1573,,,,,,,+2.60,+2.60 USD
+="100701527245","Aug 4, 2025 17:12:43","Aug 4, 2025 17:12:43",financing,USD$FX,,1.3284,,,,,,,-1.11,-1.11 USD
+="100701527246","Aug 4, 2025 17:12:43","Aug 4, 2025 17:12:43",financing,USD$FX,,1.3779,,,,,,,+1.44,+1.44 USD
+="100773306547","Aug 5, 2025 17:13:36","Aug 5, 2025 17:13:36",financing,USD$FX,,1.1575,,,,,,,+2.60,+2.60 USD
+="100773306548","Aug 5, 2025 17:13:36","Aug 5, 2025 17:13:36",financing,USD$FX,,1.33,,,,,,,-1.11,-1.11 USD
+="100773306549","Aug 5, 2025 17:13:36","Aug 5, 2025 17:13:36",financing,USD$FX,,1.3772,,,,,,,+1.45,+1.45 USD
+="100847484054","Aug 6, 2025 17:13:15","Aug 6, 2025 17:13:15",financing,USD$FX,,1.166,,,,,,,+7.85,+7.85 USD
+="100847484055","Aug 6, 2025 17:13:15","Aug 6, 2025 17:13:15",financing,USD$FX,,1.3358,,,,,,,-3.18,-3.18 USD
+="100847484056","Aug 6, 2025 17:13:15","Aug 6, 2025 17:13:15",financing,USD$FX,,1.374,,,,,,,+4.15,+4.15 USD
+="1003983703626","Aug 20, 2025 09:51:01","Aug 20, 2025 17:00:00",new,GBP/USD,Sell,1.34725,"-50,000","+67,362.5",0.00,1.34725,,"-50,000",,
+="101613371857","Aug 20, 2025 17:28:19","Aug 20, 2025 17:28:19",financing,USD$FX,,1.3456,,,,,,,-1.93,-1.93 USD
+="1003994638213","Aug 21, 2025 10:15:21","Aug 21, 2025 17:00:00",new,EUR/USD,Sell,1.16271,"-50,000","+58,135.5",0.00,1.16271,,"-50,000",,
+="101681629685","Aug 21, 2025 17:12:37","Aug 21, 2025 17:12:37",financing,USD$FX,,1.1606,,,,,,,+2.61,+2.61 USD
+="101681629686","Aug 21, 2025 17:12:37","Aug 21, 2025 17:12:37",financing,USD$FX,,1.3414,,,,,,,-0.64,-0.64 USD
+="1004001024739","Aug 22, 2025 10:00:04","Aug 22, 2025 17:00:00",settlement,EUR/USD,Buy,1.16367,"+50,000","-58,183.5",0.00,,-48.00 USD,0,,-48.00 USD
+="1004001024740","Aug 22, 2025 10:00:28","Aug 22, 2025 17:00:00",settlement,GBP/USD,Buy,1.34748,"+50,000","-67,374",0.00,,-11.50 USD,0,,-11.50 USD
+="1004006440460","Aug 22, 2025 11:48:32","Aug 22, 2025 17:00:00",new,EUR/USD,Sell,1.17145,"-100,000","+117,145",0.00,1.17145,,"-100,000",,
+="1004006440461","Aug 22, 2025 11:48:32","Aug 22, 2025 17:00:00",settlement,EUR/USD,Buy,1.17159,"+100,000","-117,159",0.00,,-14.00 USD,0,,-14.00 USD
+="1004006440497","Aug 22, 2025 11:49:04","Aug 22, 2025 17:00:00",new,EUR/USD,Sell,1.17144,"-100,000","+117,144",0.00,1.17144,,"-100,000",,
+="1004006440600","Aug 22, 2025 11:50:31","Aug 22, 2025 17:00:00",new,USD/JPY,Buy,146.801,"+100,000","-14,680,100",0.00,146.801,,"+100,000",,
+="1004006440535","Aug 22, 2025 13:07:10","Aug 22, 2025 17:00:00",settlement,EUR/USD,Buy,1.17302,"+100,000","-117,302",0.00,,-158.00 USD,0,,-158.00 USD
+="1004007092097","Aug 22, 2025 13:31:45","Aug 22, 2025 17:00:00",settlement,USD/JPY,Sell,146.59,"-100,000","+14,659,000",0.00,,-143.21 USD,0,,"-21,100.00 JPY"
+="1004017202247","Aug 25, 2025 12:28:46","Aug 25, 2025 17:00:00",new,USD/MXN,Sell,18.63154,"-50,000","+931,577",0.00,18.63154,,"-50,000",,
+="1004017202678","Aug 25, 2025 12:35:25","Aug 25, 2025 17:00:00",settlement,USD/MXN,Buy,18.646,"+50,000","-932,300",0.00,,-38.62 USD,0,,-723.00 MXN
+="1004028685833","Aug 26, 2025 15:43:51","Aug 26, 2025 17:00:00",new,EUR/USD,Sell,1.16438,"-100,000","+116,438",0.00,1.16438,,"-100,000",,
+="101901364282","Aug 26, 2025 17:14:44","Aug 26, 2025 17:14:44",financing,USD$FX,,1.1641,,,,,,,+5.23,+5.23 USD
+="1004028685865","Aug 26, 2025 18:06:46","Aug 27, 2025 17:00:00",settlement,EUR/USD,Buy,1.16488,"+100,000","-116,488",0.00,,-50.00 USD,0,,-50.00 USD
+="1004034216585","Aug 27, 2025 11:57:33","Aug 27, 2025 17:00:00",new,EUR/USD,Sell,1.16093,"-200,000","+232,186",0.00,1.16093,,"-200,000",,
+="101970350756","Aug 27, 2025 17:12:29","Aug 27, 2025 17:12:29",financing,USD$FX,,1.1638,,,,,,,+41.80,+41.80 USD
+="102045268821","Aug 28, 2025 17:12:21","Aug 28, 2025 17:12:21",financing,USD$FX,,1.1682,,,,,,,+10.49,+10.49 USD
+="102046981829","Aug 28, 2025 20:18:54","Aug 28, 2025 20:18:54",financing,US$,,0,,,,,,,+38.68,+38.68 USD
+="102122010699","Aug 29, 2025 17:12:49","Aug 29, 2025 17:12:49",financing,USD$FX,,1.1685,,,,,,,+10.69,+10.69 USD
+"Total Financing, USD:",US$,+38.68,,,,,,,,,,,,
+,JPY$FX,0.00,,,,,,,,,,,,
+,MXN$FX,0.00,,,,,,,,,,,,
+,USD$FX,+88.43,,,,,,,,,,,,
+"PL Total*, USD:",,-463.32,,,,,,,,,,,,
+"Commission Total, USD:",,0.00,,,,,,,,,,,,
+
+ 
+
+* Profit/Loss may fluctuate prior ti settlement due to currency conversion
+
+ 
+
+http://www.schwab.com
+
+ 
+
+PLEASE REPORT ANY DIFFERENCES IMMEDIATELY. YOUR FAILURE TO REPORT AN ERROR OR OMISSION IMMEDIATELY COULD RESULT IN A WAIVER OF YOUR RIGHT TO HAVE AN ERROR OR OMISSION CORRECTED. Charles Schwab Futures and Forex LLC IS THE COUNTER-PARTY TO ALL FOREX TRADES EXECUTED THROUGH THIS PLATFORM.
+
+"The data above is for reporting purposes only, please refer to your Forex customer statement available on the Charles Schwab website (www.schwab.com)."
+
+Additional execution data available by request by contacting the Trade Desk.
+
+ 
+
+Accounts Carried by Charles Schwab Futures and Forex LLC

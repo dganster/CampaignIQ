@@ -1,0 +1,163 @@
+Customer Account Summary Report since Thursday, July 31, 2025 16:00:00 (CST) through Friday, August 29, 2025 16:00:00 (CST)
+Monthly Equity Summary
+Beginning Cash Balance  $13,857.49
+Deposits  $0.00
+Withdrawals  $0.00
+Adjustments  $0.00
+Financing  $77.74
+Settled Profit/Loss  ($3,040.49)
+Ending Cash Balance  $10,894.73
+Account Account Currency
+1234567 USD
+Monthly Profit/Loss Summary
+
+
+Currency Pair                                    Settled Profit/Loss                       Floating Profit/Loss
+                      EUR/USD                                          ($1,449.00)                                ($1,604.00)
+
+                      GBP/USD                                          ($985.50)
+
+                      USD/CAD                                          ($424.41)
+
+                       USD/JPY                                         ($142.76)
+
+                      USD/MXN                                           ($38.83)
+
+                Total Profit/Loss, USD:                                ($3,040.49)                                ($1,604.00)
+
+
+Open Position(s) at End of Month
+
+Currency Pair                             Buy/Sell                           Quantity               Trade Price                     Floating Profit/Loss USD          Margin Requirement USD
+EUR/USD
+
+   TR Details: 8/27/2025 11:57:33 AM      Sell                                          (200,000)                       1.1609300
+
+EUR/USD - TOTAL POSITION:                 Sell                                          (200,000)                                                       ($1,604.00)                            $7,011.09
+
+Floating Profit/Loss Net USD :                                                                                                                          ($1,604.00)
+Customer Account Summary Report since Thursday, July 31, 2025 16:00:00 (CST) through Friday, August 1, 2025 16:00:00 (CST)
+Open Position(s)
+
+
+Currency Pair                                  Buy/Sell                           Quantity                                Trade Price                     Floating Profit/Loss USD           Margin Requirement USD
+EUR/USD
+
+   TR Details: 7/31/2025 11:44:24 AM           Sell                                                            (50,000)                      1.1433100
+
+EUR/USD - TOTAL POSITION:                      Sell                                                            (50,000)                                                          ($777.00)                                   $1,738.07
+
+GBP/USD
+
+   TR Details: 7/31/2025 11:44:59 AM           Sell                                                            (50,000)                      1.3222400
+
+GBP/USD - TOTAL POSITION:                      Sell                                                            (50,000)                                                          ($284.50)                                   $3,319.40
+
+USD/CAD
+
+   TR Details: 7/31/2025 11:46:05 AM           Buy                                                              50,000                       1.3843200
+
+USD/CAD - TOTAL POSITION:                      Buy                                                              50,000                                                           ($214.15)                                   $1,000.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                 ($1,275.65)
+
+
+Closed Position(s)
+Trade Activity Detail
+Financing Report
+            2025-07-31 17:13:25 EUR/USD                                                  (50,000)                                1.14140                  100543319050                        $1.00000                           $2.61
+            2025-07-31 17:13:25 GBP/USD                                                  (50,000)                                1.32070                  100543319051                        $1.00000                         ($1.45)
+            2025-07-31 17:13:25 USD/CAD                                                      50,000                              1.38570                  100543319052                        $0.72524                           $1.41
+Customer Account Summary Report since Friday, August 1, 2025 16:00:00 (CST) through Monday, August 4, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+            2025-08-01 17:12:26 EUR/USD                                                  (50,000)                                1.15870                  100628809351                        $1.00000                           $2.60
+            2025-08-01 17:12:26 GBP/USD                                                  (50,000)                                1.32780                  100628809352                        $1.00000                         ($1.11)
+            2025-08-01 17:12:26 USD/CAD                                                      50,000                              1.37890                  100628809353                        $0.72577                           $1.43
+Customer Account Summary Report since Monday, August 4, 2025 16:00:00 (CST) through Tuesday, August 5, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+            2025-08-04 17:12:43 EUR/USD                                                  (50,000)                                1.15730                  100701527244                        $1.00000                           $2.60
+            2025-08-04 17:12:43 GBP/USD                                                  (50,000)                                1.32840                  100701527245                        $1.00000                         ($1.11)
+            2025-08-04 17:12:43 USD/CAD                                                      50,000                              1.37790                  100701527246                        $0.72611                           $1.44
+Customer Account Summary Report since Tuesday, August 5, 2025 16:00:00 (CST) through Wednesday, August 6, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+            2025-08-05 17:13:36 EUR/USD                                                  (50,000)                                1.15750                  100773306547                        $1.00000                           $2.60
+            2025-08-05 17:13:36 GBP/USD                                                  (50,000)                                1.33000                  100773306548                        $1.00000                         ($1.11)
+            2025-08-05 17:13:36 USD/CAD                                                      50,000                              1.37720                  100773306549                        $0.72783                           $1.45
+Customer Account Summary Report since Wednesday, August 6, 2025 16:00:00 (CST) through Thursday, August 7, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-07 07:02:16 EUR/USD           LIMIT           B                       CLOSE                                          50,000                     1.16689         1003890401395                        $3.00
+              2025-08-07 07:02:34 GBP/USD           LIMIT           B                       CLOSE                                          50,000                     1.34172         1003890401401                        $3.00
+              2025-08-07 07:02:50 USD/CAD           LIMIT           S                       CLOSE                                         (50,000)                    1.37265         1003890401405                        $2.18
+Financing Report
+            2025-08-06 17:13:15 EUR/USD                                                 (50,000)                               1.16600                    100847484054                      $1.00000                       $7.85
+            2025-08-06 17:13:15 GBP/USD                                                 (50,000)                               1.33580                    100847484055                      $1.00000                      ($3.18)
+            2025-08-06 17:13:15 USD/CAD                                                    50,000                              1.37400                    100847484056                      $0.72733                       $4.15
+Customer Account Summary Report since Thursday, August 7, 2025 16:00:00 (CST) through Friday, August 8, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Friday, August 8, 2025 16:00:00 (CST) through Monday, August 11, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Tuesday, August 12, 2025 16:00:00 (CST) through Wednesday, August 13, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Thursday, August 14, 2025 16:00:00 (CST) through Friday, August 15, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Monday, August 18, 2025 16:00:00 (CST) through Tuesday, August 19, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Tuesday, August 19, 2025 16:00:00 (CST) through Wednesday, August 20, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-20 09:51:01 GBP/USD             MARKET          S                      OPEN                                        (50,000)                   1.34725          1003983703626                           $3.00
+Financing Report
+Customer Account Summary Report since Wednesday, August 20, 2025 16:00:00 (CST) through Thursday, August 21, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-21 10:15:21 EUR/USD             MARKET          S                      OPEN                                         (50,000)                   1.16271         1003994638213                             $3.00
+Financing Report
+            2025-08-20 17:28:19 GBP/USD                                                   (50,000)                              1.34560                  101613371857                        $1.00000                        ($1.93)
+Customer Account Summary Report since Thursday, August 21, 2025 16:00:00 (CST) through Friday, August 22, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-22 10:00:04 EUR/USD           STOP            B                      CLOSE                                          50,000                     1.16367         1004001024739                        $3.00
+              2025-08-22 11:48:32 EUR/USD           MARKET          S                      OPEN                                         (100,000)                    1.17145         1004006440460                        $6.00
+              2025-08-22 11:48:32 EUR/USD           LIMIT           B                      CLOSE                                         100,000                     1.17159         1004006440461                        $6.00
+              2025-08-22 11:49:04 EUR/USD           MARKET          S                      OPEN                                         (100,000)                    1.17144         1004006440497                        $6.00
+              2025-08-22 13:07:10 EUR/USD           STOP            B                      CLOSE                                         100,000                     1.17302         1004006440535                        $6.00
+              2025-08-22 10:00:28 GBP/USD           STOP            B                      CLOSE                                          50,000                     1.34748         1004001024740                        $3.00
+              2025-08-22 11:50:31 USD/JPY           MARKET          B                      OPEN                                          100,000                  146.80100          1004006440600                        $4.08
+              2025-08-22 13:31:45 USD/JPY           STOP            S                      CLOSE                                        (100,000)                 146.59000          1004007092097                        $4.08
+Financing Report
+            2025-08-21 17:12:37 GBP/USD                                                 (50,000)                              1.34140                    101681629686                      $1.00000                      ($0.64)
+            2025-08-21 17:12:37 EUR/USD                                                 (50,000)                              1.16060                    101681629685                      $1.00000                       $2.61
+Customer Account Summary Report since Friday, August 22, 2025 16:00:00 (CST) through Monday, August 25, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-25 12:28:45 USD/MXN           MARKET          S                       OPEN                                           (50,000)                 18.63154           1004017202247                        $13.38
+              2025-08-25 12:35:25 USD/MXN           STOP            B                       CLOSE                                           50,000                  18.64600           1004017202678                        $13.38
+Financing Report
+Customer Account Summary Report since Monday, August 25, 2025 16:00:00 (CST) through Tuesday, August 26, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-26 15:43:51 EUR/USD             MARKET          S                      OPEN                                         (100,000)                   1.16438          1004028685833                             $6.00
+Financing Report
+Customer Account Summary Report since Tuesday, August 26, 2025 16:00:00 (CST) through Wednesday, August 27, 2025 16:00:00 (CST)
+Trade Activity Detail
+              2025-08-26 18:06:46 EUR/USD             STOP            B                      CLOSE                                         100,000                    1.16488          1004028685865                              $6.00
+              2025-08-27 11:57:33 EUR/USD             MARKET          S                      OPEN                                         (200,000)                   1.16093          1004034216585                             $12.00
+Financing Report
+            2025-08-26 17:14:44 EUR/USD                                                  (100,000)                              1.16410                   101901364282                         $1.00000                           $5.23
+Customer Account Summary Report since Wednesday, August 27, 2025 16:00:00 (CST) through Thursday, August 28, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+            2025-08-27 17:12:29 EUR/USD                                                 (200,000)                              1.16380                  101970350756                        $1.00000                         $41.80
+Customer Account Summary Report since Thursday, August 28, 2025 16:00:00 (CST) through Friday, August 29, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+            2025-08-28 17:12:21 EUR/USD                                                 (200,000)                              1.16820                  102045268821                        $1.00000                         $10.49
+Customer Account Summary Report since Thursday, August 28, 2025 16:00:00 (CST) through Friday, August 29, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report
+Customer Account Summary Report since Thursday, August 28, 2025 16:00:00 (CST) through Friday, August 29, 2025 16:00:00 (CST)
+Trade Activity Detail
+Financing Report

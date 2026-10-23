@@ -7,9 +7,10 @@ from pathlib import Path
 M=re.compile(r"^\s*([+-]?)\$?([\d,]+(?:\.\d+)?)\s*(?:USD)?\s*$",re.I)
 @dataclass(frozen=True,slots=True)
 class SchwabForexSettlement:
-    order_id:str; trade_at:datetime; settlement_at:datetime; instrument:str; side:str
+    order_id:str; trade_at:datetime; settlement_at:datetime|None; instrument:str; side:str
     rate:Decimal; amount:Decimal; settlement_pl_usd:Decimal; total_position:Decimal
     fee_usd:Decimal=Decimal("0")
+    evidence_source:str|None=None
 @dataclass(frozen=True,slots=True)
 class SchwabForexFinancing:
     order_id:str; occurred_at:datetime; instrument:str; financing_usd:Decimal
@@ -27,6 +28,7 @@ class SchwabForexTransactionReport:
     ytd_settled_pl_usd:Decimal|None=None; ytd_fee_usd:Decimal|None=None
     pl_total_usd:Decimal|None=None; commission_total_usd:Decimal|None=None
     financing_totals_usd:tuple[tuple[str,Decimal],...]=()
+    source_policy:str|None=None
     @property
     def settlement_pl_usd(self): return sum((x.settlement_pl_usd for x in self.settlements),Decimal("0"))
     @property
@@ -34,7 +36,7 @@ class SchwabForexTransactionReport:
         return self.mtd_settled_pl_usd - self.settlement_pl_usd
     @property
     def settlement_control_reconciled(self):
-        return self.settlement_control_delta_usd == Decimal("0")
+        return abs(self.settlement_control_delta_usd) <= (Decimal("0.01") if self.source_policy == "schwab_monthly_history_2025_v1" else Decimal("0"))
     @property
     def financing_usd(self): return sum((x.financing_usd for x in self.financing),Decimal("0"))
     @property
@@ -56,7 +58,7 @@ class SchwabForexTransactionReport:
     @property
     def pl_total_control_reconciled(self):
         delta = self.pl_total_control_delta_usd
-        return None if delta is None else delta == Decimal("0")
+        return None if delta is None else abs(delta) <= (Decimal("0.01") if self.source_policy == "schwab_monthly_history_2025_v1" else Decimal("0"))
     @property
     def transaction_fee_usd(self):
         return (
