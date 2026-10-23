@@ -87,11 +87,18 @@ def main():
             preview = row['independent_preview']
             state = 'inventory reconciles' if preview and preview['closing_reconciled'] else 'needs review'
             print(row['month'] + ': ' + state + '; ' + str(len(row['blocking_findings'])) + ' blocking findings', flush=True)
+            if preview and preview.get('forex_controls', {}).get('settlement') is False:
+                controls = preview['forex_report_controls']
+                print('  Forex MTD USD: ' + controls['mtd_settled_pl_usd'] + '; settlement rows USD: ' + controls['settlement_row_total_usd'] + '; difference USD: ' + preview['forex_control_deltas_usd']['settlement'], flush=True)
+            if row.get('opening_state_changes'):
+                print('  Carried opening changes requiring review: ' + str(len(row['opening_state_changes'])), flush=True)
         report = run_preflight(bundle, forex_not_applicable=args.forex_not_applicable,
                                crypto_not_applicable=args.crypto_not_applicable, progress=progress)
         report['capture_verification'] = verification
         report['development_commit'] = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
         _write_json(output / 'preflight-report.json', report)
+        print('Diagnostic position replay completed:', report['diagnostic_position_replay_completed'])
+        print('All 2025 safeguards passed:', report['all_2025_drafts_passed'])
         print('Report:', output / 'preflight-report.json')
         print('No data imported or published. Production was only read.')
     except Exception as error:

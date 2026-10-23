@@ -19,9 +19,25 @@ from campaigniq.import_draft_bridge import RestoredUpload, SUPPORTED_UPLOAD_KEYS
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_import_execution import execute_monthly_import
 from campaigniq.pdf_text import extract_pdf_text
-from campaigniq.persistence.lot_book_store import serialize_lot_book, deserialize_lot_book, _deserialize_instrument
+from campaigniq.persistence.lot_book_store import serialize_lot_book, deserialize_lot_book, _deserialize_instrument, _serialize_instrument
 from campaigniq.persistence.monthly_publication import is_month_published_in_storage
 from campaigniq.persistence.position_journal import capture_position_journal, deserialize_position_journal
+
+
+def _number(value):
+    number = Decimal(value)
+    if not number.is_finite():
+        raise ValueError('Non-finite numeric value.')
+    # Fixed-point formatting and trimming are exact, independent of Decimal context.
+    text = format(number, 'f')
+    return (text.rstrip('0').rstrip('.') if '.' in text else text) if number else '0'
+
+
+def _instrument(instrument):
+    data = _serialize_instrument(instrument)
+    if data['type'] == 'option':
+        data['strike'] = _number(data['strike'])
+    return json.dumps(data, sort_keys=True, separators=(',', ':'))
 
 
 def quantities(book):
@@ -31,7 +47,8 @@ def quantities(book):
         if not quantity.is_finite():
             raise ValueError('Non-finite position quantity.')
         if quantity:
-            result[repr(instrument)] = quantity
+            key = _instrument(instrument)
+            result[key] = result.get(key, Decimal(0)) + quantity
     return result
 
 
@@ -41,7 +58,33 @@ def differences(left, right):
 
 
 def _state(book, end):
-    return serialize_lot_book(period_end=end, lot_book=book)
+    data = json.loads(serialize_lot_book(period_end=end, lot_book=book))
+    for lot in data['lots']:
+        lot['quantity'] = _number(lot['quantity'])
+        if lot['basis_total'] is not None:
+            lot['basis_total'] = _number(lot['basis_total'])
+        lot['instrument'] = json.loads(_instrument(_deserialize_instrument(lot['instrument'])))
+    data['lots'].sort(key=lambda lot: (json.dumps(lot['instrument'], sort_keys=True), lot['lot_id']))
+    return json.dumps(data, sort_keys=True, separators=(',', ':'))
+
+
+def _state_changes(prior, following, end):
+    a, b = (json.loads(_state(book, end)) for book in (prior, following))
+    result = []
+    if a['next_id'] != b['next_id']:
+        result.append(dict(field='next_id', prior=a['next_id'], following=b['next_id']))
+    left = {lot['lot_id']: lot for lot in a['lots']}
+    right = {lot['lot_id']: lot for lot in b['lots']}
+    if len(left) != len(a['lots']) or len(right) != len(b['lots']):
+        raise ValueError('Duplicate lot identities in carried state.')
+    for lid in sorted(left.keys() | right.keys()):
+        if lid not in left or lid not in right:
+            result.append(dict(lot_id=lid, field='lot', prior=left.get(lid), following=right.get(lid)))
+        else:
+            for field in left[lid]:
+                if left[lid][field] != right[lid][field]:
+                    result.append(dict(lot_id=lid, field=field, prior=left[lid][field], following=right[lid][field]))
+    return result
 
 
 def _uploads(documents, root):
@@ -72,10 +115,12 @@ def _execution_report(execution, start):
     if not reconciliation.reconciled:
         blockers.append('Closing inventory does not reconcile.')
     blockers.extend(reconciliation.forex_source_findings)
-    controls = {}
+    controls = {}; deltas = {}
     for name in ('settlement', 'pl_total', 'commission', 'financing'):
         value = getattr(execution, 'forex_' + name + '_control_reconciled')
         controls[name] = value
+        delta = getattr(execution, 'forex_' + name + '_control_' + ('deltas_usd' if name == 'financing' else 'delta_usd'))
+        deltas[name] = None if delta is None else str(delta) if not isinstance(delta, (tuple, list, dict)) else delta
         if value is False:
             blockers.append('Forex monetary control failed: ' + name)
     boundary = execution.result.boundary_reconstruction
@@ -84,8 +129,18 @@ def _execution_report(execution, start):
     return dict(closing_reconciled=reconciliation.reconciled,
                 closing_mismatches=[dict(instrument=repr(m.instrument), computed=str(m.computed_quantity), broker=str(m.snapshot_quantity))
                                     for m in reconciliation.mismatches],
-                forex_controls=controls, forex_resolution=execution.forex_resolution,
+                forex_controls=controls, forex_control_deltas_usd=deltas, forex_resolution=execution.forex_resolution,
+                forex_report_controls=_forex_controls(execution.result.forex_transaction_report),
                 journal_replay_verified=True, blocking_findings=blockers)
+
+
+def _forex_controls(report):
+    if report is None:
+        return None
+    return dict(period_start=report.period_start.isoformat(), period_end=report.period_end.isoformat(),
+                mtd_settled_pl_usd=str(report.mtd_settled_pl_usd), settlement_row_total_usd=str(report.settlement_pl_usd),
+                pl_total_usd=None if report.pl_total_usd is None else str(report.pl_total_usd),
+                settlement_count=len(report.settlements), source_policy=report.source_policy)
 
 
 def downstream(storage, december):
@@ -109,7 +164,7 @@ def downstream(storage, december):
             for item in entries:
                 if item['action'] != 'Carried position':
                     continue
-                instrument = repr(_deserialize_instrument(item['instrument']))
+                instrument = _instrument(_deserialize_instrument(item['instrument']))
                 quantity = Decimal(item['quantity_change'])
                 opening[instrument] = opening.get(instrument, Decimal(0)) + quantity
                 refs = item.get('opening_refs')
@@ -125,9 +180,11 @@ def downstream(storage, december):
                 raise ValueError('Previous closing state is unavailable.')
             row['quantity_differences'] = differences(quantities(prior), opening)
             row['quantity_continuity_verified'] = not row['quantity_differences']
-            expected = [(repr(lot.instrument), lot.lot_id, lot.quantity, lot.opened_at.isoformat(), lot.campaign_id or '')
+            expected = [(_instrument(lot.instrument), lot.lot_id, lot.quantity, lot.opened_at.isoformat(), lot.campaign_id or '')
                         for instrument in prior.instruments() for lot in prior.lots(instrument)]
             row['identity_continuity_verified'] = sorted(expected) == sorted(identities)
+            row['unmatched_prior_lot_identities'] = sorted(set(expected) - set(identities))
+            row['unmatched_published_opening_identities'] = sorted(set(identities) - set(expected))
             if not row['quantity_continuity_verified']:
                 row['blocking_findings'].append('Published opening quantities differ from previous closing.')
             if not row['identity_continuity_verified']:
@@ -190,7 +247,8 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                         row['blocking_findings'].append('Previous closing and independently evidenced opening quantities differ.')
                     continuous = execute(replace(preflight, opening_state=None, bootstrap_opening_lot_book=carried.clone()))
                     previous_end = preflight.contract.period_start - date.resolution
-                    row['exact_opening_state_carried'] = _state(carried, previous_end) == _state(continuous.result.opening_lot_book, previous_end)
+                    row['opening_state_changes'] = _state_changes(carried, continuous.result.opening_lot_book, previous_end)
+                    row['exact_opening_state_carried'] = not row['opening_state_changes']
                     if not row['exact_opening_state_carried']:
                         row['blocking_findings'].append('Pipeline changed carried opening state; provenance/basis review required.')
                 else:
@@ -204,27 +262,34 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                     raise ValueError('Prepared source bytes changed during preview.')
                 row['prepared_source_sha256'] = prepared_hashes
                 row['closing_state_sha256'] = sha256(_state(continuous.result.ending_lot_book, preflight.contract.period_end).encode()).hexdigest()
-                if not row['blocking_findings']:
+                # Continue diagnostic position replay through financial/identity
+                # findings, retaining every blocker. No missing or mismatched
+                # quantity edge is reseeded, approved, or called fully verified.
+                if (row['independent_preview']['closing_reconciled'] and row['continuous_preview']['closing_reconciled']
+                        and not row.get('opening_quantity_differences') and not row['closing_quantity_differences']):
                     next_carried = continuous.result.ending_lot_book.clone()
         except Exception as error:
             row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
         carried = next_carried
-        chain = chain and carried is not None
+        chain = chain and carried is not None and not row['blocking_findings']
         row['blocking_findings'] = list(dict.fromkeys(row['blocking_findings']))
         rows.append(row)
         if progress:
             progress(row)
     protected = {k: sha256(v.encode()).hexdigest() for k, v in bundle['artifacts'].items()
                  if len(k) >= 7 and k[:4].isdigit() and int(k[:4]) >= 2026}
-    edges = downstream(storage, carried if chain else None)
+    edges = downstream(storage, carried)
     if sha256(encode(bundle)).hexdigest() != before:
         raise RuntimeError('Frozen workspace capture changed.')
     blockers = [r['month'] + ': ' + b for r in rows + edges for b in r['blocking_findings']]
     blockers += ['Physical PostgreSQL restore and rollback have not been tested.',
                  'A separately authorized transactional historical publisher has not been implemented.']
-    return dict(format='campaigniq.whole_year_backfill_preflight', version=1, diagnostic_only=True,
+    return dict(format='campaigniq.whole_year_backfill_preflight', version=2, diagnostic_only=True,
                 workspace=bundle['workspace'], captured_at=bundle['captured_at'], capture_sha256=before,
                 months=rows, downstream=edges, all_2025_drafts_passed=chain,
+                diagnostic_position_replay_completed=carried is not None and all(row['continuous_preview'] is not None for row in rows),
+                december_boundary_source='Diagnostic continuous replay; unresolved findings do not authorize publication.',
+                state_comparison_policy='Exact numeric values and instrument fields; lot IDs, campaign IDs, basis and allocator retained.',
                 protected_artifact_sha256=protected, captured_bytes_unchanged=True,
                 full_portfolio_continuity_verified=False, publication_authorized=False,
                 applicability_declarations=dict(forex_not_applicable=sorted(forex_not_applicable), crypto_not_applicable=sorted(crypto_not_applicable)),
