@@ -656,6 +656,8 @@ def _show_monthly_preflight(preflight):
     )
 
     for validation in preflight.validations:
+        if validation.role == MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT:
+            _show_validation(validation, label="Schwab Forex Monthly Statement")
         if validation.role == MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT:
             _show_validation(validation, label="Schwab Crypto Statement")
         if validation.role == MonthlyInputRole.MARKET_APPLICABILITY:

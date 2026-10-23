@@ -107,9 +107,9 @@ def read_forex_opening_statement(text, *, trade_history, transaction_report, per
     opening_section = daily.split('Open Position(s)')[1].split('Closed Position(s)')[0]
     opening = _positions(opening_section)
     # Confirm explicit pre-period position details, never infer them from closes.
-    if opening and not re.search(r'TR Details:\s*\d{2}/\d{2}/\d{4}', opening_section):
+    detail_dates = re.findall(r'TR Details:\s*(\d{1,2}/\d{1,2}/\d{4})(?=\s)', opening_section)
+    if (opening and not detail_dates) or len(detail_dates) != opening_section.count('TR Details:'):
         raise ValueError('Explicit Forex opening position details are required.')
-    detail_dates = re.findall(r'TR Details:\s*(\d{2}/\d{2}/\d{4})', opening_section)
     if any(datetime.strptime(v, '%m/%d/%Y').date() >= period_start for v in detail_dates):
         raise ValueError('First daily position was opened after the opening boundary.')
     if pages[0].count('Open Position(s) at End of Month') != 1:
