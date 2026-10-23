@@ -22,9 +22,9 @@ _HEADER = re.compile(
     r"(?P<type>CALL|PUT)\b.*?\s+\$(?P<strike>[\d,]+(?:\.\d+)?)\b.*?\s+"
     r"(?P<quantity>\([\d,]+(?:\.\d+)?\)|[\d,]+(?:\.\d+)?)\s*$"
 )
-_OLD_CONTRACT = re.compile(r"\b(?P<expiration>\d{2}/\d{2}/\d{4})\s+EXP\s+\d{2}/\d{2}/\d{2}\b")
+_OLD_CONTRACT = re.compile(r"\b(?P<expiration>\d{2}/\d{2}/\d{4})\s+(?:EXP\s+)?(?P<detail_expiration>\d{2}/\d{2}/\d{2})\b")
 _OLD_STRIKE = re.compile(r"^\s*(?P<strike>[\d,]+(?:\.\d+)?)\s+(?P<type>[CP])\s*$")
-_NEW_DETAIL = re.compile(r"^\s*Activity\s+(?P<strike>[\d,]+(?:\.\d+)?)\s+(?P<type>[CP])\s+(?P<expiration>\d{2}/\d{2}/\d{2})\s*$")
+_NEW_DETAIL = re.compile(r"^\s*Activity\s+(?P<strike>[\d,]+(?:\.\d+)?)\s+(?P<type>[CP])\s+(?:EXP\s+)?(?P<expiration>\d{2}/\d{2}/\d{2})\s*$")
 _DATE = re.compile(r"^\s*(\d{2})/(\d{2})(?:\s|$)")
 _CANDIDATE = re.compile(r"\bExpired\s+(?:Long|Short)\b")
 
@@ -62,7 +62,12 @@ def read_option_expiration_events(lines: list[str], *, start: date, end: date) -
             detail = _OLD_STRIKE.match(lines[index + 2])
             if contract is None or detail is None:
                 raise ValueError('Schwab option expiration lacks contract evidence')
+            # EXP may wrap onto the header, but it must be explicitly present.
+            if not re.search(r'\bEXP\b', line + ' ' + lines[index + 1]):
+                raise ValueError('Schwab option expiration lacks contract evidence')
             expiration = datetime.strptime(contract['expiration'], '%m/%d/%Y').date()
+            if datetime.strptime(contract['detail_expiration'], '%m/%d/%y').date() != expiration:
+                raise ValueError('Schwab option expiration contract disagrees across lines')
         if (strike != Decimal(detail['strike'].replace(',', ''))
                 or detail['type'] != ('C' if option_type is OptionType.CALL else 'P')):
             raise ValueError('Schwab option expiration contract disagrees across lines')
