@@ -100,8 +100,11 @@ class PositionEventReconciler:
 
     @staticmethod
     def _next_business_day(value: date) -> date:
-        """Return the next Monday-Friday date after value."""
+        """Return the next weekday excluding explicitly verified market closures."""
         candidate = value + timedelta(days=1)
-        while candidate.weekday() >= 5:
+        # Verified NYSE 2025 closure: Thanksgiving, November 27.
+        # https://ir.theice.com/press/news-details/2024/NYSE-Group-Announces-2025-2026-and-2027-Holiday-and-Early-Closings-Calendar/default.aspx
+        closures = {date(2025, 11, 27)}
+        while candidate.weekday() >= 5 or candidate in closures:
             candidate += timedelta(days=1)
         return candidate
