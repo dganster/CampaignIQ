@@ -31,6 +31,7 @@ class ClosingInventoryMismatch:
 @dataclass(frozen=True, slots=True)
 class ClosingInventoryReconciliation:
     mismatches: tuple[ClosingInventoryMismatch, ...]
+    forex_source_findings: tuple[str, ...] = ()
 
     @property
     def reconciled(self) -> bool:
@@ -131,16 +132,53 @@ def reconcile_closing_inventory(
     period_end: date | None = None,
     forex_report: SchwabForexTransactionReport | None = None,
     opening_lot_book: LotBook | None = None,
+    forex_closing_evidence=None,
 ) -> ClosingInventoryReconciliation:
     """Compare economic ending quantities, including exact period-end pending changes."""
     computed = _lot_book_quantities(ending_lot_book)
     snapshot = _snapshot_quantities(snapshot_rows)
+    findings = []
     if forex_report is not None:
         if period_end is None:
             raise ValueError("FOREX closing control requires a selected period end.")
-        snapshot.update(_forex_closing_quantities(
+        csv_positions = _forex_closing_quantities(
             forex_report, period_end=period_end, opening_lot_book=opening_lot_book,
-        ))
+        )
+        snapshot.update(csv_positions)
+    if forex_closing_evidence is not None:
+        from campaigniq.forex_opening_statement import ForexOpeningEvidence
+        evidence = forex_closing_evidence
+        if (not isinstance(evidence, ForexOpeningEvidence) or forex_report is None
+                or evidence.period_end != period_end or opening_lot_book is None):
+            raise ValueError("Monthly Forex closing control requires matching verified evidence and opening state.")
+        actual_opening = {i.symbol: q for i, q in _lot_book_quantities(opening_lot_book).items() if isinstance(i, ForexPair)}
+        if actual_opening != dict(evidence.opening):
+            raise ValueError("Monthly Forex evidence differs from the actual opening inventory.")
+        monthly = {}
+        for symbol, quantity in evidence.closing:
+            pair = ForexPair.from_symbol(symbol)
+            if pair in monthly or not quantity.is_finite() or not quantity:
+                raise ValueError("Invalid or duplicate monthly Forex closing quantity.")
+            monthly[pair] = quantity
+        events = (*forex_report.new_transactions, *forex_report.settlements)
+        csv_ids = {row.order_id for row in events}
+        missing = set(evidence.execution_ids) - csv_ids
+        if csv_ids - set(evidence.execution_ids):
+            raise ValueError("CSV Forex execution references conflict with corroborated monthly evidence.")
+        csv_nonzero = {i: q for i, q in csv_positions.items() if q}
+        if events and csv_nonzero != monthly:
+            raise ValueError("Explicit CSV Forex Total Position conflicts with the monthly statement.")
+        if missing:
+            findings.append("Forex transaction CSV omits execution reference(s): " + ", ".join(sorted(missing)) +
+                ". Closing inventory uses the corroborated monthly statement; settlement records and monetary controls remain unchanged. Publication is blocked pending resolution.")
+        if csv_nonzero != monthly:
+            if not missing:
+                raise ValueError("Unexplained Forex source disagreement.")
+            findings.append("CSV-derived Forex closing quantities disagree with the monthly statement; the CSV control is retained as an unresolved source finding.")
+        # Replace only the Forex quantity control, using independent statement
+        # positions already corroborated against history and opening quantities.
+        snapshot = {i: q for i, q in snapshot.items() if not isinstance(i, ForexPair)}
+        snapshot.update(monthly)
 
     for activity in pending_activity:
         if period_end is not None:
@@ -178,4 +216,4 @@ def reconcile_closing_inventory(
         != snapshot.get(instrument, Decimal("0"))
     )
 
-    return ClosingInventoryReconciliation(mismatches=mismatches)
+    return ClosingInventoryReconciliation(mismatches=mismatches, forex_source_findings=tuple(findings))

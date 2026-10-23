@@ -1232,6 +1232,8 @@ def render_monthly_import_wizard():
                     historical_source_root=HISTORICAL_SOURCE_ROOT,
                     preview_only=True,
                 )
+                for finding in preview.closing_reconciliation.forex_source_findings:
+                    st.warning(finding)
                 if preview.closing_reconciliation.reconciled:
                     st.success("Closing inventory reconciles with the supplied evidence. Nothing was published.")
                 else:

@@ -221,7 +221,7 @@ def test_missing_supporting_report_blocks_statement_evidence(monkeypatch,tmp_pat
     assert not result.ready
 
 
-def test_preview_is_read_only_and_does_not_override_csv_position_control(monkeypatch,tmp_path,files):
+def test_preview_uses_independent_monthly_control_and_preserves_csv_findings(monkeypatch,tmp_path,files):
     from campaigniq.monthly_import_execution import execute_monthly_import
     inputs=preflight_inputs(tmp_path,files)
     inputs[Role.SCHWAB_REALIZED_GAIN_LOSS].write_text('')
@@ -231,7 +231,8 @@ def test_preview_is_read_only_and_does_not_override_csv_position_control(monkeyp
     result=execute_monthly_import(preflight,authoritative_state_root=tmp_path/'state',supplied_inputs=inputs,preview_only=True)
     assert not result.finalized
     assert not result.result.ending_lot_book.instruments()
-    assert not result.closing_reconciliation.reconciled  # In this fixture the CSV has no later zero-position row.
+    assert result.closing_reconciliation.reconciled
+    assert result.closing_reconciliation.forex_source_findings  # Missing CSV execution remains unresolved.
     assert {p:p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}==before
 
 
