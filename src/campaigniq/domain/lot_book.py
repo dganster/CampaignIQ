@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal
 
@@ -12,6 +13,8 @@ from campaigniq.domain.lot import Lot
 from campaigniq.domain.lot_allocation import LotAllocation
 from campaigniq.domain.position_effect import PositionEffect
 from campaigniq.domain.position_event import PositionEvent
+from campaigniq.domain.position_event_kind import PositionEventKind
+from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.side import Side
 from campaigniq.domain.trade import Trade
 from campaigniq.domain.value_objects.instrument import Instrument
@@ -400,6 +403,9 @@ class LotBook:
         campaign_id: str | None = None,
     ) -> tuple[LotAllocation, ...]:
         """Apply a signed economic position event and return closed-lot allocations."""
+        if event.kind is PositionEventKind.SPLIT:
+            self._apply_option_split(event)
+            return ()
         allocations: list[LotAllocation] = []
         for change in event.changes:
             allocations.extend(
@@ -411,6 +417,33 @@ class LotBook:
                 )
             )
         return tuple(allocations)
+
+    def _apply_option_split(self, event: PositionEvent) -> None:
+        """Transform exact contract units without closing lots or changing basis."""
+        if len(event.changes) != 2:
+            raise ValueError("Option split requires exactly two contract changes.")
+        old_change, new_change = event.changes
+        old, new = old_change.instrument, new_change.instrument
+        if (not isinstance(old, OptionContract) or not isinstance(new, OptionContract)
+                or old.underlying != new.underlying or old.expiration != new.expiration
+                or old.option_type != new.option_type or old.strike <= 0 or new.strike <= 0
+                or not old.strike.is_finite() or not new.strike.is_finite()):
+            raise ValueError("Option split contract identities disagree.")
+        ratio = old.strike / new.strike
+        if not ratio.is_finite() or ratio <= 1 or ratio != ratio.to_integral_value():
+            raise ValueError("Unsupported option forward-split ratio.")
+        lots = self.lots(old)
+        quantity = sum((lot.quantity for lot in lots), Decimal("0"))
+        if (not lots or not quantity or self.lots(new)
+                or not old_change.quantity.is_finite() or not new_change.quantity.is_finite()
+                or old_change.quantity != -quantity or new_change.quantity != quantity * ratio
+                or any(not lot.quantity.is_finite() or (lot.quantity > 0) != (quantity > 0)
+                       or lot.opened_at >= event.occurred_at for lot in lots)):
+            raise ValueError("Option split does not exactly match the existing lots.")
+        transformed = [replace(lot, instrument=new, quantity=lot.quantity * ratio) for lot in lots]
+        # Validate every field before either instrument key is changed.
+        self._lots[new] = transformed
+        del self._lots[old]
 
     def apply_signed_change(
         self,

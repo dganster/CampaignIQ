@@ -135,6 +135,9 @@ class RealizedLotAttributor:
             enumerate(events or []),
             key=lambda item: item[1].occurred_at,
         ):
+            if event.kind is PositionEventKind.SPLIT:
+                self.lot_book.apply_event(event)
+                continue
             assignment_campaign_id = None
 
             for change in event.changes:

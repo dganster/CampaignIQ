@@ -501,6 +501,17 @@ class PeriodImportPipeline:
             carried_opening_lot_book=carried_opening_lot_book,
         )
 
+        from campaigniq.importers.schwab.option_split_reader import read_option_split_events
+        split_events = tuple(dict.fromkeys(
+            event for lines in expiration_lines
+            for event in read_option_split_events(lines, opening_lot_book=opening_lot_book,
+                trades=trades, start=period_start, end=period_end)
+        ))
+        position_events = tuple(sorted((*position_events, *split_events), key=lambda e: e.occurred_at))
+        attribution_events = tuple(sorted((*attribution_events, *split_events), key=lambda e: e.occurred_at))
+        for event in split_events:
+            position_history.add_event(event)
+
         if seed_historical:
             historical_trades = tuple(
                 trade

@@ -123,6 +123,9 @@ class LotBookPeriodApplier:
     ) -> None:
         """Apply one event while preserving assignment provenance."""
 
+        if event.kind is PositionEventKind.SPLIT:
+            lot_book.apply_event(event)
+            return
         assignment_campaign_id: str | None = None
 
         for change in event.changes:
