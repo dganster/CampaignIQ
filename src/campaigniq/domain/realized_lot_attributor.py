@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from types import MappingProxyType
+from collections.abc import Mapping
 
 from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.leg import Leg
@@ -48,7 +50,31 @@ class RealizedLotAttributor:
     and to expose ancestry gaps; it does not replace Schwab's basis calculation.
     """
 
-    def __init__(self, lot_book: LotBook | None = None) -> None:
+    def __init__(
+        self, lot_book: LotBook | None = None, *,
+        contract_aliases: Mapping[OptionContract, OptionContract] | None = None,
+    ) -> None:
+        """Accept explicitly reviewed, full-contract SPXW-to-SPX mappings.
+
+        No aliases are inferred. Callers must independently establish broker
+        equivalence; this opt-in matching path is not evidence approval or
+        publication authorization. Original realized records remain unchanged.
+        """
+        aliases = dict(contract_aliases or {})
+        for source, target in aliases.items():
+            if not isinstance(source, OptionContract) or not isinstance(target, OptionContract):
+                raise ValueError("Aliases require full option contracts.")
+            if source.underlying != "SPXW" or target.underlying != "SPX":
+                raise ValueError("Only explicit SPXW-to-SPX contract aliases are supported.")
+            if (not isinstance(source.strike, Decimal) or not isinstance(target.strike, Decimal)
+                    or not source.strike.is_finite() or not target.strike.is_finite()
+                    or source.strike <= 0 or target.strike <= 0):
+                raise ValueError("Alias strike must be finite and positive.")
+            if (source.expiration != target.expiration
+                    or source.strike != target.strike
+                    or source.option_type != target.option_type):
+                raise ValueError("Alias contract expiration, strike and type must match exactly.")
+        self._contract_aliases = MappingProxyType(aliases)
         self.lot_book = lot_book or LotBook()
 
     def attribute(
@@ -95,6 +121,17 @@ class RealizedLotAttributor:
         events: list[PositionEvent] | None,
         campaign_ids: dict[int, str] | None,
     ) -> tuple[RealizedAttribution, ...]:
+        # Check alias ambiguity before touching the working lot book. If the
+        # broker root is independently represented, merging it could consume a
+        # different series. Mixed-root realized rows are ambiguous as well.
+        represented = set(self.lot_book.instruments())
+        represented.update(leg.instrument for trade in trades for leg in trade.legs)
+        represented.update(change.instrument for event in events or [] for change in event.changes)
+        reported = {record.instrument for record in records}
+        for source, target in self._contract_aliases.items():
+            if source in represented or (source in reported and target in reported):
+                raise ValueError("Ambiguous SPX/SPXW evidence; explicit contract mapping cannot merge both roots.")
+
         activities: list[_ClosingActivity] = []
         assignment_closures = self._assignment_closures(events or [])
 
@@ -263,9 +300,14 @@ class RealizedLotAttributor:
         unused = list(activities)
         results: list[RealizedAttribution] = []
         for record in records:
+            matching_instrument = self._contract_aliases.get(record.instrument, record.instrument)
+            matching_record = (
+                replace(record, instrument=matching_instrument)
+                if matching_instrument != record.instrument else record
+            )
             allocations = self._consume_matching_activity(
                 unused,
-                record,
+                matching_record,
             )
             attributed = self.lot_book.apply_realized_basis(
                 allocations,
