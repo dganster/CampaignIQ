@@ -228,6 +228,11 @@ MONTHLY_UPLOAD_ROLES = (
         ("csv",),
     ),
     (
+        MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT,
+        "Schwab Forex Monthly Statement (optional opening-position evidence)",
+        ("pdf", "txt"),
+    ),
+    (
         MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT,
         "Schwab Crypto Statement (optional)",
         ("pdf", "txt"),
@@ -524,6 +529,15 @@ def _save_uploaded_monthly_inputs(*, upload_dir, uploads):
         if suffix.lower() == ".pdf":
             next_path = extract_pdf_text(next_path, upload_dir / "next_month_assignment_evidence.txt")
         supplied[MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE] = next_path
+
+    forex_monthly = uploads.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
+    if forex_monthly is not None:
+        suffix = Path(forex_monthly.name).suffix.lower()
+        monthly_path = upload_dir / f"schwab_forex_monthly_statement{suffix}"
+        monthly_path.write_bytes(forex_monthly.getvalue())
+        if suffix == ".pdf":
+            monthly_path = extract_pdf_text(monthly_path, upload_dir / "schwab_forex_monthly_statement.txt")
+        supplied[MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT] = monthly_path
 
     crypto_upload = uploads.get(MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT)
     if crypto_upload is not None:
@@ -1010,7 +1024,7 @@ def render_monthly_import_wizard():
 
         if role == MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT and not crypto_applicable:
             continue
-        if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT and not forex_applicable:
+        if role in (MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT, MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT) and not forex_applicable:
             continue
         st.markdown(f"**{label}**")
         guidance = _monthly_document_guidance(
@@ -1022,6 +1036,8 @@ def render_monthly_import_wizard():
             st.caption(guidance)
         if role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT:
             st.info(forex_upload_guidance(selected_period_start, selected_period_end))
+        if role == MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT:
+            st.caption("Use when positions carry into the month and opening Forex inventory is unavailable. The statement must include daily details; CampaignIQ checks them against Account Trade History. Your original transaction report is preserved.")
         if role == MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE:
             st.caption(f"Only needed for an assignment that closes in {selected_period_start:%B} but posts in {selected_next_month:%B}. This supplies assignment evidence only; it does not import the next month.")
 
@@ -1093,6 +1109,7 @@ def render_monthly_import_wizard():
         if role != MonthlyInputRole.SCHWAB_OPENING_POSITION_SNAPSHOT
         and role != MonthlyInputRole.SCHWAB_NEXT_MONTH_ASSIGNMENT_EVIDENCE
         and role != MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT
+        and role != MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT
         and (forex_applicable or role != MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT)
     )
     required_uploads_supplied = all(

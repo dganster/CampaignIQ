@@ -279,6 +279,16 @@ class PeriodImportPipeline:
             end=end,
         )
 
+    @staticmethod
+    def _carried_forex_positions(book: LotBook | None) -> dict[str, Decimal]:
+        if book is None:
+            return {}
+        return {
+            instrument.symbol: sum((lot.quantity for lot in book.lots(instrument)), Decimal("0"))
+            for instrument in book.instruments()
+            if isinstance(instrument, ForexPair)
+        }
+
     def _build_opening_lot_book(
         self,
         *,
@@ -362,7 +372,8 @@ class PeriodImportPipeline:
                 thinkorswim_trade_history,
                 start=period_start,
                 end=period_end,
-                forex_initial_positions=forex_initial_positions,
+                forex_initial_positions=(forex_initial_positions |
+                    self._carried_forex_positions(carried_opening_lot_book)),
             )
         )
 
