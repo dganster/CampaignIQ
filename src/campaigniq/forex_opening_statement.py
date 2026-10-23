@@ -22,7 +22,7 @@ _HEADER = re.compile(
 _POSITION = re.compile(rf'([A-Z]{{3}}/[A-Z]{{3}}) - TOTAL POSITION:\s+(Buy|Sell)\s+({_NUMBER})\s+')
 _TRADE = re.compile(
     rf'^\s*(\d{{4}}-\d{{2}}-\d{{2}}) \d{{2}}:\d{{2}}:\d{{2}}\s+'
-    rf'([A-Z]{{3}}/[A-Z]{{3}})\s+\S+\s+([BS])\s+(OPEN|CLOSE)\s+'
+    rf'([A-Z]{{3}}/[A-Z]{{3}})\s+\S+\s+([BS])\s+(OPEN|CLOSE(?:\+OPEN)?)\s+'
     rf'({_NUMBER})\s+({_NUMBER})\s+(\d+)\s+\$({_NUMBER})\s*$')
 
 
@@ -86,7 +86,9 @@ def read_forex_opening_statement(text, *, trade_history, transaction_report, per
     last = period_end
     while last.weekday() >= 5:
         last -= timedelta(days=1)
-    pages = [p for p in text.split('\f') if p.strip()]
+    # Some PDFs put two daily reports on one physical page. Bound sections by
+    # the actual report headers, retaining strict date/account verification.
+    pages = [p.strip() for p in re.split(r'(?=^Customer Account Summary Report since )', text.replace('\f', '\n'), flags=re.M) if p.strip()]
     if len(pages) < 2 or 'Monthly Equity Summary' not in pages[0]:
         raise ValueError('Monthly summary and first daily Forex statement are required.')
     if _coverage(pages[0]) != (previous, last):
@@ -98,7 +100,7 @@ def read_forex_opening_statement(text, *, trade_history, transaction_report, per
         raise ValueError('First daily Forex statement does not establish the opening boundary.')
     # Bind the Forex account without conflating it with the TOS securities ID.
     account_area = pages[0].split('Account Currency')
-    accounts = re.findall(r'\b(\d{6,})\s+USD\b', '\n'.join(account_area[1].splitlines()[:2])) if len(account_area) == 2 else []
+    accounts = re.findall(r'\b(\d{6,})\s+USD\b', account_area[1].split('Statement From')[0]) if len(account_area) == 2 else []
     report_bytes = Path(transaction_report).read_bytes()
     report_accounts = re.findall(r'Account \(USD\):\s*(\d+)', report_bytes.decode('utf-8-sig'))
     if len(accounts) != 1 or accounts != report_accounts:
@@ -168,7 +170,7 @@ def read_forex_opening_statement(text, *, trade_history, transaction_report, per
     positions = dict(opening)
     for r in sorted(rows, key=lambda r: r.executed_at):
         parts = resolver.resolve(pair=r.pair, quantity=r.quantity)
-        if len(parts) != 1 or parts[0].position_effect.value != effects[r.reference]:
+        if '+'.join(part.position_effect.value for part in parts) != effects[r.reference]:
             raise ValueError('Forex opening position disagrees with explicit execution effects.')
         positions[r.pair] = positions.get(r.pair, Decimal(0)) + r.quantity
     if {k: v for k, v in positions.items() if v} != closing:

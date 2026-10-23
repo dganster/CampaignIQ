@@ -45,6 +45,8 @@ def main():
     source.add_argument('--render-read-only', action='store_true')
     source.add_argument('--capture', type=Path, help='Previously verified workspace-capture.json.gz; requires its adjacent capture-verification.json')
     p.add_argument('--output', type=Path)
+    p.add_argument('--forex-monthly', action='append', default=[], metavar='YYYY-MM=PATH',
+                   help='Read an additional monthly PDF/text statement without changing the saved draft; repeat for another month.')
     months = [f'2025-{m:02}' for m in range(1, 13)]
     p.add_argument('--forex-not-applicable', nargs='*', choices=months, default=[])
     p.add_argument('--crypto-not-applicable', nargs='*', choices=months, default=[])
@@ -82,6 +84,25 @@ def main():
         if output.is_relative_to(repo):
             raise ValueError('Choose a new output folder outside the repository.')
         bundle, verification = save_capture(bundle, output)
+        from campaigniq.import_draft_bridge import RestoredUpload
+        supplements = {}
+        for specification in args.forex_monthly:
+            month, separator, filename = specification.partition('=')
+            if not separator or month not in months or month in supplements:
+                raise ValueError('Use a unique YYYY-MM=PATH supplemental statement for a 2025 month.')
+            path = Path(filename).expanduser().resolve()
+            if path.suffix.lower() not in ('.pdf', '.txt') or not 0 < path.stat().st_size <= 20*1024*1024:
+                raise ValueError('Supplemental statement must be a PDF/text file, at most 20 MB.')
+            content = path.read_bytes()
+            supplements[month] = RestoredUpload(path.name, 'application/pdf' if path.suffix.lower() == '.pdf' else 'text/plain', content)
+            folder = output / 'supplemental-evidence'
+            folder.mkdir(mode=0o700, exist_ok=True)
+            copy = folder / (month + path.suffix.lower())
+            with copy.open('xb') as stream:
+                os.chmod(copy, 0o600)
+                stream.write(content)
+            if copy.read_bytes() != content:
+                raise ValueError('Supplemental evidence backup verification failed.')
         print('Workspace capture checksum and round-trip: PASS', flush=True)
         def progress(row):
             preview = row['independent_preview']
@@ -93,14 +114,14 @@ def main():
             if row.get('opening_state_changes'):
                 print('  Carried opening changes requiring review: ' + str(len(row['opening_state_changes'])), flush=True)
         report = run_preflight(bundle, forex_not_applicable=args.forex_not_applicable,
-                               crypto_not_applicable=args.crypto_not_applicable, progress=progress)
+                               crypto_not_applicable=args.crypto_not_applicable, forex_monthly_evidence=supplements, progress=progress)
         report['capture_verification'] = verification
         report['development_commit'] = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
         _write_json(output / 'preflight-report.json', report)
         print('Diagnostic position replay completed:', report['diagnostic_position_replay_completed'])
         print('All 2025 safeguards passed:', report['all_2025_drafts_passed'])
         print('Report:', output / 'preflight-report.json')
-        print('No data imported or published. Production was only read.')
+        print('No data imported or published. ' + ('Production was only read.' if args.render_read_only else 'Analysis used the saved capture; no production connection was made.'))
     except Exception as error:
         # Never echo SSH output or database credentials in errors.
         p.exit(1, 'Preflight failed (' + type(error).__name__ + '). No publication was attempted.\n' +

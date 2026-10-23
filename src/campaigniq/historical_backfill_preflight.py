@@ -140,7 +140,8 @@ def _forex_controls(report):
     return dict(period_start=report.period_start.isoformat(), period_end=report.period_end.isoformat(),
                 mtd_settled_pl_usd=str(report.mtd_settled_pl_usd), settlement_row_total_usd=str(report.settlement_pl_usd),
                 pl_total_usd=None if report.pl_total_usd is None else str(report.pl_total_usd),
-                settlement_count=len(report.settlements), source_policy=report.source_policy)
+                settlement_count=len(report.settlements), source_policy=report.source_policy,
+                pending_settlement_pl_usd=str(report.pending_settlement_pl_usd))
 
 
 def downstream(storage, december):
@@ -202,11 +203,20 @@ def downstream(storage, december):
     return rows
 
 
-def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), progress=None):
+def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), forex_monthly_evidence=None, progress=None):
     validate(bundle)
     allowed = {f'2025-{month:02}' for month in range(1, 13)}
     if not set(forex_not_applicable) <= allowed or not set(crypto_not_applicable) <= allowed:
         raise ValueError('Applicability declarations must name 2025 months.')
+    supplements = dict(forex_monthly_evidence or {})
+    if not supplements.keys() <= allowed:
+        raise ValueError('Supplemental statements must name 2025 months.')
+    supplemental_manifest = {}
+    for month, upload in supplements.items():
+        if (not isinstance(upload, RestoredUpload) or not isinstance(upload.content, bytes)
+                or not 0 < len(upload.content) <= 20*1024*1024 or Path(upload.name).suffix.lower() not in ('.pdf', '.txt')):
+            raise ValueError('Supplemental statements require nonempty PDF/text upload bytes, at most 20 MB.')
+        supplemental_manifest[month] = dict(filename=Path(upload.name).name, sha256=sha256(upload.content).hexdigest(), byte_size=len(upload.content))
     before = sha256(encode(bundle)).hexdigest()
     storage = _FrozenStorage(bundle)
     drafts = {(d['year'], d['month']): d for d in bundle['drafts'] if d['state'] == 'draft'}
@@ -226,6 +236,20 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
             with TemporaryDirectory(prefix='campaigniq-year-preflight-') as directory:
                 root = Path(directory)
                 supplied = _uploads(docs, root)
+                if key in supplements:
+                    upload = supplements[key]
+                    role = MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT
+                    saved = [d for d in docs if d['role'] == role.value]
+                    if saved and base64.b64decode(saved[0]['content_base64']) != upload.content:
+                        raise ValueError('Supplemental monthly statement conflicts with the saved draft; original draft was preserved.')
+                    if not saved:
+                        path = root / ('supplemental_forex_monthly' + Path(upload.name).suffix)
+                        path.write_bytes(upload.content)
+                        if path.suffix.lower() == '.pdf':
+                            path = extract_pdf_text(path, root / 'supplemental_forex_monthly.txt')
+                        supplied[role] = path
+                        row['blocking_findings'].append('Supplemental monthly statement is not in the saved draft; upload it before publication.')
+                    row['supplemental_monthly_evidence'] = supplemental_manifest[key]
                 prepared_hashes = {r.value: sha256(p.read_bytes()).hexdigest() for r, p in supplied.items()}
                 preflight = prepare_monthly_import(2025, month, authoritative_state_root=root / 'state',
                     supplied_inputs=supplied, artifact_storage=storage,
@@ -290,6 +314,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 diagnostic_position_replay_completed=carried is not None and all(row['continuous_preview'] is not None for row in rows),
                 december_boundary_source='Diagnostic continuous replay; unresolved findings do not authorize publication.',
                 state_comparison_policy='Exact numeric values and instrument fields; lot IDs, campaign IDs, basis and allocator retained.',
+                supplemental_monthly_evidence=supplemental_manifest,
                 protected_artifact_sha256=protected, captured_bytes_unchanged=True,
                 full_portfolio_continuity_verified=False, publication_authorized=False,
                 applicability_declarations=dict(forex_not_applicable=sorted(forex_not_applicable), crypto_not_applicable=sorted(crypto_not_applicable)),
