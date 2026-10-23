@@ -166,7 +166,11 @@ def reconcile_closing_inventory(
         if csv_ids - set(evidence.execution_ids):
             raise ValueError("CSV Forex execution references conflict with corroborated monthly evidence.")
         csv_nonzero = {i: q for i, q in csv_positions.items() if q}
-        if events and csv_nonzero != monthly:
+        # A pair without a CSV transaction still has an opening carry in
+        # csv_positions. That inferred carry is not an explicit Total Position.
+        explicit_pairs = {ForexPair.from_symbol(row.instrument) for row in events}
+        if any(csv_positions.get(pair, Decimal(0)) != monthly.get(pair, Decimal(0))
+               for pair in explicit_pairs):
             raise ValueError("Explicit CSV Forex Total Position conflicts with the monthly statement.")
         if missing:
             findings.append("Forex transaction CSV omits execution reference(s): " + ", ".join(sorted(missing)) +
