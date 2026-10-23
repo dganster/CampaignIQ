@@ -221,6 +221,13 @@ def execute_monthly_import(
         historical_source_root=historical_source_root,
     )
 
+    monthly_forex = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
+    if monthly_forex is not None:
+        from campaigniq.forex_opening_statement import read_forex_opening_statement, verify_forex_ending
+        evidence = read_forex_opening_statement(Path(monthly_forex).read_text(encoding="utf-8"),
+            trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
+        verify_forex_ending(result.ending_lot_book, evidence)
+
     closing_rows = read_position_snapshot_section(
         closing_lines,
         snapshot_at=datetime.combine(contract.period_end, datetime.max.time()),

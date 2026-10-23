@@ -85,6 +85,12 @@ def prepare_monthly_import(
 ) -> MonthlyImportPreflight:
     """Combine the monthly contract, file validation, and predecessor discovery."""
     contract = monthly_import_contract(year, month)
+    forex_monthly_path = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
+    if forex_monthly_path is not None:
+        contract = replace(contract, requirements=(*contract.requirements,
+            MonthlyInputRequirement(role=MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT,
+                required=True, user_supplied=True,
+                description="Supplied monthly Forex statement must corroborate opening inventory and executions.")))
     if not forex_applicable:
         contract = replace(contract, requirements=tuple(
             replace(req, required=False) if req.role == MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT else req
@@ -140,8 +146,41 @@ def prepare_monthly_import(
                     period_end=snapshot_end,
                 )
 
+    forex_monthly_validation = None
+    if forex_monthly_path is not None:
+        try:
+            if not forex_applicable:
+                raise ValueError("Forex statement supplied while Forex is marked not applicable.")
+            from campaigniq.forex_opening_statement import read_forex_opening_statement, attach_forex_opening
+            evidence = read_forex_opening_statement(
+                Path(forex_monthly_path).read_text(encoding="utf-8"),
+                trade_history=supplied_inputs[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY],
+                transaction_report=supplied_inputs[MonthlyInputRole.SCHWAB_FOREX_TRANSACTION_REPORT],
+                period_end=contract.period_end)
+            book = opening_state.lot_book if opening_state is not None else bootstrap_opening_lot_book
+            if book is None:
+                raise ValueError("Establish the base opening inventory before adding Forex opening evidence.")
+            enriched = attach_forex_opening(book, evidence, period_start=contract.period_start,
+                authoritative=opening_state is not None)
+            if opening_state is not None:
+                opening_state = replace(opening_state, lot_book=enriched)
+            else:
+                bootstrap_opening_lot_book = enriched
+            forex_monthly_validation = MonthlyInputValidation(
+                role=MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT, valid=True,
+                message="Monthly Forex opening positions, executions and closing positions corroborated; original transaction-report money controls remain unchanged.",
+                record_count=len(evidence.opening))
+        except (ValueError, OSError, KeyError) as exc:
+            forex_monthly_validation = MonthlyInputValidation(
+                role=MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT, valid=False,
+                message=f"Invalid Forex opening evidence: {exc}")
+
     for requirement in contract.requirements:
         role = requirement.role
+        if role is MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT:
+            assert forex_monthly_validation is not None
+            validations.append(forex_monthly_validation)
+            continue
 
         if role is MonthlyInputRole.OPENING_STATE:
             if opening_state is not None:
