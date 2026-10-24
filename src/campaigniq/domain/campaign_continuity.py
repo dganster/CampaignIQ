@@ -34,6 +34,7 @@ class TradeCampaignBinding:
     consumed_lot_ids: tuple[str, ...]
     consumed_lot_quantities: tuple[tuple[str, str], ...] = ()
     evidence_kind: str = 'fifo_consumption'
+    documented_opening_lot_ids: tuple[str, ...] = ()
 
 
 class CampaignContinuityError(ValueError):
@@ -43,7 +44,7 @@ class CampaignContinuityError(ValueError):
         self.trade_bindings = plan.trade_bindings
 
 
-def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
+def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, documented_opening_lots=()):
     """Link reconstructed campaigns to carried IDs using actual FIFO closures.
 
     Speculative replay occurs on a clone. Exact trade nodes, not monthly grouping,
@@ -52,6 +53,8 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
     component still cannot merge carried IDs or invent unknown ancestry. Original
     opening lots and source campaign objects are never rewritten.
     """
+    documented_opening_lots = frozenset(documented_opening_lots)
+    documented_consumption = {}
     campaigns = tuple(campaigns)
     identifiers = [c.campaign_id for c in campaigns]
     if any(not isinstance(cid, str) or not cid for cid in identifiers) or len(set(identifiers)) != len(identifiers):
@@ -166,11 +169,14 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
             after = {lot.lot_id: abs(lot.quantity)
                      for instrument in book.instruments() for lot in book.lots(instrument)}
             for lot_id, quantity in unknown_before.items():
-                if after.get(lot_id, 0) < quantity:
+                if after.get(lot_id, 0) < quantity and lot_id not in documented_opening_lots:
                     findings.add(f'Campaign {cid} consumes lot {lot_id} with unknown campaign ancestry.')
                     tainted.add(token)
             for allocation in allocations:
-                previous = allocation.campaign_id
+                previous = None if allocation.lot_id in unknown_before else allocation.campaign_id
+                if previous is None and allocation.lot_id in documented_opening_lots:
+                    documented_consumption.setdefault(token, set()).add(allocation.lot_id)
+                    continue
                 if previous is None:
                     findings.add(f'Campaign {cid} closes lot {allocation.lot_id} with unknown campaign ancestry.')
                     tainted.add(token)
@@ -208,6 +214,9 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
         if len(all_symbols) != 1:
             findings.add('Connected campaign activity spans multiple underlyings.')
             valid = False
+        if current & documented_consumption.keys() and len(old) != 1:
+            findings.add('Documented opening lots require exactly one observed carried campaign connection.')
+            valid = False
         if len(old) > 1:
             findings.add('Connected activity would merge distinct carried campaigns: ' + ', '.join(sorted(old)))
             valid = False
@@ -222,7 +231,8 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
     trade_bindings = tuple(TradeCampaignBinding(
         data[0], data[1], data[2], targets.get(node, data[2]),
         supported.get(node, False), tuple(consumed[node]), tuple(consumed_quantities[node]),
-        'carried_fifo' if targets.get(node, data[2]) in carried else 'new_source_campaign')
+        'documented_opening_fifo' if node in documented_consumption else 'carried_fifo' if targets.get(node, data[2]) in carried else 'new_source_campaign',
+        tuple(sorted(documented_consumption.get(node, ()))))
         for node, data in sorted(records.items(), key=lambda pair: pair[1][0]))
     relation = tuple(sorted({(link.source_campaign_id, link.target_campaign_id)
                              for link in trade_bindings if link.supported_by_fifo

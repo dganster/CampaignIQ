@@ -88,6 +88,7 @@ class PeriodImportResult:
     forex_settlement_attributions: tuple[ForexSettlementAttribution, ...] = ()
     crypto_report: dict | None = None
     campaign_identity_links: tuple = ()
+    observed_fifo_boundary_cases: tuple = ()
 
 
 class PeriodImportPipeline:
@@ -151,11 +152,14 @@ class PeriodImportPipeline:
         campaign_namespace: str | None = None,
         previously_applied_deliveries: tuple[PositionEvent, ...] = (),
         preserve_carried_state: bool = False,
+        opening_origin_evidence=None,
     ) -> PeriodImportResult:
         """Run one monthly import from source records through boundary analysis."""
 
         if type(preserve_carried_state) is not bool:
             raise ValueError("preserve_carried_state must be a boolean.")
+        if opening_origin_evidence is not None and not preserve_carried_state:
+            raise ValueError('Opening origin evidence requires carried-state preview mode.')
         if preserve_carried_state:
             if (carried_opening_lot_book is None or opening_snapshot is not None
                     or opening_snapshot_at is not None):
@@ -183,7 +187,7 @@ class PeriodImportPipeline:
                 realized_gain_loss_report=realized_gain_loss_report,
                 forex_transaction_report=forex_transaction_report,
                 historical_trade_histories=(), historical_period_start=None,
-                seed_historical=False, preserve_carried_state=True)
+                seed_historical=False, preserve_carried_state=True, opening_origin_evidence=opening_origin_evidence)
 
         # Preserve the existing manual-history behavior exactly.
         if historical_source_root is None:
@@ -392,6 +396,7 @@ class PeriodImportPipeline:
         campaign_namespace: str | None = None,
         previously_applied_deliveries: tuple[PositionEvent, ...] = (),
         preserve_carried_state: bool = False,
+        opening_origin_evidence=None,
     ) -> PeriodImportResult:
         """Run one complete pipeline pass."""
 
@@ -655,8 +660,14 @@ class PeriodImportPipeline:
                                     for execution in leg.executions)
                 if any(not period_start <= instant.date() <= period_end for instant in instants):
                     raise ValueError("Continuity history contains activity outside the selected month.")
+            documented = ()
+            if opening_origin_evidence is not None:
+                from campaigniq.historical_backfill_origin_policy import verify_opening_origins
+                documented = verify_opening_origins(opening_origin_evidence, opening_lot_book,
+                    period_end=period_start - date.resolution)
             plan = plan_campaign_continuity(opening_lot_book=opening_lot_book,
-                position_history=position_history, campaigns=campaigns)
+                position_history=position_history, campaigns=campaigns,
+                **({'documented_opening_lots': documented} if opening_origin_evidence is not None else {}))
             if plan.blocking_findings:
                 raise CampaignContinuityError(plan)
             campaigns = plan.campaigns
@@ -728,6 +739,9 @@ class PeriodImportPipeline:
                 thinkorswim_trade_history, period_start=period_start, period_end=period_end,
             ),
             campaign_identity_links=plan.trade_bindings if preserve_carried_state else (),
+            observed_fifo_boundary_cases=tuple(sorted({campaign.campaign_id for campaign in campaigns
+                if all(link.supported_by_fifo for link in plan.trade_bindings if link.target_campaign_id == campaign.campaign_id)}))
+                if preserve_carried_state and opening_origin_evidence is not None else (),
         )
 
     def _read_expiration_events(

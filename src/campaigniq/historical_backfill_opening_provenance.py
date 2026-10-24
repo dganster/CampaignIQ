@@ -71,12 +71,15 @@ def trace_opening_provenance(result, *, period_start, period_end, documents, pre
     for ordinal, item in enumerate(result.position_history.items(), 1):
         before = _lots(book)
         parents = []
+        consumed_quantities = {}
         direct = False
         if item.trade is not None:
             if id(item.trade) not in owners:
                 raise ValueError('Unowned source trade cannot establish provenance.')
             allocations = book.apply_trade(item.trade, campaign_id=owners[id(item.trade)])
             parents = list(dict.fromkeys(allocation.lot_id for allocation in allocations))
+            for allocation in allocations:
+                consumed_quantities[allocation.lot_id] = consumed_quantities.get(allocation.lot_id, Decimal(0)) + abs(allocation.quantity)
             direct = bool(item.trade.legs) and all(leg.position_effect is PositionEffect.OPEN for leg in item.trade.legs)
             kind = 'observed_open' if direct else 'observed_trade_with_prior_inventory'
         else:
@@ -90,12 +93,14 @@ def trace_opening_provenance(result, *, period_start, period_end, documents, pre
                         allocations = probe.apply_signed_change(instrument=change.instrument,
                             quantity=change.quantity, occurred_at=event.occurred_at)
                         parents.extend(allocation.lot_id for allocation in allocations)
+                        for allocation in allocations:
+                            consumed_quantities[allocation.lot_id] = consumed_quantities.get(allocation.lot_id, Decimal(0)) + abs(allocation.quantity)
             LotBookPeriodApplier()._apply_event(book, event)
             kind = 'observed_' + event.kind.value.lower()
         for lid, lot in _lots(book).items():
             if lid in before:
                 continue
-            parent_receipts = [{key: ledger[parent].get(key) for key in ('lot_id', 'origin_kind', 'identity', 'actual_campaign_start', 'source_documents')}
+            parent_receipts = [{key: ledger[parent].get(key) for key in ('lot_id', 'origin_kind', 'identity', 'actual_campaign_start', 'snapshot_observed_at', 'quantity', 'source_documents')}
                                for parent in parents if parent in ledger]
             receipt = dict(lot_id=lid, identity=_identity(lot), quantity=str(lot.quantity),
                            origin_kind=kind, observed_at=item.occurred_at.isoformat(),
@@ -103,6 +108,7 @@ def trace_opening_provenance(result, *, period_start, period_end, documents, pre
                            basis_total=None if lot.basis_total is None else str(lot.basis_total),
                            campaign_identity_verified=False,
                            parent_lot_ids=parents, parent_origins=parent_receipts,
+                           parent_consumed_quantities={lid: str(qty) for lid, qty in consumed_quantities.items()},
                            source_documents=receipts, source_item_ordinal=ordinal,
                            observed_open_verified=direct and has_sources and lot.campaign_id is not None)
             ledger[lid] = receipt

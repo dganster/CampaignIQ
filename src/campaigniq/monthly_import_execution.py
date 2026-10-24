@@ -145,10 +145,13 @@ def execute_monthly_import(
     reconciliation_decision: ReconciliationDecision | None = None,
     preview_only: bool = False,
     development_continuity: bool = False,
+    development_opening_origins=None,
 ) -> MonthlyImportExecution:
     """Run and finalize after reconciliation or an exact reviewed exception."""
     if type(development_continuity) is not bool:
         raise ValueError('Development continuity requires an explicit boolean.')
+    if development_opening_origins is not None and not development_continuity:
+        raise ValueError('Opening origin evidence requires development continuity preview.')
     if development_continuity:
         import os
         if not preview_only or historical_source_root is not None or reconciliation_decision is not None:
@@ -229,7 +232,7 @@ def execute_monthly_import(
         realized_gain_loss_report=realized_path,
         forex_transaction_report=forex_path,
         historical_source_root=historical_source_root,
-        **({'preserve_carried_state': True} if development_continuity else {}),
+        **({'preserve_carried_state': True, **({'opening_origin_evidence': development_opening_origins} if development_opening_origins is not None else {})} if development_continuity else {}),
     )
 
     resolution_audit = None

@@ -125,7 +125,16 @@ def _execution_report(execution, start):
         if value is False:
             blockers.append('Forex monetary control failed: ' + name)
     boundary = execution.result.boundary_reconstruction
-    if boundary.unresolved_positions or boundary.unresolved_campaigns or boundary.historical_requirements:
+    proven = set(getattr(execution.result, 'observed_fifo_boundary_cases', ()))
+    # The new evidence answers the old opening-position question through exact
+    # FIFO replay, including partial closures. It does not answer historical
+    # campaign-start requirements or certify the original pre-capture history.
+    eligible = {req.case_id for req in boundary.historical_requirements
+                if req.reason.startswith('Opening position ancestry cannot be established')}
+    resolved = proven & eligible
+    if (set(boundary.unresolved_campaigns) - resolved
+            or any(req.case_id not in resolved for req in boundary.historical_requirements)
+            or (boundary.unresolved_positions and not boundary.unresolved_campaigns)):
         blockers.append('Historical opening/campaign evidence remains incomplete.')
     return dict(closing_reconciled=reconciliation.reconciled,
                 closing_mismatches=[dict(instrument=repr(m.instrument), computed=str(m.computed_quantity), broker=str(m.snapshot_quantity))
@@ -133,6 +142,8 @@ def _execution_report(execution, start):
                 forex_controls=controls, forex_control_deltas_usd=deltas, forex_resolution=execution.forex_resolution,
                 forex_report_controls=_forex_controls(execution.result.forex_transaction_report),
                 journal_replay_verified=True, blocking_findings=blockers,
+                observed_fifo_boundary_cases=sorted(resolved),
+                original_campaign_start_dates_verified=False,
                 original_boundary_findings=dict(unresolved_positions=list(boundary.unresolved_positions),
                     unresolved_campaigns=list(boundary.unresolved_campaigns), historical_requirements=[asdict(req) for req in boundary.historical_requirements]))
 
@@ -266,10 +277,10 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 row['validations'] = [dict(role=v.role.value, valid=v.valid, message=v.message) for v in preflight.validations]
                 if not preflight.ready or preflight.opening_lot_book is None:
                     raise ValueError('Required inputs or opening inventory are not ready; see validations.')
-                def execute(prepared, *, preserve=False):
+                def execute(prepared, *, preserve=False, origins=None):
                     return execute_monthly_import(prepared, authoritative_state_root=root / 'state', supplied_inputs=supplied,
                                                   artifact_storage=storage, preview_only=True,
-                                                  **({'development_continuity': True} if preserve else {}))
+                                                  **({'development_continuity': True, **({'development_opening_origins': origins} if origins is not None else {})} if preserve else {}))
                 independent = execute(preflight)
                 row['independent_preview'] = _execution_report(independent, preflight.contract.period_start)
                 row['blocking_findings'].extend(row['independent_preview']['blocking_findings'])
@@ -291,7 +302,11 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                         identity_preserving_replay_passed=False, blocking_findings=[])
                     if campaign_continuity:
                         try:
-                            continuous = execute(prepared, preserve=True)
+                            from campaigniq.historical_backfill_origin_policy import bind_opening_origins
+                            origins = bind_opening_origins(carried, period_end=preflight.contract.period_start - date.resolution,
+                                receipts=provenance_closing, documents=bundle['documents'])
+                            row['documented_opening_origin_policy'] = dict(asdict(origins), original_campaign_starts_verified=False)
+                            continuous = execute(prepared, preserve=True, origins=origins)
                             row['campaign_continuity'].update(mode='identity_preserving', identity_preserving_replay_passed=True)
                             row['campaign_continuity']['trade_links'] = [asdict(link) for link in getattr(continuous.result, 'campaign_identity_links', ())]
                         except ValueError as error:
