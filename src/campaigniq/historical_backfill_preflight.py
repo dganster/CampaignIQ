@@ -203,8 +203,14 @@ def downstream(storage, december):
     return rows
 
 
-def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), forex_monthly_evidence=None, progress=None):
+def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), forex_monthly_evidence=None, campaign_continuity=False, progress=None):
     validate(bundle)
+    if type(campaign_continuity) is not bool:
+        raise ValueError('Campaign continuity must be an explicit boolean.')
+    if campaign_continuity:
+        import os
+        if os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'):
+            raise ValueError('Development campaign continuity must run locally, never on Render.')
     allowed = {f'2025-{month:02}' for month in range(1, 13)}
     if not set(forex_not_applicable) <= allowed or not set(crypto_not_applicable) <= allowed:
         raise ValueError('Applicability declarations must name 2025 months.')
@@ -220,7 +226,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
     before = sha256(encode(bundle)).hexdigest()
     storage = _FrozenStorage(bundle)
     drafts = {(d['year'], d['month']): d for d in bundle['drafts'] if d['state'] == 'draft'}
-    rows = []; carried = None; chain = True
+    rows = []; carried = None; chain = True; identity_chain = True
     for month in range(1, 13):
         key = f'2025-{month:02}'
         draft = drafts.get((2025, month))
@@ -257,24 +263,53 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 row['validations'] = [dict(role=v.role.value, valid=v.valid, message=v.message) for v in preflight.validations]
                 if not preflight.ready or preflight.opening_lot_book is None:
                     raise ValueError('Required inputs or opening inventory are not ready; see validations.')
-                def execute(prepared):
+                def execute(prepared, *, preserve=False):
                     return execute_monthly_import(prepared, authoritative_state_root=root / 'state', supplied_inputs=supplied,
-                                                  artifact_storage=storage, preview_only=True)
+                                                  artifact_storage=storage, preview_only=True,
+                                                  **({'development_continuity': True} if preserve else {}))
                 independent = execute(preflight)
                 row['independent_preview'] = _execution_report(independent, preflight.contract.period_start)
                 row['blocking_findings'].extend(row['independent_preview']['blocking_findings'])
                 if month == 1:
                     continuous = independent
+                    row['campaign_continuity'] = dict(mode='initial_evidenced_anchor', enabled=campaign_continuity,
+                        opening_unknown_ancestry=[dict(lot_id=lot.lot_id, instrument=_instrument(lot.instrument), quantity=str(lot.quantity))
+                            for instrument in independent.result.opening_lot_book.instruments()
+                            for lot in independent.result.opening_lot_book.lots(instrument) if lot.campaign_id is None])
                 elif carried is not None:
                     row['opening_quantity_differences'] = differences(quantities(carried), quantities(independent.result.opening_lot_book))
                     if row['opening_quantity_differences']:
                         row['blocking_findings'].append('Previous closing and independently evidenced opening quantities differ.')
-                    continuous = execute(replace(preflight, opening_state=None, bootstrap_opening_lot_book=carried.clone()))
+                        identity_chain = False
+                    prepared = replace(preflight, opening_state=None, bootstrap_opening_lot_book=carried.clone())
+                    row['campaign_continuity'] = dict(enabled=campaign_continuity, mode='legacy_diagnostic',
+                        input_connected_to_identity_chain=identity_chain and campaign_continuity,
+                        connected_to_verified_identity_chain=identity_chain and campaign_continuity,
+                        identity_preserving_replay_passed=False, blocking_findings=[])
+                    if campaign_continuity:
+                        try:
+                            continuous = execute(prepared, preserve=True)
+                            row['campaign_continuity'].update(mode='identity_preserving', identity_preserving_replay_passed=True)
+                        except ValueError as error:
+                            # Retain the strict failure and continue quantity diagnostics.
+                            # The fallback is explicitly not an identity continuity pass.
+                            finding = 'Identity-preserving campaign replay blocked: ' + str(error)
+                            row['campaign_continuity'].update(mode='legacy_quantity_fallback', blocking_findings=[finding],
+                                connected_to_verified_identity_chain=False)
+                            row['blocking_findings'].append(finding)
+                            identity_chain = False
+                            continuous = execute(prepared)
+                    else:
+                        continuous = execute(prepared)
                     previous_end = preflight.contract.period_start - date.resolution
                     row['opening_state_changes'] = _state_changes(carried, continuous.result.opening_lot_book, previous_end)
                     row['exact_opening_state_carried'] = not row['opening_state_changes']
                     if not row['exact_opening_state_carried']:
                         row['blocking_findings'].append('Pipeline changed carried opening state; provenance/basis review required.')
+                        identity_chain = False
+                        if campaign_continuity:
+                            row['campaign_continuity']['identity_preserving_replay_passed'] = False
+                            row['campaign_continuity']['connected_to_verified_identity_chain'] = False
                 else:
                     raise ValueError('Continuous replay unavailable because the previous draft did not pass.')
                 row['continuous_preview'] = _execution_report(continuous, preflight.contract.period_start)
@@ -282,6 +317,9 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 row['closing_quantity_differences'] = differences(quantities(continuous.result.ending_lot_book), quantities(independent.result.ending_lot_book))
                 if row['closing_quantity_differences']:
                     row['blocking_findings'].append('Continuous closing differs from the independent monthly preview.')
+                    identity_chain = False
+                if not row['independent_preview']['closing_reconciled'] or not row['continuous_preview']['closing_reconciled']:
+                    identity_chain = False
                 if prepared_hashes != {r.value: sha256(p.read_bytes()).hexdigest() for r, p in supplied.items()}:
                     raise ValueError('Prepared source bytes changed during preview.')
                 row['prepared_source_sha256'] = prepared_hashes
@@ -296,6 +334,8 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
             row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
         carried = next_carried
         chain = chain and carried is not None and not row['blocking_findings']
+        if carried is None:
+            identity_chain = False
         row['blocking_findings'] = list(dict.fromkeys(row['blocking_findings']))
         rows.append(row)
         if progress:
@@ -308,10 +348,13 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
     blockers = [r['month'] + ': ' + b for r in rows + edges for b in r['blocking_findings']]
     blockers += ['Physical PostgreSQL restore and rollback have not been tested.',
                  'A separately authorized transactional historical publisher has not been implemented.']
-    return dict(format='campaigniq.whole_year_backfill_preflight', version=2, diagnostic_only=True,
+    return dict(format='campaigniq.whole_year_backfill_preflight', version=3, diagnostic_only=True,
                 workspace=bundle['workspace'], captured_at=bundle['captured_at'], capture_sha256=before,
                 months=rows, downstream=edges, all_2025_drafts_passed=chain,
                 diagnostic_position_replay_completed=carried is not None and all(row['continuous_preview'] is not None for row in rows),
+                campaign_continuity_enabled=campaign_continuity,
+                identity_preserving_chain_verified=campaign_continuity and identity_chain and carried is not None,
+                campaign_continuity_policy='Unknown ancestry and distinct carried campaign merges remain blockers. A labeled legacy fallback verifies quantities only and never restores a broken identity chain.',
                 december_boundary_source='Diagnostic continuous replay; unresolved findings do not authorize publication.',
                 state_comparison_policy='Exact numeric values and instrument fields; lot IDs, campaign IDs, basis and allocator retained.',
                 supplemental_monthly_evidence=supplemental_manifest,

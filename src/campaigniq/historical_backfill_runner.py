@@ -45,6 +45,8 @@ def main():
     source.add_argument('--render-read-only', action='store_true')
     source.add_argument('--capture', type=Path, help='Previously verified workspace-capture.json.gz; requires its adjacent capture-verification.json')
     p.add_argument('--output', type=Path)
+    p.add_argument('--campaign-continuity', action='store_true',
+                   help='Attempt identity-preserving local replay; retain strict blockers and label any quantity-only fallback.')
     p.add_argument('--forex-monthly', action='append', default=[], metavar='YYYY-MM=PATH',
                    help='Read an additional monthly PDF/text statement without changing the saved draft; repeat for another month.')
     months = [f'2025-{m:02}' for m in range(1, 13)]
@@ -113,12 +115,19 @@ def main():
                 print('  Forex MTD USD: ' + controls['mtd_settled_pl_usd'] + '; settlement rows USD: ' + controls['settlement_row_total_usd'] + '; difference USD: ' + preview['forex_control_deltas_usd']['settlement'], flush=True)
             if row.get('opening_state_changes'):
                 print('  Carried opening changes requiring review: ' + str(len(row['opening_state_changes'])), flush=True)
+            continuity = row.get('campaign_continuity', {})
+            if continuity.get('enabled') and continuity.get('mode') != 'initial_evidenced_anchor':
+                print('  Campaign continuity: ' + continuity['mode'], flush=True)
+                for finding in continuity.get('blocking_findings', []):
+                    print('  ' + finding, flush=True)
         report = run_preflight(bundle, forex_not_applicable=args.forex_not_applicable,
-                               crypto_not_applicable=args.crypto_not_applicable, forex_monthly_evidence=supplements, progress=progress)
+                               crypto_not_applicable=args.crypto_not_applicable, forex_monthly_evidence=supplements,
+                               campaign_continuity=args.campaign_continuity, progress=progress)
         report['capture_verification'] = verification
         report['development_commit'] = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
         _write_json(output / 'preflight-report.json', report)
         print('Diagnostic position replay completed:', report['diagnostic_position_replay_completed'])
+        print('Identity-preserving chain verified:', report['identity_preserving_chain_verified'])
         print('All 2025 safeguards passed:', report['all_2025_drafts_passed'])
         print('Report:', output / 'preflight-report.json')
         print('No data imported or published. ' + ('Production was only read.' if args.render_read_only else 'Analysis used the saved capture; no production connection was made.'))

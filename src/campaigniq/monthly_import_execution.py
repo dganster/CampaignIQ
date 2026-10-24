@@ -144,8 +144,17 @@ def execute_monthly_import(
     artifact_storage: ArtifactStorage | None = None,
     reconciliation_decision: ReconciliationDecision | None = None,
     preview_only: bool = False,
+    development_continuity: bool = False,
 ) -> MonthlyImportExecution:
     """Run and finalize after reconciliation or an exact reviewed exception."""
+    if type(development_continuity) is not bool:
+        raise ValueError('Development continuity requires an explicit boolean.')
+    if development_continuity:
+        import os
+        if not preview_only or historical_source_root is not None or reconciliation_decision is not None:
+            raise ValueError('Development continuity requires preview only, without historical reseeding or reconciliation decisions.')
+        if os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'):
+            raise ValueError('Development continuity must run locally, never on Render.')
     if not preflight.ready:
         raise ValueError("Monthly import preflight is not ready.")
 
@@ -220,6 +229,7 @@ def execute_monthly_import(
         realized_gain_loss_report=realized_path,
         forex_transaction_report=forex_path,
         historical_source_root=historical_source_root,
+        **({'preserve_carried_state': True} if development_continuity else {}),
     )
 
     resolution_audit = None
