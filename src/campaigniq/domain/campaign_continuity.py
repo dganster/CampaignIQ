@@ -3,6 +3,11 @@
 A matching ID is not proof of source authenticity or full downstream continuity.
 """
 from dataclasses import dataclass, replace
+from decimal import Decimal
+
+from campaigniq.domain.position_effect import PositionEffect
+from campaigniq.domain.option_type import OptionType
+from campaigniq.domain.side import Side
 
 from campaigniq.domain.campaign_identity import underlying_symbol
 from campaigniq.domain.lot_book_period_applier import LotBookPeriodApplier
@@ -35,6 +40,7 @@ class TradeCampaignBinding:
     consumed_lot_quantities: tuple[tuple[str, str], ...] = ()
     evidence_kind: str = 'fifo_consumption'
     documented_opening_lot_ids: tuple[str, ...] = ()
+    covered_equity_lot_ids: tuple[str, ...] = ()
 
 
 class CampaignContinuityError(ValueError):
@@ -44,17 +50,25 @@ class CampaignContinuityError(ValueError):
         self.trade_bindings = plan.trade_bindings
 
 
-def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, documented_opening_lots=()):
+def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, documented_opening_lots=(), link_assignment_calls=False):
     """Link reconstructed campaigns to carried IDs using actual FIFO closures.
 
     Speculative replay occurs on a clone. Exact trade nodes, not monthly grouping,
     connect new openings and rolls to consumed FIFO lots. Distinct trades in one
     monthly campaign may inherit different carried identities. An atomic connected
     component still cannot merge carried IDs or invent unknown ancestry. Original
-    opening lots and source campaign objects are never rewritten.
+    opening lots and source campaign objects are never rewritten. Optional
+    assignment call linkage attaches only a newly observed single-leg short call
+    to one unambiguous, sufficiently covered share delivery in this replay. It
+    cannot merge existing carried IDs or infer coverage from a symbol alone.
     """
     documented_opening_lots = frozenset(documented_opening_lots)
     documented_consumption = {}
+    if type(link_assignment_calls) is not bool:
+        raise ValueError('Assignment call linkage must be an explicit boolean.')
+    assigned_equity = {}
+    coverage = {}
+    coverage_lots = {}
     campaigns = tuple(campaigns)
     identifiers = [c.campaign_id for c in campaigns]
     if any(not isinstance(cid, str) or not cid for cid in identifiers) or len(set(identifiers)) != len(identifiers):
@@ -145,7 +159,21 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, d
                                         raise ValueError('Assignment has an unrecognized campaign ID.')
                                     graph[event_node].add(previous)
                                     graph[previous].add(event_node)
+                before_ids = {lot.lot_id for instrument in book.instruments() for lot in book.lots(instrument)}
                 LotBookPeriodApplier()._apply_event(book, item.event)
+                if item.event.kind is PositionEventKind.SPLIT:
+                    changed_symbols = {underlying_symbol(change.instrument) for change in item.event.changes}
+                    for instrument in book.instruments():
+                        if underlying_symbol(instrument) in changed_symbols:
+                            for lot in book.lots(instrument):
+                                assigned_equity.pop(lot.lot_id, None)
+                if link_assignment_calls and item.event.kind is PositionEventKind.ASSIGNMENT:
+                    for instrument in book.instruments():
+                        if isinstance(instrument, OptionContract):
+                            continue
+                        for lot in book.lots(instrument):
+                            if lot.lot_id not in before_ids and lot.quantity > 0 and lot.campaign_id in graph:
+                                assigned_equity[lot.lot_id] = item.occurred_at
                 after = {lot.lot_id: abs(lot.quantity)
                          for instrument in book.instruments() for lot in book.lots(instrument)}
                 for lot_id, quantity in unknown_before.items():
@@ -163,6 +191,30 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, d
                 if lot.campaign_id is None
             }
             token = nodes[id(trade)]
+            if link_assignment_calls and len(trade.legs) == 1:
+                leg = trade.legs[0]
+                contract = leg.instrument
+                if (isinstance(contract, OptionContract) and contract.option_type is OptionType.CALL
+                        and leg.side is Side.SELL and leg.position_effect is PositionEffect.OPEN):
+                    equity = [lot for instrument in book.instruments()
+                              if not isinstance(instrument, OptionContract) and underlying_symbol(instrument) == contract.underlying
+                              for lot in book.lots(instrument)]
+                    owners = {lot.campaign_id for lot in equity}
+                    quantity = sum((abs(e.quantity) for e in leg.executions), Decimal(0))
+                    existing = [lot for instrument in book.instruments()
+                                if isinstance(instrument, OptionContract) and instrument.underlying == contract.underlying
+                                and instrument.option_type is OptionType.CALL for lot in book.lots(instrument)]
+                    collateral = sum((lot.quantity for lot in equity), Decimal(0))
+                    if (equity and len(owners) == 1 and next(iter(owners)) in graph
+                            and all(lot.quantity > 0 and lot.lot_id in assigned_equity
+                                    and assigned_equity[lot.lot_id] < item.occurred_at for lot in equity)
+                            and quantity > 0 and quantity == quantity.to_integral_value()
+                            and all(lot.quantity < 0 and coverage.get(lot.campaign_id) == next(iter(owners)) for lot in existing)
+                            and (quantity + sum((abs(lot.quantity) for lot in existing), Decimal(0))) * 100 <= collateral):
+                        anchor = next(iter(owners))
+                        graph[token].add(anchor); graph[anchor].add(token)
+                        coverage[token] = anchor
+                        coverage_lots[token] = tuple(sorted(lot.lot_id for lot in equity))
             allocations = book.apply_trade(trade, campaign_id=token)
             consumed[token].extend(allocation.lot_id for allocation in allocations)
             consumed_quantities[token].extend((allocation.lot_id, str(allocation.quantity)) for allocation in allocations)
@@ -231,8 +283,8 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns, d
     trade_bindings = tuple(TradeCampaignBinding(
         data[0], data[1], data[2], targets.get(node, data[2]),
         supported.get(node, False), tuple(consumed[node]), tuple(consumed_quantities[node]),
-        'documented_opening_fifo' if node in documented_consumption else 'carried_fifo' if targets.get(node, data[2]) in carried else 'new_source_campaign',
-        tuple(sorted(documented_consumption.get(node, ()))))
+        'assignment_backed_covered_call' if node in coverage else 'documented_opening_fifo' if node in documented_consumption else 'carried_fifo' if targets.get(node, data[2]) in carried else 'new_source_campaign',
+        tuple(sorted(documented_consumption.get(node, ()))), coverage_lots.get(node, ()))
         for node, data in sorted(records.items(), key=lambda pair: pair[1][0]))
     relation = tuple(sorted({(link.source_campaign_id, link.target_campaign_id)
                              for link in trade_bindings if link.supported_by_fifo

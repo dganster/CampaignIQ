@@ -667,7 +667,7 @@ class PeriodImportPipeline:
                     period_end=period_start - date.resolution)
             plan = plan_campaign_continuity(opening_lot_book=opening_lot_book,
                 position_history=position_history, campaigns=campaigns,
-                **({'documented_opening_lots': documented} if opening_origin_evidence is not None else {}))
+                **({'documented_opening_lots': documented, 'link_assignment_calls': True} if opening_origin_evidence is not None else {}))
             if plan.blocking_findings:
                 raise CampaignContinuityError(plan)
             campaigns = plan.campaigns
