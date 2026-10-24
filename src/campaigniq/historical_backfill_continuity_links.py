@@ -13,6 +13,7 @@ from campaigniq.persistence.lot_book_store import _deserialize_instrument, deser
 from campaigniq.persistence.position_journal import deserialize_position_journal
 from campaigniq.historical_backfill_candidate_payloads import validate_generation
 from campaigniq.persistence.realized_attribution_store import deserialize_realized_attributions
+from campaigniq.persistence.monthly_publication import PROTOCOL_FILE
 
 
 def instrument(raw):
@@ -30,7 +31,9 @@ def build_links(boundary_plan,artifacts):
     # Correction proposals may change realized records only. All other boundary
     # evidence must remain byte-identical to the independently built plan.
     for key,checksum in expected.items():
-        if not key.endswith('-realized-attributions.json'):
+        # The publication cutover controls visibility, not lot ancestry. Its
+        # authorized transaction change is verified separately by the publisher.
+        if key!=PROTOCOL_FILE and not key.endswith('-realized-attributions.json'):
             if key not in artifacts or digest(artifacts[key].encode())!=checksum:
                 raise ValueError('Boundary supporting artifact changed: '+key)
     boundaries=list(boundary_plan['boundaries'])
