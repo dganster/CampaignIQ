@@ -85,7 +85,7 @@ def capture_position_journal(result, period_start):
                 old = {lot.lot_id: lot for lot in before[instrument]}
                 new = {lot.lot_id: lot for lot in book.lots(instrument)}
                 groups = defaultdict(list)
-                for lid in old.keys() | new.keys():
+                for lid in sorted(old.keys() | new.keys()):
                     prior, following = old.get(lid), new.get(lid)
                     delta = (following.quantity if following else Decimal("0")) - (prior.quantity if prior else Decimal("0"))
                     if delta:
