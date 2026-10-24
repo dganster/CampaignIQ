@@ -15,6 +15,7 @@ class CampaignContinuityPlan:
     _campaigns: tuple
     bindings: tuple[tuple[str, str], ...]
     blocking_findings: tuple[str, ...]
+    trade_bindings: tuple = ()
 
     @property
     def campaigns(self):
@@ -23,13 +24,33 @@ class CampaignContinuityPlan:
         return self._campaigns
 
 
+@dataclass(frozen=True)
+class TradeCampaignBinding:
+    trade_ordinal: int
+    occurred_at: str
+    source_campaign_id: str
+    target_campaign_id: str
+    supported_by_fifo: bool
+    consumed_lot_ids: tuple[str, ...]
+    consumed_lot_quantities: tuple[tuple[str, str], ...] = ()
+    evidence_kind: str = 'fifo_consumption'
+
+
+class CampaignContinuityError(ValueError):
+    """Retain partial trade evidence while refusing a blocked replay."""
+    def __init__(self, plan):
+        super().__init__('Campaign continuity blocked: ' + '; '.join(plan.blocking_findings))
+        self.trade_bindings = plan.trade_bindings
+
+
 def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
     """Link reconstructed campaigns to carried IDs using actual FIFO closures.
 
-    Speculative replay occurs on a clone. New openings can precede a roll/close
-    that links their month-local campaign to an existing one. Connected activity
-    may inherit exactly one carried ID. Unknown ancestry and multiple carried
-    identities are blockers; original lots and campaigns are never rewritten.
+    Speculative replay occurs on a clone. Exact trade nodes, not monthly grouping,
+    connect new openings and rolls to consumed FIFO lots. Distinct trades in one
+    monthly campaign may inherit different carried identities. An atomic connected
+    component still cannot merge carried IDs or invent unknown ancestry. Original
+    opening lots and source campaign objects are never rewritten.
     """
     campaigns = tuple(campaigns)
     identifiers = [c.campaign_id for c in campaigns]
@@ -49,7 +70,7 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
     if set(identifiers) & set(carried):
         findings.add('Reconstructed IDs collide with carried campaign IDs.')
 
-    owner = {}
+    owner = {}; ambiguous_owner = set()
     symbols = dict(carried)
     for campaign in campaigns:
         symbols[campaign.campaign_id] = {
@@ -59,11 +80,29 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
         for trade in campaign.trades:
             if id(trade) in owner:
                 findings.add('A trade belongs to more than one reconstructed campaign.')
+                ambiguous_owner.add(id(trade))
             owner[id(trade)] = campaign.campaign_id
 
-    graph = {cid: set() for cid in (*carried, *identifiers)}
+    # A monthly builder's grouping is not evidence that separate trades merge
+    # carried campaigns. Give each actual trade its own temporary replay owner;
+    # connect these nodes only through consumed FIFO lots or propagated events.
+    nodes = {}; records = {}; reserved = set(carried) | set(identifiers)
+    for item in position_history.items():
+        if item.trade is None or id(item.trade) in nodes or id(item.trade) not in owner:
+            continue
+        ordinal = len(nodes) + 1
+        token = f'__CONTINUITY_TRADE_{ordinal:06d}__'
+        while token in reserved:
+            token += '_'
+        reserved.add(token)
+        nodes[id(item.trade)] = token
+        records[token] = (ordinal, item.occurred_at.isoformat(), owner[id(item.trade)], item.trade)
+    graph = {cid: set() for cid in (*carried, *records)}
+    symbols.update({token: symbols[data[2]] for token, data in records.items()})
     book = opening_lot_book.clone()
     visited_trades = set()
+    tainted = {token for tid, token in nodes.items() if tid in ambiguous_owner or records[token][2] in carried}
+    consumed = {token: [] for token in records}; consumed_quantities = {token: [] for token in records}
     try:
         for item in position_history.items():
             if item.trade is None:
@@ -81,6 +120,28 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
                     for instrument in book.instruments() for lot in book.lots(instrument)
                     if lot.campaign_id is None
                 }
+                if item.event.kind is PositionEventKind.ASSIGNMENT:
+                    # One delivery cannot silently combine distinct option
+                    # ancestries. Connect only the FIFO option lots actually
+                    # consumed; expiry alone does not merge campaigns.
+                    event_node = f'__CONTINUITY_EVENT_{len(graph):06d}__'
+                    while event_node in reserved:
+                        event_node += '_'
+                    reserved.add(event_node)
+                    graph[event_node] = set()
+                    symbols[event_node] = {underlying_symbol(change.instrument) for change in item.event.changes}
+                    probe = book.clone()
+                    for change in item.event.changes:
+                        if isinstance(change.instrument, OptionContract):
+                            allocations = probe.apply_signed_change(instrument=change.instrument, quantity=change.quantity,
+                                occurred_at=item.event.occurred_at)
+                            for allocation in allocations:
+                                previous = allocation.campaign_id
+                                if previous is not None:
+                                    if previous not in graph:
+                                        raise ValueError('Assignment has an unrecognized campaign ID.')
+                                    graph[event_node].add(previous)
+                                    graph[previous].add(event_node)
                 LotBookPeriodApplier()._apply_event(book, item.event)
                 after = {lot.lot_id: abs(lot.quantity)
                          for instrument in book.instruments() for lot in book.lots(instrument)}
@@ -98,55 +159,81 @@ def plan_campaign_continuity(*, opening_lot_book, position_history, campaigns):
                 for instrument in book.instruments() for lot in book.lots(instrument)
                 if lot.campaign_id is None
             }
-            allocations = book.apply_trade(trade, campaign_id=cid)
+            token = nodes[id(trade)]
+            allocations = book.apply_trade(trade, campaign_id=token)
+            consumed[token].extend(allocation.lot_id for allocation in allocations)
+            consumed_quantities[token].extend((allocation.lot_id, str(allocation.quantity)) for allocation in allocations)
             after = {lot.lot_id: abs(lot.quantity)
                      for instrument in book.instruments() for lot in book.lots(instrument)}
             for lot_id, quantity in unknown_before.items():
                 if after.get(lot_id, 0) < quantity:
                     findings.add(f'Campaign {cid} consumes lot {lot_id} with unknown campaign ancestry.')
+                    tainted.add(token)
             for allocation in allocations:
                 previous = allocation.campaign_id
                 if previous is None:
                     findings.add(f'Campaign {cid} closes lot {allocation.lot_id} with unknown campaign ancestry.')
+                    tainted.add(token)
                     continue
                 if previous not in graph:
                     raise ValueError('Closing allocation has an unrecognized campaign ID.')
-                graph[cid].add(previous)
-                graph[previous].add(cid)
+                if previous in tainted:
+                    tainted.add(token)
+                graph[token].add(previous)
+                graph[previous].add(token)
     except ValueError as error:
         findings.add('Chronological continuity replay failed: ' + str(error))
+        if item.trade is not None and id(item.trade) in nodes:
+            tainted.add(nodes[id(item.trade)])
     if set(owner) != visited_trades:
         findings.add('Campaign trades and position history do not match completely.')
 
-    bindings = {}
-    seen = set()
+    targets = {}; supported = {}; seen = set()
     for first in graph:
         if first in seen:
             continue
         component, pending = set(), [first]
         while pending:
-            cid = pending.pop()
-            if cid in component:
+            node = pending.pop()
+            if node in component:
                 continue
-            component.add(cid)
-            pending.extend(graph[cid] - component)
+            component.add(node)
+            pending.extend(graph[node] - component)
         seen.update(component)
         old = component & set(carried)
-        current = component & set(identifiers)
-        if not current:
-            continue
-        all_symbols = set().union(*(symbols[cid] for cid in component))
+        current = component & set(records)
+        source_ids = {records[node][2] for node in current}
+        all_symbols = set().union(*(symbols[node] for node in component))
+        valid = True
         if len(all_symbols) != 1:
             findings.add('Connected campaign activity spans multiple underlyings.')
-            continue
+            valid = False
         if len(old) > 1:
             findings.add('Connected activity would merge distinct carried campaigns: ' + ', '.join(sorted(old)))
-            continue
-        if len(old) == 1:
-            target = next(iter(old))
-            bindings.update((cid, target) for cid in current)
-        elif len(current) > 1:
-            findings.add('Connected activity would merge distinct new campaigns: ' + ', '.join(sorted(current)))
-    return CampaignContinuityPlan(
-        tuple(replace(c, campaign_id=bindings.get(c.campaign_id, c.campaign_id)) for c in campaigns),
-        tuple(sorted(bindings.items())), tuple(sorted(findings)))
+            valid = False
+        if not old and len(source_ids) > 1:
+            findings.add('Connected activity would merge distinct new campaigns: ' + ', '.join(sorted(source_ids)))
+            valid = False
+        for node in current:
+            # Keep normal source grouping for new, unanchored activity. Only
+            # proven consumption links may transfer it to a carried identity.
+            targets[node] = next(iter(old)) if len(old) == 1 else records[node][2]
+            supported[node] = valid and node not in tainted and id(records[node][3]) in visited_trades
+    trade_bindings = tuple(TradeCampaignBinding(
+        data[0], data[1], data[2], targets.get(node, data[2]),
+        supported.get(node, False), tuple(consumed[node]), tuple(consumed_quantities[node]),
+        'carried_fifo' if targets.get(node, data[2]) in carried else 'new_source_campaign')
+        for node, data in sorted(records.items(), key=lambda pair: pair[1][0]))
+    relation = tuple(sorted({(link.source_campaign_id, link.target_campaign_id)
+                             for link in trade_bindings if link.supported_by_fifo
+                             and link.source_campaign_id != link.target_campaign_id}))
+    by_id = {campaign.campaign_id: campaign for campaign in campaigns}
+    grouped = {}; origins = {}
+    for node, data in sorted(records.items(), key=lambda pair: pair[1][0]):
+        target = targets.get(node, data[2])
+        grouped.setdefault(target, []).append(data[3])
+        origins.setdefault(target, []).append(by_id[data[2]])
+    resolved = tuple(replace(origins[target][0], campaign_id=target, trades=tuple(trades),
+                             started_before_data=target in carried or any(c.started_before_data for c in origins[target]))
+                     for target, trades in grouped.items())
+    return CampaignContinuityPlan(resolved, relation, tuple(sorted(findings)), trade_bindings)

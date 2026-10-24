@@ -4,7 +4,7 @@ No publishing API is called. A successful inventory check is not authorization.
 """
 import base64
 import calendar
-from dataclasses import replace
+from dataclasses import replace, asdict
 from datetime import date
 from decimal import Decimal
 from hashlib import sha256
@@ -290,12 +290,14 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                         try:
                             continuous = execute(prepared, preserve=True)
                             row['campaign_continuity'].update(mode='identity_preserving', identity_preserving_replay_passed=True)
+                            row['campaign_continuity']['trade_links'] = [asdict(link) for link in getattr(continuous.result, 'campaign_identity_links', ())]
                         except ValueError as error:
                             # Retain the strict failure and continue quantity diagnostics.
                             # The fallback is explicitly not an identity continuity pass.
                             finding = 'Identity-preserving campaign replay blocked: ' + str(error)
                             row['campaign_continuity'].update(mode='legacy_quantity_fallback', blocking_findings=[finding],
                                 connected_to_verified_identity_chain=False)
+                            row['campaign_continuity']['trade_links'] = [asdict(link) for link in getattr(error, 'trade_bindings', ())]
                             row['blocking_findings'].append(finding)
                             identity_chain = False
                             continuous = execute(prepared)

@@ -87,6 +87,7 @@ class PeriodImportResult:
     forex_transaction_report: SchwabForexTransactionReport | None = None
     forex_settlement_attributions: tuple[ForexSettlementAttribution, ...] = ()
     crypto_report: dict | None = None
+    campaign_identity_links: tuple = ()
 
 
 class PeriodImportPipeline:
@@ -646,7 +647,7 @@ class PeriodImportPipeline:
             opening_lot_book = scope_legacy_opening_lots(opening_lot_book)
 
         if preserve_carried_state:
-            from campaigniq.domain.campaign_continuity import plan_campaign_continuity
+            from campaigniq.domain.campaign_continuity import plan_campaign_continuity, CampaignContinuityError
             for item in position_history.items():
                 instants = [item.occurred_at]
                 if item.trade is not None:
@@ -657,7 +658,7 @@ class PeriodImportPipeline:
             plan = plan_campaign_continuity(opening_lot_book=opening_lot_book,
                 position_history=position_history, campaigns=campaigns)
             if plan.blocking_findings:
-                raise ValueError("Campaign continuity blocked: " + "; ".join(plan.blocking_findings))
+                raise CampaignContinuityError(plan)
             campaigns = plan.campaigns
             # Preserve the existing boundary diagnostics, but run their legacy
             # provenance assignments on a disposable clone. A successful ID
@@ -726,6 +727,7 @@ class PeriodImportPipeline:
             crypto_report=read_crypto_report(
                 thinkorswim_trade_history, period_start=period_start, period_end=period_end,
             ),
+            campaign_identity_links=plan.trade_bindings if preserve_carried_state else (),
         )
 
     def _read_expiration_events(

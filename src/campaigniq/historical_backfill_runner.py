@@ -118,6 +118,9 @@ def main():
             continuity = row.get('campaign_continuity', {})
             if continuity.get('enabled') and continuity.get('mode') != 'initial_evidenced_anchor':
                 print('  Campaign continuity: ' + continuity['mode'], flush=True)
+                if 'trade_links' in continuity:
+                    links = continuity['trade_links']
+                    print('  Trade links supported by replay: ' + str(sum(bool(link['supported_by_fifo']) for link in links)) + '/' + str(len(links)), flush=True)
                 for finding in continuity.get('blocking_findings', []):
                     print('  ' + finding, flush=True)
         report = run_preflight(bundle, forex_not_applicable=args.forex_not_applicable,
