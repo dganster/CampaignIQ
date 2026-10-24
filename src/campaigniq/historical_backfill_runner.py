@@ -131,7 +131,17 @@ def main():
         _write_json(output / 'preflight-report.json', report)
         print('Diagnostic position replay completed:', report['diagnostic_position_replay_completed'])
         print('Identity-preserving chain verified:', report['identity_preserving_chain_verified'])
-        print('All 2025 safeguards passed:', report['all_2025_drafts_passed'])
+        print('2025 draft checks passed:', report['all_2025_drafts_passed'])
+        for edge in report['downstream']:
+            audit = edge.get('mapping_and_basis_audit', {})
+            print(edge['month'] + ': downstream candidate inventory match: ' + str(audit.get('complete_candidate_inventory_match', False))
+                + '; basis continuity verified: ' + str(edge['basis_continuity_verified']))
+            if audit.get('retained_opening_snapshot', {}).get('source_hash_verified'):
+                snapshot = audit['retained_opening_snapshot']
+                print('  Retained opening snapshot matches published input hash; known basis lots: '
+                    + str(snapshot['known_basis_lots']) + '; unknown basis lots: ' + str(snapshot['unknown_basis_lots']))
+        print('Full portfolio continuity verified:', report['full_portfolio_continuity_verified'])
+        print('Publication authorized:', report['publication_authorized'])
         print('Report:', output / 'preflight-report.json')
         print('No data imported or published. ' + ('Production was only read.' if args.render_read_only else 'Analysis used the saved capture; no production connection was made.'))
     except Exception as error:

@@ -158,7 +158,7 @@ def _forex_controls(report):
                 pending_settlement_pl_usd=str(report.pending_settlement_pl_usd))
 
 
-def downstream(storage, december):
+def downstream(storage, december, *, opening_snapshot_text=None):
     """Compare actual published journal openings, never month-end as opening."""
     rows = []
     prior = december
@@ -205,6 +205,16 @@ def downstream(storage, december):
             if not row['identity_continuity_verified']:
                 row['blocking_findings'].append('Published opening lot/campaign identities differ; reviewed identity mapping required.')
             row['blocking_findings'].append('Published journal does not preserve opening basis; basis continuity is unverified.')
+            try:
+                from campaigniq.historical_backfill_downstream_audit import audit_boundary
+                row['mapping_and_basis_audit'] = audit_boundary(prior, entries,
+                    previous_end=start - date.resolution,
+                    opening_snapshot_text=opening_snapshot_text if month == 1 else None,
+                    provenance_text=storage.read_text(key + '-import-provenance.json')
+                        if month == 1 and opening_snapshot_text is not None else None)
+            except (ValueError, KeyError, TypeError) as error:
+                row['mapping_and_basis_audit'] = dict(verified=False, error=str(error), publication_authorized=False)
+                row['blocking_findings'].append('Downstream mapping/basis audit failed: ' + str(error))
         except Exception as error:
             row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
         # A missing edge must not conceal checks between later published months.
@@ -240,7 +250,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
     before = sha256(encode(bundle)).hexdigest()
     storage = _FrozenStorage(bundle)
     drafts = {(d['year'], d['month']): d for d in bundle['drafts'] if d['state'] == 'draft'}
-    rows = []; carried = None; chain = True; identity_chain = True; provenance_closing = {}
+    rows = []; carried = None; chain = True; identity_chain = True; provenance_closing = {}; opening_snapshot_text = None
     for month in range(1, 13):
         key = f'2025-{month:02}'
         draft = drafts.get((2025, month))
@@ -353,6 +363,8 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 if prepared_hashes != {r.value: sha256(p.read_bytes()).hexdigest() for r, p in supplied.items()}:
                     raise ValueError('Prepared source bytes changed during preview.')
                 row['prepared_source_sha256'] = prepared_hashes
+                if month == 12 and MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT in supplied:
+                    opening_snapshot_text = supplied[MonthlyInputRole.SCHWAB_CLOSING_POSITION_SNAPSHOT].read_text(encoding='utf-8')
                 row['closing_state_sha256'] = sha256(_state(continuous.result.ending_lot_book, preflight.contract.period_end).encode()).hexdigest()
                 # Continue diagnostic position replay through financial/identity
                 # findings, retaining every blocker. No missing or mismatched
@@ -375,7 +387,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
             progress(row)
     protected = {k: sha256(v.encode()).hexdigest() for k, v in bundle['artifacts'].items()
                  if len(k) >= 7 and k[:4].isdigit() and int(k[:4]) >= 2026}
-    edges = downstream(storage, carried)
+    edges = downstream(storage, carried, opening_snapshot_text=opening_snapshot_text)
     if sha256(encode(bundle)).hexdigest() != before:
         raise RuntimeError('Frozen workspace capture changed.')
     blockers = [r['month'] + ': ' + b for r in rows + edges for b in r['blocking_findings']]
