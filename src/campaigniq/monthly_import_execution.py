@@ -223,6 +223,7 @@ def execute_monthly_import(
     )
 
     resolution_audit = None
+    financial_resolution_failure = None
     evidence = None
     monthly_forex = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
     if monthly_forex is not None:
@@ -230,15 +231,31 @@ def execute_monthly_import(
         evidence = read_forex_opening_statement(Path(monthly_forex).read_text(encoding="utf-8"),
             trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
         verify_forex_ending(result.ending_lot_book, evidence)
-        if (contract.period_end.year, contract.period_end.month) in ((2025,8),(2025,9)):
-            from campaigniq.forex_statement_resolution import resolve_forex_statement
+        if (contract.period_end.year, contract.period_end.month) in ((2025,3),(2025,8),(2025,9),(2025,11),(2025,12)):
+            if contract.period_end.month in (3,11,12):
+                from campaigniq.forex_daily_cash_resolution import resolve_daily_cash_statement as resolve_forex_statement
+            else:
+                from campaigniq.forex_statement_resolution import resolve_forex_statement
             from campaigniq.domain.forex_settlement_attribution import attribute_forex_settlements
-            resolved, resolution_audit = resolve_forex_statement(Path(monthly_forex).read_text(encoding="utf-8"),
-                trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
-            attrs = attribute_forex_settlements(result.campaigns, resolved.settlements)
-            if {a.settlement.order_id for a in attrs} != {s.order_id for s in resolved.settlements}:
-                raise ValueError("Resolved Forex closes lack unambiguous campaign attribution.")
-            result = replace(result, forex_transaction_report=resolved, forex_settlement_attributions=attrs)
+            resolved = None
+            try:
+                resolved, resolution_audit = resolve_forex_statement(Path(monthly_forex).read_text(encoding="utf-8"),
+                    trade_history=tos_path, transaction_report=forex_path, period_end=contract.period_end)
+            except ValueError as error:
+                if contract.period_end.month not in (3,11,12):
+                    raise
+                if not preview_only:
+                    raise ValueError("Forex financial source resolution failed; inventory preview does not authorize publication. " + str(error)) from error
+                financial_resolution_failure = "Forex financial source resolution remains blocked: " + str(error)
+            if resolved is not None:
+                if contract.period_end.month in (3,11,12):
+                    from campaigniq.forex_daily_cash_resolution import attribute_daily_cash_settlements
+                    attrs = attribute_daily_cash_settlements(result.campaigns, resolved.settlements, tos_path)
+                else:
+                    attrs = attribute_forex_settlements(result.campaigns, resolved.settlements)
+                if {a.settlement.order_id for a in attrs} != {s.order_id for s in resolved.settlements}:
+                    raise ValueError("Resolved Forex closes lack unambiguous campaign attribution.")
+                result = replace(result, forex_transaction_report=resolved, forex_settlement_attributions=attrs)
 
     closing_rows = read_position_snapshot_section(
         closing_lines,
@@ -256,6 +273,10 @@ def execute_monthly_import(
         opening_lot_book=opening_lot_book,
         forex_closing_evidence=evidence,
     )
+
+    if financial_resolution_failure is not None:
+        reconciliation = replace(reconciliation, forex_source_findings=(
+            *reconciliation.forex_source_findings, financial_resolution_failure))
 
     # Preview returns before any archive, publication marker, or artifact write.
     # Keep the exact same pipeline and closing-inventory reconciliation as finalization.

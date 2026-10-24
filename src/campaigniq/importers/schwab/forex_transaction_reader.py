@@ -29,14 +29,17 @@ class SchwabForexTransactionReport:
     pl_total_usd:Decimal|None=None; commission_total_usd:Decimal|None=None
     financing_totals_usd:tuple[tuple[str,Decimal],...]=()
     source_policy:str|None=None
+    pending_settlement_pl_usd:Decimal=Decimal('0')
     @property
     def settlement_pl_usd(self): return sum((x.settlement_pl_usd for x in self.settlements),Decimal("0"))
     @property
     def settlement_control_delta_usd(self):
+        if self.source_policy == 'schwab_daily_cash_bridge_2025_v1':
+            return self.mtd_settled_pl_usd - (self.settlement_pl_usd - self.pending_settlement_pl_usd)
         return self.mtd_settled_pl_usd - self.settlement_pl_usd
     @property
     def settlement_control_reconciled(self):
-        return abs(self.settlement_control_delta_usd) <= (Decimal("0.01") if self.source_policy == "schwab_monthly_history_2025_v1" else Decimal("0"))
+        return abs(self.settlement_control_delta_usd) <= (Decimal("0.01") if self.source_policy in ("schwab_monthly_history_2025_v1", 'schwab_daily_cash_bridge_2025_v1') else Decimal("0"))
     @property
     def financing_usd(self): return sum((x.financing_usd for x in self.financing),Decimal("0"))
     @property

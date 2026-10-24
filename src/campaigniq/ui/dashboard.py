@@ -1236,6 +1236,10 @@ def render_monthly_import_wizard():
                     st.info("Forex financial records resolved from the corroborated monthly statement and trade history. "
                             "Original CSV discrepancies remain recorded in the source-resolution audit. "
                             f"Resolved P/L: ${preview.forex_resolution['resolved_pl_usd']}; financing: ${preview.forex_resolution['financing_usd']}.")
+                if preview.forex_resolution is not None and 'pending_settlement_pl_usd' in preview.forex_resolution:
+                    st.info(f"Forex settled cash P/L: ${preview.forex_resolution['reported_monthly_pl_usd']}; "
+                            f"closed-trade P/L pending settlement: ${preview.forex_resolution['pending_settlement_pl_usd']}. "
+                            "These controls use separate accounting dates.")
                 for finding in preview.closing_reconciliation.forex_source_findings:
                     st.warning(finding)
                 if preview.closing_reconciliation.reconciled:

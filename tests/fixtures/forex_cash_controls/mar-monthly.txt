@@ -1,0 +1,897 @@
+Customer Account Summary Report since Friday, February 28, 2025 16:00:00 (CST) through Monday, March 31, 2025 16:00:00 (CST)
+
+Monthly Equity Summary
+Transaction Description                                         Amount, USD                                                           Charles Schwab Futures and Forex LLC
+Beginning Cash Balance                               $14,229.32                                                                           150 S. Wacker Dr. 14th Floor
+Beginning Account Equity                             $14,229.32                                                                                 Chicago, IL 60606
+                                                                                                                                                 (800) 435 -9050
+Deposits                                             $0.00
+Withdrawals                                          $0.00
+Adjustments                                          $0.00
+Financing                                            $78.14                              Account                                            Account Currency
+
+Settled Profit/Loss                                  $439.35                                                                     1234567                                       USD
+
+Floating Profit/Loss                                 $0.00                               Statement From                                     Statement To
+Ending Cash Balance                                  $14,746.81                                           02/28/2025 00:00:00 16:00:00                 03/31/2025 00:00:00 16:00:00
+Ending Account Equity                                $14,746.81
+Margin Requirement                                   $0.00                               * All times referenced are Central Time.
+
+
+
+Monthly Profit/Loss Summary
+
+Currency Pair                            Settled Profit/Loss                           Floating Profit/Loss
+                      EUR/USD                                  $651.60
+
+                      GBP/USD                                  ($190.30)
+
+                       USD/JPY                                 ($21.95)                                   $0.00
+
+
+Open Position(s) at End of Month
+
+Currency Pair                      Buy/Sell                         Quantity                Trade Price              Floating Profit/Loss USD      Margin Requirement USD
+Floating Profit/Loss Net USD :
+Customer Account Summary Report since Friday, February 28, 2025 16:00:00 (CST) through Monday, March 3, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+
+
+
+Customer Account Summary Report since Monday, March 3, 2025 16:00:00 (CST) through Tuesday, March 4, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Tuesday, March 4, 2025 16:00:00 (CST) through Wednesday, March 5, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+
+
+
+Customer Account Summary Report since Wednesday, March 5, 2025 16:00:00 (CST) through Thursday, March 6, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Thursday, March 6, 2025 16:00:00 (CST) through Friday, March 7, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+
+
+
+Customer Account Summary Report since Friday, March 7, 2025 16:00:00 (CST) through Monday, March 10, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Monday, March 10, 2025 16:00:00 (CST) through Tuesday, March 11, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+
+
+
+Customer Account Summary Report since Tuesday, March 11, 2025 16:00:00 (CST) through Wednesday, March 12, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Wednesday, March 12, 2025 16:00:00 (CST) through Thursday, March 13, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+
+
+
+Customer Account Summary Report since Thursday, March 13, 2025 16:00:00 (CST) through Friday, March 14, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Friday, March 14, 2025 16:00:00 (CST) through Monday, March 17, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                     Unrealized Profit/Loss                                            Floating Profit/Loss
+                Total Profit/Loss, USD:
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                            Trade Price                    Floating Profit/Loss USD        Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type            Quantity                   Trade Price                Order ID             Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                      Position Rate                      Financing ID                Conversion Rate             Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount            Conversion Rate         Counter Currency Amount                     Commissions USD   Conversion ID
+Customer Account Summary Report since Monday, March 17, 2025 16:00:00 (CST) through Tuesday, March 18, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                      Unrealized Profit/Loss                                             Floating Profit/Loss
+                      EUR/USD                                                $0.00                                                         ($8.40)                                                  $0.00
+
+                      GBP/USD                                                $0.00                                                         ($1.30)                                                  $0.00
+
+                Total Profit/Loss, USD:                                      $0.00                                                         ($9.70)                                                  $0.00
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                             Trade Price                     Floating Profit/Loss USD         Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                           Unrealized Profit Loss USD
+EUR/USD                                                                                                    ($8.40)
+GBP/USD                                                                                                    ($1.30)
+Unrealized Profit/Loss Net USD                                                                             ($9.70)
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type             Quantity                       Trade Price               Order ID              Markup USD
+              2025-03-18 14:40:14 EUR/USD           MARKET          S                      OPEN                                       (10,000)                   1.09417         1002964751217                      $0.60
+
+              2025-03-18 15:10:47 EUR/USD           STOP            B                      CLOSE                                       10,000                    1.09501         1002964751218                      $0.60
+
+              2025-03-18 14:58:10 GBP/USD           MARKET          S                      OPEN                                       (10,000)                   1.30032         1002964751838                      $0.60
+
+              2025-03-18 14:58:11 GBP/USD           STOP            B                      CLOSE                                       10,000                    1.30045         1002964751839                      $0.60
+
+
+Financing Report
+
+Financing Date                    Currency Pair              Position Amount                      Position Rate                      Financing ID                 Conversion Rate                Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount             Conversion Rate         Counter Currency Amount                      Commissions USD     Conversion ID
+Customer Account Summary Report since Tuesday, March 18, 2025 16:00:00 (CST) through Wednesday, March 19, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                       Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                                 ($8.40)                                                          $0.00                                                    ($190.00)
+
+                      GBP/USD                                                 ($1.30)                                                          $0.00                                                     $0.00
+
+                      USD/JPY                                                  $0.00                                                           $0.00                                                    ($395.19)
+
+                Total Profit/Loss, USD:                                       ($9.70)                                                          $0.00                                                    ($585.19)
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                            Quantity                              Trade Price                     Floating Profit/Loss USD            Margin Requirement USD
+EUR/USD
+
+EUR/USD - TOTAL POSITION:                      Sell                                                          (100,000)                                                           ($190.00)                                $3,270.83
+
+USD/JPY
+
+USD/JPY - TOTAL POSITION:                      Buy                                                             50,000                                                            ($395.19)                                $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                   ($585.19)
+
+Closed Position(s)
+
+Currency Pair                                                             Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair     Order Type      Buy/Sell                Trade Type             Quantity                        Trade Price               Order ID               Markup USD
+              2025-03-19 11:21:08 EUR/USD             MARKET          S                       OPEN                                       (100,000)                   1.08850          1002969416560                           $6.00
+
+              2025-03-19 11:24:49 USD/JPY             MARKET          B                       OPEN                                         50,000                  149.86800          1002969416695                           $2.02
+
+
+Financing Report
+
+Financing Date                    Currency Pair                Position Amount                       Position Rate                       Financing ID                 Conversion Rate                 Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount              Conversion Rate          Counter Currency Amount                      Commissions USD       Conversion ID
+Customer Account Summary Report since Wednesday, March 19, 2025 16:00:00 (CST) through Thursday, March 20, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                        Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                                 $0.00                                                              $0.00                                                    $311.00
+
+                      USD/JPY                                                 $0.00                                                              $0.00                                                    ($366.88)
+
+                Total Profit/Loss, USD:                                       $0.00                                                              $0.00                                                    ($55.88)
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                           Quantity                                Trade Price                     Floating Profit/Loss USD          Margin Requirement USD
+EUR/USD
+
+   TR Details: 3/19/2025 11:21:08 AM           Sell                                                           (100,000)                      1.0885000
+
+EUR/USD - TOTAL POSITION:                      Sell                                                           (100,000)                                                          $311.00                                    $3,255.95
+
+USD/JPY
+
+   TR Details: 3/19/2025 11:24:49 AM           Buy                                                              50,000                     149.8680000
+
+USD/JPY - TOTAL POSITION:                      Buy                                                              50,000                                                          ($366.88)                                   $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                   ($55.88)
+
+Closed Position(s)
+
+Currency Pair                                                            Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair     Order Type      Buy/Sell                Trade Type              Quantity                      Trade Price               Order ID                  Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair               Position Amount                         Position Rate                        Financing ID                 Conversion Rate                 Financing Amount
+            2025-03-19 17:15:40 EUR/USD                                                 (100,000)                                1.09030                  93901285264                        $1.00000                           $9.58
+
+            2025-03-19 17:15:40 USD/JPY                                                      50,000                           148.70000                   93901285263                        $0.00672                          $13.28
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount               Conversion Rate          Counter Currency Amount                      Commissions USD        Conversion ID
+
+Customer Account Summary Report since Thursday, March 20, 2025 16:00:00 (CST) through Friday, March 21, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                        Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                                 $0.00                                                              $0.00                                                    $667.00
+
+                      GBP/USD                                                 $0.00                                                            ($13.50)                                                    $70.00
+
+                      USD/JPY                                                 $0.00                                                              $0.00                                                    ($187.58)
+
+                Total Profit/Loss, USD:                                       $0.00                                                            ($13.50)                                                   $549.42
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                           Quantity                                Trade Price                     Floating Profit/Loss USD          Margin Requirement USD
+EUR/USD
+
+   TR Details: 3/19/2025 11:21:08 AM           Sell                                                           (100,000)                      1.0885000
+
+EUR/USD - TOTAL POSITION:                      Sell                                                           (100,000)                                                          $667.00                                    $3,244.94
+GBP/USD
+
+   TR Details: 3/21/2025 9:57:40 AM         Sell                                                    (50,000)          1.2932100
+
+GBP/USD - TOTAL POSITION:                   Sell                                                    (50,000)                                               $70.00                          $3,229.23
+
+USD/JPY
+
+   TR Details: 3/19/2025 11:24:49 AM        Buy                                                      50,000         149.8680000
+
+USD/JPY - TOTAL POSITION:                   Buy                                                      50,000                                              ($187.58)                         $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                            $549.42
+
+Closed Position(s)
+
+Currency Pair                                                       Unrealized Profit Loss USD
+GBP/USD                                                                                             ($13.50)
+Unrealized Profit/Loss Net USD                                                                      ($13.50)
+
+Trade Activity Detail
+
+Transaction Date                 Currency Pair     Order Type   Buy/Sell               Trade Type        Quantity              Trade Price             Order ID               Markup USD
+              2025-03-21 09:51:46 GBP/USD          MARKET       S                      OPEN                         (50,000)                 1.29269          1002983234364                    $3.00
+
+              2025-03-21 09:51:46 GBP/USD          LIMIT        B                      CLOSE                         50,000                  1.29282          1002983234365                    $3.00
+
+              2025-03-21 09:54:36 GBP/USD          MARKET       S                      OPEN                         (50,000)                 1.29290          1002983234576                    $3.00
+
+              2025-03-21 09:55:17 GBP/USD          LIMIT        B                      CLOSE                         50,000                  1.29304          1002983234648                    $3.00
+
+              2025-03-21 09:57:40 GBP/USD          MARKET       S                      OPEN                         (50,000)                 1.29321          1002983234819                    $3.00
+Financing Report
+
+Financing Date                    Currency Pair               Position Amount                         Position Rate                        Financing ID                 Conversion Rate                   Financing Amount
+            2025-03-20 17:13:35 EUR/USD                                                 (100,000)                                1.08530                  93958961785                          $1.00000                          $3.21
+
+            2025-03-20 17:13:35 USD/JPY                                                      50,000                           148.79000                   93958961784                          $0.00670                          $4.43
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount               Conversion Rate          Counter Currency Amount                       Commissions USD        Conversion ID
+
+Customer Account Summary Report since Friday, March 21, 2025 16:00:00 (CST) through Monday, March 24, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                        Unrealized Profit/Loss                                               Floating Profit/Loss
+                      EUR/USD                                                 $0.00                                                              $0.00                                                      $832.00
+
+                      GBP/USD                                                ($13.50)                                                            $0.00                                                       $41.00
+
+                      USD/JPY                                                 $0.00                                                              $0.00                                                      $274.39
+
+                Total Profit/Loss, USD:                                      ($13.50)                                                            $0.00                                                     $1,147.39
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                           Quantity                                Trade Price                     Floating Profit/Loss USD            Margin Requirement USD
+EUR/USD
+
+   TR Details: 3/19/2025 11:21:08 AM           Sell                                                           (100,000)                      1.0885000
+
+EUR/USD - TOTAL POSITION:                      Sell                                                           (100,000)                                                          $832.00                                     $3,240.29
+
+GBP/USD
+
+   TR Details: 3/21/2025 9:57:40 AM            Sell                                                            (50,000)                      1.2932100
+
+GBP/USD - TOTAL POSITION:                      Sell                                                            (50,000)                                                              $41.00                                  $3,230.75
+
+USD/JPY
+
+   TR Details: 3/19/2025 11:24:49 AM           Buy                                                              50,000                     149.8680000
+
+USD/JPY - TOTAL POSITION:                      Buy                                                              50,000                                                           $274.39                                     $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                  $1,147.39
+
+Closed Position(s)
+
+Currency Pair                                                            Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair     Order Type      Buy/Sell                Trade Type              Quantity                      Trade Price               Order ID                    Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair               Position Amount                         Position Rate                        Financing ID                 Conversion Rate                   Financing Amount
+            2025-03-21 17:12:50 EUR/USD                                                 (100,000)                                1.08160                  94020635027                          $1.00000                          $3.49
+
+            2025-03-21 17:12:50 GBP/USD                                                  (50,000)                                1.29170                  94020635025                          $1.00000                        ($1.22)
+
+            2025-03-21 17:12:50 USD/JPY                                                      50,000                           149.32000                   94020635026                          $0.00664                          $4.46
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount               Conversion Rate          Counter Currency Amount                       Commissions USD        Conversion ID
+Customer Account Summary Report since Monday, March 24, 2025 16:00:00 (CST) through Tuesday, March 25, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                        Unrealized Profit/Loss                                                Floating Profit/Loss
+                      EUR/USD                                                  $0.00                                                             $0.00                                                       $920.00
+
+                      GBP/USD                                                  $0.00                                                           ($175.50)                                                      $0.00
+
+                      USD/JPY                                                  $0.00                                                             $0.00                                                        $11.64
+
+                Total Profit/Loss, USD:                                        $0.00                                                           ($175.50)                                                     $931.64
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                           Quantity                                Trade Price                      Floating Profit/Loss USD            Margin Requirement USD
+EUR/USD
+
+   TR Details: 3/19/2025 11:21:08 AM           Sell                                                           (100,000)                      1.0885000
+
+EUR/USD - TOTAL POSITION:                      Sell                                                           (100,000)                                                             $920.00                                   $3,237.66
+
+USD/JPY
+
+   TR Details: 3/19/2025 11:24:49 AM           Buy                                                              50,000                     149.8680000
+
+USD/JPY - TOTAL POSITION:                      Buy                                                              50,000                                                                $11.64                                  $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                      $931.64
+
+Closed Position(s)
+
+Currency Pair                                                             Unrealized Profit Loss USD
+GBP/USD                                                                                                       ($175.50)
+Unrealized Profit/Loss Net USD                                                                                ($175.50)
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair     Order Type      Buy/Sell                Trade Type              Quantity                        Trade Price                Order ID                  Markup USD
+              2025-03-25 13:07:57 GBP/USD             STOP            B                       CLOSE                                          50,000                    1.29672          1002995820256                             $3.00
+
+
+Financing Report
+
+Financing Date                    Currency Pair               Position Amount                         Position Rate                        Financing ID                  Conversion Rate                   Financing Amount
+            2025-03-24 17:12:32 EUR/USD                                                  (100,000)                               1.08010                   94082761838                          $1.00000                          $3.25
+
+            2025-03-24 17:12:32 GBP/USD                                                   (50,000)                               1.29230                   94082761836                          $1.00000                        ($1.26)
+
+            2025-03-24 17:12:32 USD/JPY                                                      50,000                           150.70000                    94082761837                          $0.00667                          $4.47
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount               Conversion Rate          Counter Currency Amount                        Commissions USD        Conversion ID
+Customer Account Summary Report since Tuesday, March 25, 2025 16:00:00 (CST) through Wednesday, March 26, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                         Settled Profit/Loss                                         Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                                 $0.00                                                               $0.00                                                   $1,317.00
+
+                      GBP/USD                                                ($175.50)                                                            $0.00                                                     $0.00
+
+                      USD/JPY                                                 $0.00                                                               $0.00                                                    $241.22
+
+                Total Profit/Loss, USD:                                      ($175.50)                                                            $0.00                                                   $1,558.22
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                            Quantity                                Trade Price                     Floating Profit/Loss USD          Margin Requirement USD
+EUR/USD
+
+   TR Details: 3/19/2025 11:21:08 AM           Sell                                                            (100,000)                      1.0885000
+
+EUR/USD - TOTAL POSITION:                      Sell                                                            (100,000)                                                         $1,317.00                                  $3,225.72
+
+USD/JPY
+
+   TR Details: 3/19/2025 11:24:49 AM           Buy                                                               50,000                     149.8680000
+
+USD/JPY - TOTAL POSITION:                      Buy                                                               50,000                                                           $241.22                                   $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                   $1,558.22
+
+Closed Position(s)
+
+Currency Pair                                                            Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair     Order Type      Buy/Sell                 Trade Type              Quantity                      Trade Price               Order ID                  Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair               Position Amount                          Position Rate                        Financing ID                 Conversion Rate                 Financing Amount
+            2025-03-25 17:13:28 EUR/USD                                                  (100,000)                                1.07920                  94142842700                        $1.00000                          $3.25
+
+            2025-03-25 17:13:28 USD/JPY                                                       50,000                           149.91000                   94142842699                        $0.00664                          $4.43
+
+
+Conversion Report
+
+Conversion Date                   Instrument          Base Currency         Base Currency Amount                Conversion Rate          Counter Currency Amount                      Commissions USD       Conversion ID
+Customer Account Summary Report since Wednesday, March 26, 2025 16:00:00 (CST) through Thursday, March 27, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                        Settled Profit/Loss                                        Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                                 $0.00                                                            $660.00                                                     $0.00
+
+                      USD/JPY                                                 $0.00                                                             $0.00                                                     $386.93
+
+                Total Profit/Loss, USD:                                       $0.00                                                            $660.00                                                    $386.93
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                          Quantity                               Trade Price                      Floating Profit/Loss USD           Margin Requirement USD
+USD/JPY
+
+USD/JPY - TOTAL POSITION:                      Buy                                                             50,000                                                             $386.93                                  $2,500.00
+
+Floating Profit/Loss Net USD :                                                                                                                                                    $386.93
+
+Closed Position(s)
+
+Currency Pair                                                            Unrealized Profit Loss USD
+EUR/USD                                                                                                       $660.00
+Unrealized Profit/Loss Net USD                                                                                $660.00
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair    Order Type      Buy/Sell                Trade Type              Quantity                        Trade Price               Order ID                 Markup USD
+              2025-03-27 11:41:16 EUR/USD            STOP            B                       CLOSE                                         100,000                   1.08190         1003006746240                             $6.00
+
+
+Financing Report
+
+Financing Date                    Currency Pair              Position Amount                         Position Rate                        Financing ID                 Conversion Rate                  Financing Amount
+            2025-03-26 17:12:17 EUR/USD                                                 (100,000)                               1.07520                  94203693572                         $1.00000                          $9.01
+
+            2025-03-26 17:12:17 USD/JPY                                                     50,000                          150.60000                    94203693571                         $0.00662                         $13.29
+
+
+Conversion Report
+
+Conversion Date                   Instrument         Base Currency         Base Currency Amount               Conversion Rate         Counter Currency Amount                       Commissions USD        Conversion ID
+Customer Account Summary Report since Thursday, March 27, 2025 16:00:00 (CST) through Friday, March 28, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                        Unrealized Profit/Loss                                              Floating Profit/Loss
+                      EUR/USD                                              $660.00                                                            $0.00                                                     $0.00
+
+                      USD/JPY                                                $0.00                                                           ($21.95)                                                   $0.00
+
+                Total Profit/Loss, USD:                                    $660.00                                                           ($21.95)                                                   $0.00
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                                Trade Price                     Floating Profit/Loss USD         Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                           Unrealized Profit Loss USD
+USD/JPY                                                                                                      ($21.95)
+Unrealized Profit/Loss Net USD                                                                               ($21.95)
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell                Trade Type              Quantity                        Trade Price               Order ID               Markup USD
+              2025-03-28 15:56:40 USD/JPY           STOP            S                       CLOSE                                        (50,000)                 149.80200         1003015362747                       $2.00
+
+
+Financing Report
+
+Financing Date                    Currency Pair             Position Amount                         Position Rate                       Financing ID                  Conversion Rate                Financing Amount
+            2025-03-27 17:12:13 USD/JPY                                                    50,000                           151.04000                   94263030848                       $0.00667                      $4.47
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount               Conversion Rate          Counter Currency Amount                      Commissions USD      Conversion ID
+Customer Account Summary Report since Friday, March 28, 2025 16:00:00 (CST) through Monday, March 31, 2025 16:00:00 (CST)
+
+Profit/Loss Summary
+Currency Pair                                       Settled Profit/Loss                                         Unrealized Profit/Loss                                           Floating Profit/Loss
+                      USD/JPY                                              ($21.95)                                                         $0.00                                                     $0.00
+
+                Total Profit/Loss, USD:                                    ($21.95)                                                         $0.00                                                     $0.00
+
+Open Position(s)
+
+Currency Pair                                  Buy/Sell                         Quantity                              Trade Price                    Floating Profit/Loss USD         Margin Requirement USD
+Floating Profit/Loss Net USD :
+
+Closed Position(s)
+
+Currency Pair                                                          Unrealized Profit Loss USD
+Unrealized Profit/Loss Net USD
+
+Trade Activity Detail
+
+Transaction Date                    Currency Pair   Order Type      Buy/Sell               Trade Type              Quantity                    Trade Price               Order ID              Markup USD
+
+
+Financing Report
+
+Financing Date                    Currency Pair              Position Amount                     Position Rate                        Financing ID                Conversion Rate              Financing Amount
+
+
+Conversion Report
+
+Conversion Date                   Instrument        Base Currency         Base Currency Amount                 Conversion Rate      Counter Currency Amount                      Commissions USD      Conversion ID
+            2025-03-28 17:13:14 JPY$FX              USD$FX                                          ($21.95)          $0.00666807                                    $3,300.00                $0.00               94326207493
+                                                            Forex Customer Statement Disclosures
+
+Forex trading exposes you to risk including, but not limited to, market volatility, volume, congestion, and system or component failures, which may delay account access and/or Forex trade
+executions. Prices can change quickly and there is no guarantee that the execution price of your order will be at or near the quote displayed at the time of order entry (“slippage”). Account
+access delays and slippage can occur at any time but are most prevalent during periods of higher volatility, at market open or close, or due to the size and type of order.
+
+Daily financing charges are calculated using overnight deposit interest rates plus a markup of 25 basis points for each currency. Per industry standard, financing charges for Wednesday will
+typically be three times normal daily financing to incorporate Saturday’s and Sunday’s financing charges. However, Wednesday may also be more than three times normal daily financing for
+those weeks when there is a U.S. stock market holiday. Three times financing charges may also occur on a different day for those weeks. Historical financing approximations for every
+currency pair are available within the thinkorswim trading platform. To access historical financing approximations select MarketWatch>>Financing Rates. For additional information, please
+contact the Forex Trade Desk at: 866-839-1100.
+
+Charles Schwab Futures and Forex LLC does not allow clients to take delivery of foreign currencies. All profits and losses or credits and debits in a currency other than USD will automatically
+be converted back to USD. Conversion of non-USD currencies is calculated using a Volume Weighted Average Price (VWAP) except on Central Bank holidays. Conversion on Central Bank
+holidays will use the end of day midpoint between the bid and ask. Non-USD currencies that have no trading activity for the day will be converted using the end of day midpoint between the
+bid and ask.
+
+The forex market is open from 5:00 p.m. to 4:00 p.m. daily, Sunday through Friday. Beginning at 5:00 p.m., forex pairs may be opened at various intervals to ensure market liquidity. As part
+of routine daily maintenance, generally conducted between 12:00 a.m. – 2:00 a.m. and lasting approximately 2 minutes, the trading platform may not be available. Times referenced are
+Central Standard Time or Central Daylight Time, whichever is in effect. Charles Schwab Futures and Forex LLC utilizes JP Morgan Chase Bank N.A. as its forex prime broker. Liquidity
+providers, which are subject to change from time to time without notice, include JP Morgan, Citadel Securities, XTX Markets, and Virtu Financial.
+
+Additional forex execution data is available by request. You may request transaction data for up to 15 trades occurring in the same currency pair immediately before and after your trade. The
+information provided in the transaction data includes execution date, time, side, quantity, currency pair, and price. To submit your request, please contact a Forex Specialist at 866-839-1100.
+
+This statement represents a statement of account assets and account activity of your account only. This statement of account does not reflect the individual statement, valuation, or
+ownership interest of any other person or entity.
+
+Charles Schwab Futures and Forex LLC does not provide legal or tax advice. Please consult your legal advisor or tax accountant when necessary.
+
+Accuracy of Reports: Please review this statement carefully. If you disagree with any transaction, or if there are any errors or omissions, please contact us at 866-839-1100 within one (1) day
+of your receipt of this statement. Any oral statements that you have made to us should be confirmed in writing. The statement will otherwise be considered conclusive.
+
+All transactions are subject to (i) the constitution, rules, regulations, customs and usages of the exchange or market, and its clearinghouse, if any, on which such transactions are executed;
+(ii) federal and state laws, and the rules and regulations promulgated thereunder; and (iii) the rules and regulations of the CFTC and NFA.
+
+In accordance with NFA Compliance Rule 2-36(l)3, we request that you verify that your customer information is accurate and complete. Please regularly log into your account and ensure all
+account information provided by you is accurate and up to date.
+
+In accordance with NFA rules, a copy of Charles Schwab Futures and Forex LLC's registrations and memberships is available at: http://www.nfa.futures.org/basicnet/
+
+A publication by the National Futures Association entitled Trading Forex - “What Investors Need to Know” is available at: https://www.tdameritrade.com/investment-products/forex-
+trading.html
+
+Public Disclosures required pursuant NFA Rule 2-36 are available at: https://www.tdameritrade.com/disclosure.page
+
+In accordance with NFA rules, a copy of the Charles Schwab Futures and Forex LLC privacy policy is available at https://www.tdameritrade.com/privacy
+
+Accounts Carried by Charles Schwab Futures and Forex LLC.
+
+Charles Schwab Futures and Forex LLC, a CFTC-registered Futures Commission Merchant and NFA Forex Dealer Member. Securities brokerage services provided by TD Ameritrade, Inc., an
+SEC-registered introducing Broker-Dealer, and TD Ameritrade Clearing, Inc., an SEC-registered clearing Broker-Dealer (Members FINRA <https://www.finra.org> /SIPC
+<https://www.sipc.org>). Charles Schwab Futures and Forex LLC, TD Ameritrade, Inc., and TD Ameritrade Clearing, Inc. are separate but affiliated subsidiaries of The Charles Schwab
+Corporation. TD Ameritrade is a trademark jointly owned by TD Ameritrade IP Company, Inc. and The Toronto-Dominion Bank. © 2021 Charles Schwab & Co. Inc. All rights reserved.
+
