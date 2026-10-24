@@ -129,6 +129,13 @@ def main():
         report['capture_verification'] = verification
         report['development_commit'] = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
         _write_json(output / 'preflight-report.json', report)
+        if report.get('boundary_plan', {}).get('status') == 'prepared_for_review':
+            _write_json(output / 'boundary-plan.json', report['boundary_plan'])
+            print('Boundary review plan:', output / 'boundary-plan.json')
+            print('Boundary review plan file SHA256:', sha256((output / 'boundary-plan.json').read_bytes()).hexdigest())
+            print('Boundary review plan evidence SHA256:', report['boundary_plan_sha256'])
+        else:
+            print('Boundary review plan not prepared:', report.get('boundary_plan', {}).get('reason', 'Incomplete evidence.'))
         print('Diagnostic position replay completed:', report['diagnostic_position_replay_completed'])
         print('Identity-preserving chain verified:', report['identity_preserving_chain_verified'])
         print('2025 draft checks passed:', report['all_2025_drafts_passed'])

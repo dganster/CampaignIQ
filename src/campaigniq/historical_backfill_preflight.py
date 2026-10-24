@@ -393,7 +393,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
     blockers = [r['month'] + ': ' + b for r in rows + edges for b in r['blocking_findings']]
     blockers += ['Physical PostgreSQL restore and rollback have not been tested.',
                  'A separately authorized transactional historical publisher has not been implemented.']
-    return dict(format='campaigniq.whole_year_backfill_preflight', version=3, diagnostic_only=True,
+    report = dict(format='campaigniq.whole_year_backfill_preflight', version=3, diagnostic_only=True,
                 workspace=bundle['workspace'], captured_at=bundle['captured_at'], capture_sha256=before,
                 months=rows, downstream=edges, all_2025_drafts_passed=chain,
                 diagnostic_position_replay_completed=carried is not None and all(row['continuous_preview'] is not None for row in rows),
@@ -410,3 +410,15 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 limitations=['Workspace artifacts and all draft document versions only; not a full database or persistent-disk backup.',
                              'Read-only snapshot cannot establish that production remained unchanged after capture.',
                              'Crypto reporting and source completeness require independent review.'])
+    if report['all_2025_drafts_passed'] and report['identity_preserving_chain_verified']:
+        try:
+            from campaigniq.historical_backfill_boundary_plan import build_boundary_plan
+            plan = build_boundary_plan(bundle,report,carried,opening_snapshot_text=opening_snapshot_text,development_only=True)
+            report['boundary_plan'] = plan.to_dict()
+            report['boundary_plan_sha256'] = plan.sha256
+        except (ValueError,KeyError,TypeError) as error:
+            report['boundary_plan'] = dict(status='not_prepared',reason=str(error),publication_authorized=False)
+    else:
+        report['boundary_plan'] = dict(status='not_prepared',reason='2025 draft and identity checks are incomplete.',publication_authorized=False)
+    return report
+
