@@ -227,8 +227,12 @@ def downstream(storage, december, *, opening_snapshot_text=None):
     return rows
 
 
-def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), forex_monthly_evidence=None, campaign_continuity=False, progress=None):
+def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), forex_monthly_evidence=None, campaign_continuity=False, progress=None, candidate_collector=None):
     validate(bundle)
+    if candidate_collector is not None:
+        import os
+        if not campaign_continuity or os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'):
+            raise ValueError('Candidate collection requires local development continuity.')
     if type(campaign_continuity) is not bool:
         raise ValueError('Campaign continuity must be an explicit boolean.')
     if campaign_continuity:
@@ -373,6 +377,8 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                         and not row.get('opening_quantity_differences') and not row['closing_quantity_differences']):
                     next_carried = continuous.result.ending_lot_book.clone()
                     provenance_closing = provenance['closing'] if provenance is not None else {}
+                    if candidate_collector is not None and not row['blocking_findings']:
+                        candidate_collector.collect(preflight,continuous,supplied)
         except Exception as error:
             row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
         if next_carried is None:
