@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from campaigniq.historical_backfill_opening_provenance import trace_opening_provenance
 from campaigniq.historical_backfill_bundle import validate, encode
 from campaigniq.historical_backfill_draft_preview import _FrozenStorage, _prepare_uploads
 from campaigniq.import_contract import MonthlyInputRole
@@ -131,7 +132,9 @@ def _execution_report(execution, start):
                                     for m in reconciliation.mismatches],
                 forex_controls=controls, forex_control_deltas_usd=deltas, forex_resolution=execution.forex_resolution,
                 forex_report_controls=_forex_controls(execution.result.forex_transaction_report),
-                journal_replay_verified=True, blocking_findings=blockers)
+                journal_replay_verified=True, blocking_findings=blockers,
+                original_boundary_findings=dict(unresolved_positions=list(boundary.unresolved_positions),
+                    unresolved_campaigns=list(boundary.unresolved_campaigns), historical_requirements=[asdict(req) for req in boundary.historical_requirements]))
 
 
 def _forex_controls(report):
@@ -226,7 +229,7 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
     before = sha256(encode(bundle)).hexdigest()
     storage = _FrozenStorage(bundle)
     drafts = {(d['year'], d['month']): d for d in bundle['drafts'] if d['state'] == 'draft'}
-    rows = []; carried = None; chain = True; identity_chain = True
+    rows = []; carried = None; chain = True; identity_chain = True; provenance_closing = {}
     for month in range(1, 13):
         key = f'2025-{month:02}'
         draft = drafts.get((2025, month))
@@ -314,6 +317,16 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                             row['campaign_continuity']['connected_to_verified_identity_chain'] = False
                 else:
                     raise ValueError('Continuous replay unavailable because the previous draft did not pass.')
+                provenance = None
+                try:
+                    provenance = trace_opening_provenance(continuous.result,
+                        period_start=preflight.contract.period_start, period_end=preflight.contract.period_end,
+                        documents=docs, previous=provenance_closing)
+                    row['opening_provenance'] = provenance
+                except ValueError as error:
+                    row['opening_provenance'] = dict(verified=False, error=str(error), publication_authorized=False)
+                    row['blocking_findings'].append('Opening provenance replay failed: ' + str(error))
+                    identity_chain = False
                 row['continuous_preview'] = _execution_report(continuous, preflight.contract.period_start)
                 row['blocking_findings'].extend(row['continuous_preview']['blocking_findings'])
                 row['closing_quantity_differences'] = differences(quantities(continuous.result.ending_lot_book), quantities(independent.result.ending_lot_book))
@@ -332,8 +345,11 @@ def run_preflight(bundle, *, forex_not_applicable=(), crypto_not_applicable=(), 
                 if (row['independent_preview']['closing_reconciled'] and row['continuous_preview']['closing_reconciled']
                         and not row.get('opening_quantity_differences') and not row['closing_quantity_differences']):
                     next_carried = continuous.result.ending_lot_book.clone()
+                    provenance_closing = provenance['closing'] if provenance is not None else {}
         except Exception as error:
             row['blocking_findings'].append(type(error).__name__ + ': ' + str(error))
+        if next_carried is None:
+            provenance_closing = {}
         carried = next_carried
         chain = chain and carried is not None and not row['blocking_findings']
         if carried is None:
