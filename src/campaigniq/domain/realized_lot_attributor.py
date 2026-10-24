@@ -134,44 +134,55 @@ class RealizedLotAttributor:
 
         activities: list[_ClosingActivity] = []
         assignment_closures = self._assignment_closures(events or [])
+        # Reserve settlement trade quantities before processing an earlier
+        # assignment event, so the same shares cannot be delivered twice.
+        planned_closures = self._assignment_closures(events or [])
+        for planned_trade in sorted(trades, key=self._trade_time):
+            for planned_leg in planned_trade.legs:
+                self._economic_closed_date(planned_leg, planned_closures)
 
-        for trade in sorted(trades, key=self._trade_time):
-            campaign_id = (
-                campaign_ids.get(id(trade))
-                if campaign_ids is not None
-                else None
-            )
-
-            for leg in trade.legs:
-                allocations = self.lot_book.apply_trade(
-                    Trade(legs=(leg,)),
-                    campaign_id=campaign_id,
-                )
-                if leg.position_effect != PositionEffect.CLOSE:
-                    continue
-
-                is_assignment = self._matches_assignment_closure(
-                    leg, assignment_closures
-                )
-                closed_date = self._economic_closed_date(
-                    leg, assignment_closures
+        # Lot IDs must follow the same economic ordering as the position journal.
+        # Keep original event indices for assignment settlement matching.
+        timeline = [(self._trade_time(trade), 0, index, trade, None)
+                    for index, trade in enumerate(trades)]
+        timeline += [(event.occurred_at, 1, index, None, event)
+                     for index, event in enumerate(events or [])]
+        for _, _, event_index, trade, event in sorted(timeline, key=lambda row: row[:3]):
+            if trade is not None:
+                campaign_id = (
+                    campaign_ids.get(id(trade))
+                    if campaign_ids is not None
+                    else None
                 )
 
-                activities.append(
-                    _ClosingActivity(
-                        closed_date=closed_date,
-                        instrument=leg.instrument,
-                        quantity=self._leg_quantity(leg),
-                        allocations=allocations,
-                        is_assignment=is_assignment,
-                        execution_date=self._leg_date(leg),
+                for leg in trade.legs:
+                    allocations = self.lot_book.apply_trade(
+                        Trade(legs=(leg,)),
+                        campaign_id=campaign_id,
                     )
-                )
+                    if leg.position_effect != PositionEffect.CLOSE:
+                        continue
 
-        for event_index, event in sorted(
-            enumerate(events or []),
-            key=lambda item: item[1].occurred_at,
-        ):
+                    is_assignment = self._matches_assignment_closure(
+                        leg, assignment_closures
+                    )
+                    closed_date = self._economic_closed_date(
+                        leg, assignment_closures
+                    )
+
+                    activities.append(
+                        _ClosingActivity(
+                            closed_date=closed_date,
+                            instrument=leg.instrument,
+                            quantity=self._leg_quantity(leg),
+                            allocations=allocations,
+                            is_assignment=is_assignment,
+                            execution_date=self._leg_date(leg),
+                        )
+                    )
+
+                continue
+
             if event.kind is PositionEventKind.SPLIT:
                 self.lot_book.apply_event(event)
                 continue
@@ -190,14 +201,14 @@ class RealizedLotAttributor:
                         occurred_at=event.occurred_at,
                     )
 
-                    campaign_ids = {
+                    assignment_campaign_ids = {
                         allocation.campaign_id
                         for allocation in allocations
                         if allocation.campaign_id is not None
                     }
 
-                    if len(campaign_ids) == 1:
-                        assignment_campaign_id = next(iter(campaign_ids))
+                    if len(assignment_campaign_ids) == 1:
+                        assignment_campaign_id = next(iter(assignment_campaign_ids))
 
                     if allocations and quantity > 0:
                         share_allocations = tuple(
@@ -229,7 +240,7 @@ class RealizedLotAttributor:
                     and change.quantity < 0
                 ):
                     unmatched = self._remaining_assignment_quantity(
-                        assignment_closures,
+                        planned_closures,
                         event_index,
                         change.instrument,
                     )
