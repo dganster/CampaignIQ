@@ -12,12 +12,15 @@ from campaigniq.historical_backfill_bundle import decode
 from campaigniq.historical_backfill_publication_package import digest,canonical
 from campaigniq.historical_backfill_candidate_payloads import validate_generation
 from campaigniq.historical_backfill_restored_publisher import (
-    connect_local,local_database,lock_tables,require_workspace,table_manifest,load_inputs,save,PublishedView,
+    connect_local,local_database,lock_tables,require_workspace,table_manifest,load_inputs,save,PublishedView,workspace_state,
 )
 from campaigniq.historical_backfill_correction_rehearsal import verified_preview,conditional_update,TARGETS
 from campaigniq.historical_backfill_continuity_links import build_links,verify_partition
 from campaigniq.importers.schwab.realized_gain_loss_reader import read_realized_gain_loss_section
 from campaigniq.persistence.monthly_publication import PROTOCOL_FILE,_serialize_publication_protocol,is_month_published_in_storage
+from campaigniq.historical_backfill_portfolio_evidence import (
+    MARKET_KEY,BASIS_KEY,CONSUMPTION_KEY,validate_check_payloads,rebuild_checks,require_reviewed_checks,verify_committed_checks,
+)
 
 WORKSPACE='workspace-dennis'
 CONTINUITY_KEY='historical-continuity-v1.json'
@@ -39,19 +42,23 @@ def validate_history_review(graph,review):
 class InjectedFailure(Exception):pass
 
 
-def stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text,*,inject=False):
+def stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text,*,inject=False,checks=None):
     validate_generation(candidates)
     if set(corrections)!=TARGETS or set(originals)!=TARGETS|{PROTOCOL_FILE}:
         raise ValueError('Combined update scope differs.')
-    inserts={**candidates,CONTINUITY_KEY:graph_text,audit_key:audit_text}
-    if len(inserts)!=len(candidates)+2 or set(inserts)&set(originals):raise ValueError('Combined insert scope overlaps.')
+    if checks is not None:validate_check_payloads(checks)
+    inserts={**candidates,CONTINUITY_KEY:graph_text,audit_key:audit_text,**(checks or {})}
+    if len(inserts)!=len(candidates)+2+len(checks or {}) or set(inserts)&set(originals):raise ValueError('Combined insert scope overlaps.')
     connection.execute('INSERT INTO public.artifact_storage_dev(namespace,artifact_key,content) VALUES (%s,%s,%s)',(WORKSPACE,audit_key,audit_text))
     for key in sorted(TARGETS):
         before,stamp=originals[key];conditional_update(connection,key,before,corrections[key],stamp)
     for count,key in enumerate(sorted(candidates,key=lambda k:(k.endswith('-finalized.json'),k)),1):
         connection.execute('INSERT INTO public.artifact_storage_dev(namespace,artifact_key,content) VALUES (%s,%s,%s)',(WORKSPACE,key,candidates[key]))
-        if inject and count==3:raise InjectedFailure('controlled combined rollback')
+        if inject and checks is None and count==3:raise InjectedFailure('controlled combined rollback')
     connection.execute('INSERT INTO public.artifact_storage_dev(namespace,artifact_key,content) VALUES (%s,%s,%s)',(WORKSPACE,CONTINUITY_KEY,graph_text))
+    for key,text in sorted((checks or {}).items()):
+        connection.execute('INSERT INTO public.artifact_storage_dev(namespace,artifact_key,content) VALUES (%s,%s,%s)',(WORKSPACE,key,text))
+        if inject:raise InjectedFailure('controlled rollback after new continuity evidence insertion')
     before,stamp=originals[PROTOCOL_FILE]
     result=connection.execute('UPDATE public.artifact_storage_dev SET content=%s,updated_at=now() WHERE namespace=%s AND artifact_key=%s AND content=%s AND updated_at=%s',
         (_serialize_publication_protocol(first_period_end=date(2025,1,31)),WORKSPACE,PROTOCOL_FILE,before,stamp))
@@ -77,8 +84,12 @@ def verify_readers(artifacts,package,review):
             raise ValueError('Dashboard linked history reader differs from reviewed economics.')
 
 
-def experiment(connection,bundle,package,candidates,corrections,preview,graph,review,pdf_bytes,output):
+def experiment(connection,bundle,package,candidates,corrections,preview,graph,review,pdf_bytes,output,*,checks=None,basis_evidence=None,preview_sha256=None):
     local_database(connection.info.dbname);validate_history_review(graph,review)
+    if checks is not None:
+        rebuilt_checks=rebuild_checks(bundle,package,dict(bundle['artifacts'],**candidates,**corrections),basis_evidence,preview_sha256,corrections)
+        require_reviewed_checks(rebuilt_checks,checks)
+    committed_checks={}
     with connection.transaction():
         lock_tables(connection);require_workspace(connection,bundle);baseline=table_manifest(connection)
         if baseline!=preview['all_user_table_manifest']:raise ValueError('Local restore differs from the reviewed database baseline.')
@@ -90,8 +101,9 @@ def experiment(connection,bundle,package,candidates,corrections,preview,graph,re
         source_pdf_base64=base64.b64encode(pdf_bytes).decode(),source_pdf_sha256=digest(pdf_bytes),
         capture_sha256=package['capture_sha256'],correction_preview=preview,
         continuity_graph_sha256=digest(canonical(graph)),boundary_plan=package['boundary_plan'],publication_authorized=False)
+    if checks is not None:archive['basis_evidence_manifest']=basis_evidence
     audit_text=canonical(archive).decode()+'\n'
-    inserts=dict(candidates,**{CONTINUITY_KEY:graph_text,audit_key:audit_text})
+    inserts=dict(candidates,**{CONTINUITY_KEY:graph_text,audit_key:audit_text},**(checks or {}))
     if set(inserts)&set(bundle['artifacts']):raise ValueError('Refusing to replace an existing insert target.')
     save(output/'recovery-receipt.json',dict(database=connection.info.dbname,original_artifacts=archive['original_artifacts'],
         inserted_artifact_sha256={k:digest(v.encode()) for k,v in inserts.items()},baseline_table_manifest=baseline,publication_authorized=False))
@@ -99,7 +111,7 @@ def experiment(connection,bundle,package,candidates,corrections,preview,graph,re
         lock_tables(connection);require_workspace(connection,bundle)
         if table_manifest(connection)!=baseline:raise ValueError('Database changed before injected rollback.')
         try:
-            with connection.transaction():stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text,inject=True)
+            with connection.transaction():stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text,inject=True,checks=checks)
         except InjectedFailure:pass
         if table_manifest(connection)!=baseline:raise ValueError('Combined injected transaction did not roll back exactly.')
     expected=dict(bundle['artifacts'],**inserts,**corrections)
@@ -109,16 +121,21 @@ def experiment(connection,bundle,package,candidates,corrections,preview,graph,re
         with connection.transaction():
             lock_tables(connection);require_workspace(connection,bundle)
             if table_manifest(connection)!=baseline:raise ValueError('Database changed before combined commit.')
-            stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text)
+            stage(connection,originals,candidates,corrections,graph_text,audit_key,audit_text,checks=checks)
             require_workspace(connection,bundle,expected)
         committed=True
         with connect_local(connection.info.dbname) as observer:
             with observer.transaction():
                 observer.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-                require_workspace(observer,bundle,expected);verify_readers(expected,package,review)
-                recovered=decode(expected[audit_key].encode())
+                require_workspace(observer,bundle,expected)
+                actual,drafts,documents=workspace_state(observer)
+                verify_readers(actual,package,review)
+                recovered=decode(actual[audit_key].encode())
                 if base64.b64decode(recovered['source_pdf_base64'])!=pdf_bytes or recovered['original_artifacts']!=archive['original_artifacts']:
                     raise ValueError('Committed original/source archive differs.')
+                if checks is not None:
+                    observed_bundle=dict(bundle,artifacts=actual,drafts=drafts,documents=documents)
+                    committed_checks=verify_committed_checks(observed_bundle,package,actual,recovered,checks,corrections,preview_sha256)
     finally:
         if committed:
             with connection.transaction():
@@ -144,13 +161,15 @@ def experiment(connection,bundle,package,candidates,corrections,preview,graph,re
         corrected_artifact_count=len(corrections),unchanged_2026_artifact_count=sum(k.startswith('2026-') and k not in corrections for k in bundle['artifacts']),
         linked_brokerage_histories=review['linked_history_count'],broker_realized_records=review['realized_record_count'],
         continuity_scope='brokerage_equity_and_options',continuity_graph_sha256=digest(canonical(graph)),
-        production_connection_made=False,full_portfolio_continuity_verified=False,publication_authorized=False)
+        production_connection_made=False,full_portfolio_continuity_verified=False,publication_authorized=False,**committed_checks)
 
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('repo','package','capture','correction-preview','correction-rehearsal-report','linked-history-review','april-realized-report','backup'):
         p.add_argument('--'+name,type=Path,required=True)
+    for name in ('market-review','basis-evidence','basis-report','basis-consumption-report'):
+        p.add_argument('--'+name,type=Path)
     p.add_argument('--local-restored-database',required=True);p.add_argument('--backup-sha256',required=True)
     p.add_argument('--development-only',required=True,action='store_true');args=p.parse_args();local_database(args.local_restored_database)
     repo=args.repo.expanduser().resolve()
@@ -179,11 +198,22 @@ def main():
     corrections=verified_preview(bundle['artifacts'],records,preview,proposals,pdf_bytes)
     if graph!=build_links(package['boundary_plan'],dict(bundle['artifacts'],**candidates,**corrections)):p.error('Continuity graph differs from source records.')
     validate_history_review(graph,review)
+    extra_paths=[args.market_review,args.basis_evidence,args.basis_report,args.basis_consumption_report]
+    if any(path is not None for path in extra_paths) and not all(path is not None for path in extra_paths):p.error('Supply all four market/basis evidence inputs together.')
+    checks=None;basis_evidence=None
+    if all(path is not None for path in extra_paths):
+        for path in extra_paths:
+            if not path.expanduser().is_file():p.error('Required saved report is missing: '+str(path))
+        basis_evidence=decode(args.basis_evidence.expanduser().read_bytes())
+        checks=rebuild_checks(bundle,package,dict(bundle['artifacts'],**candidates,**corrections),basis_evidence,digest(preview_path.read_bytes()),corrections)
+        supplied={MARKET_KEY:args.market_review.expanduser().read_text(),BASIS_KEY:args.basis_report.expanduser().read_text(),CONSUMPTION_KEY:args.basis_consumption_report.expanduser().read_text()}
+        require_reviewed_checks(checks,supplied)
     output=Path.home()/'Downloads'/('CampaignIQ-combined-rehearsal-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]);output.mkdir(mode=0o700,exist_ok=False)
     print('Testing combined publication on the LOCAL full restore; production is disabled.',flush=True)
     try:
         with connect_local(args.local_restored_database) as connection:
-            result=experiment(connection,bundle,package,candidates,corrections,preview,graph,review,pdf_bytes,output)
+            result=experiment(connection,bundle,package,candidates,corrections,preview,graph,review,pdf_bytes,output,
+                checks=checks,basis_evidence=basis_evidence,preview_sha256=digest(preview_path.read_bytes()))
     except Exception as error:
         save(output/'failure.json',dict(error_type=type(error).__name__,message=str(error) if isinstance(error,ValueError) else 'Database test failed; preserve all inputs and recovery diagnostics.',publication_authorized=False))
         p.exit(1,'Combined local test failed. Diagnostics: '+str(output)+'\n')
@@ -191,6 +221,8 @@ def main():
         linked_history_review_sha256=digest(review_path.read_bytes()),correction_rehearsal_sha256=digest(correction_path.read_bytes()))
     save(output/'combined-rehearsal-report.json',result)
     print('Injected combined transaction rollback: PASS\nCommitted publication, corrections and continuity readers: PASS\nOriginal/source archive: PASS\nExact rollback across all user tables: PASS')
+    if checks is not None:
+        print('Committed dashboard source loader: PASS\nCommitted Forex and crypto ledger continuity: PASS\nCommitted source basis provenance: PASS\nCommitted downstream basis consumption: PASS')
     print('Report:',output/'combined-rehearsal-report.json')
     print('Local restore returned to its original state. Full portfolio continuity and production publication remain unverified.')
 
