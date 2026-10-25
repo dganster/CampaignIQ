@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
+from types import MappingProxyType
+from collections.abc import Mapping
 
 from campaigniq.domain.campaign import Campaign
 from campaigniq.domain.leg import Leg
@@ -48,7 +50,31 @@ class RealizedLotAttributor:
     and to expose ancestry gaps; it does not replace Schwab's basis calculation.
     """
 
-    def __init__(self, lot_book: LotBook | None = None) -> None:
+    def __init__(
+        self, lot_book: LotBook | None = None, *,
+        contract_aliases: Mapping[OptionContract, OptionContract] | None = None,
+    ) -> None:
+        """Accept explicitly reviewed, full-contract SPXW-to-SPX mappings.
+
+        No aliases are inferred. Callers must independently establish broker
+        equivalence; this opt-in matching path is not evidence approval or
+        publication authorization. Original realized records remain unchanged.
+        """
+        aliases = dict(contract_aliases or {})
+        for source, target in aliases.items():
+            if not isinstance(source, OptionContract) or not isinstance(target, OptionContract):
+                raise ValueError("Aliases require full option contracts.")
+            if source.underlying != "SPXW" or target.underlying != "SPX":
+                raise ValueError("Only explicit SPXW-to-SPX contract aliases are supported.")
+            if (not isinstance(source.strike, Decimal) or not isinstance(target.strike, Decimal)
+                    or not source.strike.is_finite() or not target.strike.is_finite()
+                    or source.strike <= 0 or target.strike <= 0):
+                raise ValueError("Alias strike must be finite and positive.")
+            if (source.expiration != target.expiration
+                    or source.strike != target.strike
+                    or source.option_type != target.option_type):
+                raise ValueError("Alias contract expiration, strike and type must match exactly.")
+        self._contract_aliases = MappingProxyType(aliases)
         self.lot_book = lot_book or LotBook()
 
     def attribute(
@@ -95,46 +121,68 @@ class RealizedLotAttributor:
         events: list[PositionEvent] | None,
         campaign_ids: dict[int, str] | None,
     ) -> tuple[RealizedAttribution, ...]:
+        # Check alias ambiguity before touching the working lot book. If the
+        # broker root is independently represented, merging it could consume a
+        # different series. Mixed-root realized rows are ambiguous as well.
+        represented = set(self.lot_book.instruments())
+        represented.update(leg.instrument for trade in trades for leg in trade.legs)
+        represented.update(change.instrument for event in events or [] for change in event.changes)
+        reported = {record.instrument for record in records}
+        for source, target in self._contract_aliases.items():
+            if source in represented or (source in reported and target in reported):
+                raise ValueError("Ambiguous SPX/SPXW evidence; explicit contract mapping cannot merge both roots.")
+
         activities: list[_ClosingActivity] = []
         assignment_closures = self._assignment_closures(events or [])
+        # Reserve settlement trade quantities before processing an earlier
+        # assignment event, so the same shares cannot be delivered twice.
+        planned_closures = self._assignment_closures(events or [])
+        for planned_trade in sorted(trades, key=self._trade_time):
+            for planned_leg in planned_trade.legs:
+                self._economic_closed_date(planned_leg, planned_closures)
 
-        for trade in sorted(trades, key=self._trade_time):
-            campaign_id = (
-                campaign_ids.get(id(trade))
-                if campaign_ids is not None
-                else None
-            )
-
-            for leg in trade.legs:
-                allocations = self.lot_book.apply_trade(
-                    Trade(legs=(leg,)),
-                    campaign_id=campaign_id,
-                )
-                if leg.position_effect != PositionEffect.CLOSE:
-                    continue
-
-                is_assignment = self._matches_assignment_closure(
-                    leg, assignment_closures
-                )
-                closed_date = self._economic_closed_date(
-                    leg, assignment_closures
+        # Lot IDs must follow the same economic ordering as the position journal.
+        # Keep original event indices for assignment settlement matching.
+        timeline = [(self._trade_time(trade), 0, index, trade, None)
+                    for index, trade in enumerate(trades)]
+        timeline += [(event.occurred_at, 1, index, None, event)
+                     for index, event in enumerate(events or [])]
+        for _, _, event_index, trade, event in sorted(timeline, key=lambda row: row[:3]):
+            if trade is not None:
+                campaign_id = (
+                    campaign_ids.get(id(trade))
+                    if campaign_ids is not None
+                    else None
                 )
 
-                activities.append(
-                    _ClosingActivity(
-                        closed_date=closed_date,
-                        instrument=leg.instrument,
-                        quantity=self._leg_quantity(leg),
-                        allocations=allocations,
-                        is_assignment=is_assignment,
-                        execution_date=self._leg_date(leg),
+                for leg in trade.legs:
+                    allocations = self.lot_book.apply_trade(
+                        Trade(legs=(leg,)),
+                        campaign_id=campaign_id,
                     )
-                )
+                    if leg.position_effect != PositionEffect.CLOSE:
+                        continue
 
-        for event_index, event in sorted(
-            enumerate(events or []),
-            key=lambda item: item[1].occurred_at,
-        ):
+                    is_assignment = self._matches_assignment_closure(
+                        leg, assignment_closures
+                    )
+                    closed_date = self._economic_closed_date(
+                        leg, assignment_closures
+                    )
+
+                    activities.append(
+                        _ClosingActivity(
+                            closed_date=closed_date,
+                            instrument=leg.instrument,
+                            quantity=self._leg_quantity(leg),
+                            allocations=allocations,
+                            is_assignment=is_assignment,
+                            execution_date=self._leg_date(leg),
+                        )
+                    )
+
+                continue
+
             if event.kind is PositionEventKind.SPLIT:
                 self.lot_book.apply_event(event)
                 continue
@@ -153,14 +201,14 @@ class RealizedLotAttributor:
                         occurred_at=event.occurred_at,
                     )
 
-                    campaign_ids = {
+                    assignment_campaign_ids = {
                         allocation.campaign_id
                         for allocation in allocations
                         if allocation.campaign_id is not None
                     }
 
-                    if len(campaign_ids) == 1:
-                        assignment_campaign_id = next(iter(campaign_ids))
+                    if len(assignment_campaign_ids) == 1:
+                        assignment_campaign_id = next(iter(assignment_campaign_ids))
 
                     if allocations and quantity > 0:
                         share_allocations = tuple(
@@ -192,7 +240,7 @@ class RealizedLotAttributor:
                     and change.quantity < 0
                 ):
                     unmatched = self._remaining_assignment_quantity(
-                        assignment_closures,
+                        planned_closures,
                         event_index,
                         change.instrument,
                     )
@@ -266,9 +314,14 @@ class RealizedLotAttributor:
         unused = list(activities)
         results: list[RealizedAttribution] = []
         for record in records:
+            matching_instrument = self._contract_aliases.get(record.instrument, record.instrument)
+            matching_record = (
+                replace(record, instrument=matching_instrument)
+                if matching_instrument != record.instrument else record
+            )
             allocations = self._consume_matching_activity(
                 unused,
-                record,
+                matching_record,
             )
             attributed = self.lot_book.apply_realized_basis(
                 allocations,

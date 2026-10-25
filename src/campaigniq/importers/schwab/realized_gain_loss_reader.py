@@ -12,13 +12,16 @@ from campaigniq.domain.realized_gain_loss import RealizedGainLossRecord
 from campaigniq.domain.value_objects.instrument import Instrument
 
 
+_QUANTITY = r"(?:\d{1,3}(?:,\d{3})+|\d+)"
+
+
 _OPTION_RE = re.compile(
     r"^\s*(?P<symbol>[A-Z.]+)\s+"
     r"(?P<expiration>\d{2}/\d{2}/\d{4})\s+"
     r"(?P<strike>[\d,]+(?:\.\d+)?)\s+"
     r"(?P<option_type>[CP])\s+"
     r"(?P<closed_date>\d{2}/\d{2}/\d{4})\s+"
-    r"(?P<quantity>\d+)\s+"
+    rf"(?P<quantity>{_QUANTITY})\s+"
     r"\$(?P<closing_price>[\d,]+(?:\.\d+)?)\s+"
     r"(?P<basis_method>\S+)\s+"
     r"\$(?P<proceeds>[\d,]+(?:\.\d+)?)\s+"
@@ -34,7 +37,7 @@ _DISALLOWED_LOSS_RE = re.compile(
 _EQUITY_RE = re.compile(
     r"^\s*(?P<symbol>[A-Z.]+)\s+"
     r"(?P<closed_date>\d{2}/\d{2}/\d{4})\s+"
-    r"(?P<quantity>\d+)\s+"
+    rf"(?P<quantity>{_QUANTITY})\s+"
     r"\$(?P<closing_price>[\d,]+(?:\.\d+)?)\s+"
     r"(?P<basis_method>\S+)\s+"
     r"\$(?P<proceeds>[\d,]+(?:\.\d+)?)\s+"
@@ -115,7 +118,7 @@ def _to_record(
             match.group("closed_date"), "%m/%d/%Y"
         ).date(),
         instrument=instrument,
-        quantity=Decimal(match.group("quantity")),
+        quantity=_decimal(match.group("quantity")),
         closing_price=_decimal(match.group("closing_price")),
         proceeds=_decimal(match.group("proceeds")),
         cost_basis=_decimal(match.group("cost_basis")),

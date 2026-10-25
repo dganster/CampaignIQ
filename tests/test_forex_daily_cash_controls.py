@@ -178,3 +178,31 @@ def test_extra_two_second_clock_difference_is_not_accepted(evidence):
     path.write_text(text.replace(before,after,1))
     with pytest.raises(ValueError):resolve(evidence)
 
+
+def test_supplemental_sources_are_bound_without_mutating_saved_drafts(monkeypatch):
+    from campaigniq import historical_backfill_preflight as audit
+    from campaigniq.import_draft_bridge import RestoredUpload
+    import copy
+    spec=importlib.util.spec_from_file_location('old_helpers',Path(__file__).with_name('test_whole_year_backfill_preflight.py'))
+    h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+    b=h.bundle(range(1,13));before=copy.deepcopy(b)
+    def prepare(year,month,**kwargs):
+        if month==3:assert kwargs['supplied_inputs'][Role.SCHWAB_FOREX_MONTHLY_STATEMENT].read_bytes()==b'monthly bytes'
+        c=monthly_import_contract(year,month)
+        return MonthlyImportPreflight(c,tuple(MonthlyInputValidation(r.role,True,'fixture') for r in c.requirements),None,LotBook())
+    monkeypatch.setattr(audit,'prepare_monthly_import',prepare)
+    monkeypatch.setattr(audit,'execute_monthly_import',lambda *a,**kw:MonthlyImportExecution(h.result(),ClosingInventoryReconciliation(()),None))
+    r=audit.run_preflight(b,forex_monthly_evidence={'2025-03':RestoredUpload('../../monthly.txt','text/plain',b'monthly bytes')})
+    assert b==before and r['captured_bytes_unchanged']
+    assert r['diagnostic_position_replay_completed'], [(x['month'],x['blocking_findings']) for x in r['months']]
+    assert r['supplemental_monthly_evidence']['2025-03']['filename']=='monthly.txt'
+    assert any('not in the saved draft' in s for s in r['months'][2]['blocking_findings'])
+    assert not r['all_2025_drafts_passed'] and not r['publication_authorized']
+
+
+@pytest.mark.parametrize('month,upload',[('2026-03',None),('2025-03',None)])
+def test_invalid_supplemental_sources_fail_before_replay(month,upload):
+    from campaigniq import historical_backfill_preflight as audit
+    spec=importlib.util.spec_from_file_location('old_helpers',Path(__file__).with_name('test_whole_year_backfill_preflight.py'))
+    h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
+    with pytest.raises(ValueError):audit.run_preflight(h.bundle(),forex_monthly_evidence={month:upload})
