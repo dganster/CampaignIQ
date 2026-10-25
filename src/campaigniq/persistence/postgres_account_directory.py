@@ -148,7 +148,7 @@ class LocalPostgresAccountDirectory:
             (registry_id,sequence,event,event_sha256) VALUES (%s,%s,%s,%s)''',
                      (self.registry_id, event.sequence, Jsonb(document), checksum(document)))
 
-    def execute(self, identity: Identity, expected_revision: int, command: str, **arguments):
+    def execute(self, actor_identity: Identity, expected_revision: int, command: str, /, **arguments):
         from psycopg.types.json import Jsonb
         if not isinstance(command, str) or command not in ALLOWED_COMMANDS:
             raise ValueError('Unsupported administration command')
@@ -159,7 +159,7 @@ class LocalPostgresAccountDirectory:
             raise ValueError('Explicit permission enum required')
         with self._connection() as conn:
             current = self._load(conn, lock=True)
-            updated = getattr(current, command)(identity, expected_revision=expected_revision, **arguments)
+            updated = getattr(current, command)(actor_identity, expected_revision=expected_revision, **arguments)
             if updated.revision != current.revision + 1 or updated.events[:-1] != current.events:
                 raise ValueError('Invalid directory/audit transition')
             document = encode(updated)
