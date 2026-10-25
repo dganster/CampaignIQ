@@ -2096,6 +2096,17 @@ if get_script_run_ctx(suppress_warning=True) is not None:
                 from campaigniq.ui.campaign_economics_view import render_campaign_economics
                 economics_records, lifetime_scope = campaign_record_scope(history_monthly_attributions, selected_id)
                 economics_history = campaign_entries(evidence, economics_records)
+                from campaigniq.analytics.linked_campaign_history import load_linked_history
+                try:
+                    linked_reader = load_linked_history(ARTIFACT_STORAGE)
+                    linked_selection = linked_reader.selection(selected_id) if linked_reader else None
+                    if linked_selection is not None:
+                        economics_records = linked_selection['records']
+                        economics_history = linked_reader.entries(evidence, linked_selection)
+                        lifetime_scope = True
+                        st.caption('This history follows verified month-boundary links while retaining the original campaign identities.')
+                except (ValueError, KeyError, TypeError, IndexError, OSError):
+                    st.warning('Linked campaign history could not be verified. Showing the existing campaign scope.')
                 render_campaign_economics(st, selected_records=realized_records,
                     campaign_records=economics_records, campaign_entries=economics_history,
                     lifetime_scope=lifetime_scope, reporting_month=campaign_month(selected))

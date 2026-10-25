@@ -68,6 +68,13 @@ def verify_readers(artifacts,package,review):
     rebuilt=build_links(package['boundary_plan'],artifacts)
     if stored!=rebuilt:raise ValueError('Stored continuity links differ from committed records.')
     validate_history_review(stored,review)
+    from campaigniq.analytics.linked_campaign_history import LinkedCampaignHistory
+    reader=LinkedCampaignHistory(stored,artifacts,package['boundary_plan'])
+    for history in review['histories']:
+        month,cid=history['campaign_nodes'][0]
+        selected=reader.selection(month+'/'+cid)
+        if selected is None or selected['record_count']!=history['record_count'] or selected['totals']!=history['totals']:
+            raise ValueError('Dashboard linked history reader differs from reviewed economics.')
 
 
 def experiment(connection,bundle,package,candidates,corrections,preview,graph,review,pdf_bytes,output):
@@ -82,7 +89,7 @@ def experiment(connection,bundle,package,candidates,corrections,preview,graph,re
         original_artifacts={k:dict(content=v[0],updated_at=v[1].isoformat()) for k,v in originals.items()},
         source_pdf_base64=base64.b64encode(pdf_bytes).decode(),source_pdf_sha256=digest(pdf_bytes),
         capture_sha256=package['capture_sha256'],correction_preview=preview,
-        continuity_graph_sha256=digest(canonical(graph)),publication_authorized=False)
+        continuity_graph_sha256=digest(canonical(graph)),boundary_plan=package['boundary_plan'],publication_authorized=False)
     audit_text=canonical(archive).decode()+'\n'
     inserts=dict(candidates,**{CONTINUITY_KEY:graph_text,audit_key:audit_text})
     if set(inserts)&set(bundle['artifacts']):raise ValueError('Refusing to replace an existing insert target.')
