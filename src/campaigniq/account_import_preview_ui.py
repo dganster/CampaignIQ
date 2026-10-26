@@ -123,6 +123,9 @@ def render(st, store, config):
                           for row in result.mismatches],hide_index=True)
         for finding in result.source_findings:st.warning(finding)
 
+    from campaigniq.ui.account_selection_view import render_selection
+    render_selection(st,service,actor,accounts,draft.year,draft.month,key,account_id)
+
 
 def main():
     import streamlit as st

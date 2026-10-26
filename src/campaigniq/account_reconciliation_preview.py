@@ -48,30 +48,34 @@ def reconcile_saved(service,identity,account_id,draft_id,revision,*,forex_applic
     with service.gateway.transaction(identity,account_id) as session:
         draft=service._lock(session,draft_id)
         if draft.revision!=revision:raise ValueError('Draft changed; reload before reconciliation')
-        uploads=restore_uploads(session.drafts,draft.id)
-        with TemporaryDirectory(prefix='campaigniq-account-reconciliation-') as directory:
-            root=Path(directory)
-            supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
-            identity_checks=service._identity_validations(session,uploads,supplied)
-            if any(not check.valid for check in identity_checks):
-                raise ValueError('Document account identity is unverified; review Preview saved inputs first')
-            storage=ReadOnlyArtifacts(session.artifacts)
-            preflight=prepare_monthly_import(draft.year,draft.month,
-                authoritative_state_root=root/'state',supplied_inputs=supplied,artifact_storage=storage,
-                forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
-            if not preflight.ready:
-                raise ValueError('Required inputs are incomplete or invalid; review Preview saved inputs first')
-            from campaigniq.monthly_import_execution import execute_monthly_import
-            outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
-                supplied_inputs=supplied,artifact_storage=storage,preview_only=True)
-            if outcome.finalized:raise ValueError('Unexpected finalization in read-only preview')
-            control=outcome.closing_reconciliation
-            quantities=[]
-            for instrument,lots in outcome.result.ending_lot_book._lots.items():
-                quantity=sum(lot.quantity for lot in lots)
-                if quantity:quantities.append((repr(instrument),str(quantity)))
-            return AccountReconciliationPreview(account_id,str(draft.id),draft.revision,
-                control.reconciled and not control.forex_source_findings,
-                tuple(QuantityDifference(repr(row.instrument),str(row.computed_quantity),
-                    str(row.snapshot_quantity),str(row.difference)) for row in control.mismatches),
-                tuple(control.forex_source_findings),tuple(sorted(quantities)))
+        return _reconcile_session(service,session,draft,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+
+
+def _reconcile_session(service,session,draft,*,forex_applicable,crypto_applicable):
+    uploads=restore_uploads(session.drafts,draft.id)
+    with TemporaryDirectory(prefix='campaigniq-account-reconciliation-') as directory:
+        root=Path(directory)
+        supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
+        identity_checks=service._identity_validations(session,uploads,supplied)
+        if any(not check.valid for check in identity_checks):
+            raise ValueError('Document account identity is unverified; review Preview saved inputs first')
+        storage=ReadOnlyArtifacts(session.artifacts)
+        preflight=prepare_monthly_import(draft.year,draft.month,
+            authoritative_state_root=root/'state',supplied_inputs=supplied,artifact_storage=storage,
+            forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+        if not preflight.ready:
+            raise ValueError('Required inputs are incomplete or invalid; review Preview saved inputs first')
+        from campaigniq.monthly_import_execution import execute_monthly_import
+        outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
+            supplied_inputs=supplied,artifact_storage=storage,preview_only=True)
+        if outcome.finalized:raise ValueError('Unexpected finalization in read-only preview')
+        control=outcome.closing_reconciliation
+        quantities=[]
+        for instrument,lots in outcome.result.ending_lot_book._lots.items():
+            quantity=sum(lot.quantity for lot in lots)
+            if quantity:quantities.append((repr(instrument),str(quantity)))
+        return AccountReconciliationPreview(session.account.account_id,str(draft.id),draft.revision,
+            control.reconciled and not control.forex_source_findings,
+            tuple(QuantityDifference(repr(row.instrument),str(row.computed_quantity),
+                str(row.snapshot_quantity),str(row.difference)) for row in control.mismatches),
+            tuple(control.forex_source_findings),tuple(sorted(quantities)))
