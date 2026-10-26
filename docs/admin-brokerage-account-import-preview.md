@@ -35,8 +35,10 @@ Foreign draft identifiers cannot retrieve another account's evidence. UI widget
 keys include registry, user, account, draft and revision; previews are not cached
 or persisted in browser session state across account/user changes.
 
-The service reuses restore_uploads, the dashboard's existing upload extraction
-helper, and prepare_monthly_import. It supplies only the selected account's
+The service reuses restore_uploads and prepare_monthly_import. A pure staging
+module mirrors the existing dashboard extraction logic without importing the
+dashboard. A structural regression test checks that extraction logic remains
+equivalent. It supplies only the selected account's
 artifact adapter and keeps extracted files in a private temporary directory,
 removed on success or error. Only immutable validation summaries escape the
 transaction. Original documents remain in the local scoped draft repository;
@@ -44,7 +46,8 @@ confirmed replacements retain superseded original bytes. The execution engine,
 live runtime builder and publication entry points are never called. Failed SQL
 continues to force the gateway's outer transaction to roll back.
 
-No existing source is replaced by this installer. Original production runtime
+The preview-staging fix backs up the previous development files before updating
+them; the original dashboard is unchanged. Original production runtime
 hashes, source fixtures, financial records and historical recovery materials are
 preserved. The local SQL runner retains synthetic rows and a report under
 CampaignIQ-Records/Development-Rehearsals. No data is reset or deleted.

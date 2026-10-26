@@ -277,13 +277,13 @@ def test_extraction_failure_removes_temporary_files_and_keeps_saved_bytes(contex
     d = c.service.create(c.admin,c.account,2025,1)
     role = 'schwab_brokerage_statement'
     c.service.save(c.admin,c.account,d.id,0,role,RestoredUpload('broken.pdf','application/pdf',b'not pdf'))
-    import campaigniq.ui.dashboard as dashboard
+    import campaigniq.monthly_upload_staging as staging
     paths=[]
     def fail(source,destination):
         paths.append(source)
         assert source.read_bytes() == b'not pdf'
         raise ValueError('invalid pdf')
-    monkeypatch.setattr(dashboard,'extract_pdf_text',fail)
+    monkeypatch.setattr(staging,'extract_pdf_text',fail)
     with pytest.raises(ValueError): c.service.preview(c.admin,c.account,d.id,1)
     assert not paths[0].exists()
     assert c.repositories[c.account].document(d.id,role)[2] == b'not pdf'
@@ -304,3 +304,45 @@ def test_launcher_blocks_render_before_database_or_config_creation(monkeypatch,r
     def forbidden(): raise AssertionError('Config creation attempted on Render')
     monkeypatch.setattr(ui,'create_preview',forbidden)
     with pytest.raises(ValueError): ui.launch()
+
+
+def test_preview_does_not_import_dashboard_or_build_default_runtime(context, monkeypatch):
+    import sys
+    import campaigniq.runtime as runtime
+    def forbidden(*args, **kwargs):
+        raise AssertionError('The regular dashboard runtime must never start')
+    monkeypatch.setattr(runtime, 'build_local_runtime', forbidden)
+    # Catch a dashboard import even when an earlier test already cached it.
+    monkeypatch.setitem(sys.modules, 'campaigniq.ui.dashboard', None)
+    c=context
+    draft=c.service.create(c.admin,c.account,2025,1)
+    assert not c.service.preview(c.admin,c.account,draft.id,0).inputs_ready
+
+
+def test_pure_staging_keeps_existing_extraction_logic_without_dashboard_import():
+    import ast
+    import inspect
+    import campaigniq.monthly_upload_staging as staging
+    source=Path(__file__).resolve().parents[1]/'src/campaigniq/ui/dashboard.py'
+    tree=ast.parse(source.read_text())
+    original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_save_uploaded_monthly_inputs')
+    standalone=ast.parse(inspect.getsource(staging.stage_monthly_uploads)).body[0]
+    standalone.name=original.name
+    assert ast.dump(original,include_attributes=False)==ast.dump(standalone,include_attributes=False)
+
+
+def test_browser_preview_with_dashboard_unavailable(context, monkeypatch):
+    import sys
+    import campaigniq.runtime as runtime
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Unexpected runtime initialization')
+    monkeypatch.setattr(runtime,'build_local_runtime',forbidden)
+    monkeypatch.setitem(sys.modules,'campaigniq.ui.dashboard',None)
+    c=context
+    c.service.create(c.admin,c.account,2025,1)
+    app=_app(c,monkeypatch)
+    next(b for b in app.button if b.label=='Preview saved inputs').click().run()
+    assert not app.exception and len(app.dataframe)==1
+    assert not app.error
+    assert not any(s.label=='Navigate' for s in app.radio)
+    assert not any(title.value=='CampaignIQ' for title in app.title)

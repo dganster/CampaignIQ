@@ -77,12 +77,12 @@ class AccountImportPreviewService:
             if draft.revision != revision:
                 raise ValueError('Draft changed; reload before previewing')
             uploads = restore_uploads(session.drafts, draft.id)
-            # Reuse the dashboard's document extraction, never its runtime builder,
-            # execution engine, history persistence, or publication controls.
-            from campaigniq.ui.dashboard import _save_uploaded_monthly_inputs
+            # Import only pure staging code. The dashboard module starts its runtime
+            # and renders UI when imported under Streamlit. Never import it here.
+            from campaigniq.monthly_upload_staging import stage_monthly_uploads
             with TemporaryDirectory(prefix='campaigniq-account-preview-') as directory:
                 root = Path(directory)
-                supplied = _save_uploaded_monthly_inputs(upload_dir=root, uploads=uploads)
+                supplied = stage_monthly_uploads(upload_dir=root, uploads=uploads)
                 result = prepare_monthly_import(draft.year, draft.month,
                     authoritative_state_root=root / 'unused-authoritative-state',
                     supplied_inputs=supplied, artifact_storage=session.artifacts,
