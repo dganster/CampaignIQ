@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from campaigniq.admin_preview import CONFIG_ENV, create_preview, load_config, preview_store, require_local_mode
-from campaigniq.account_import_preview import AccountImportPreviewService, UPLOAD_ROLES
+from campaigniq.account_import_preview import BoundAccountImportPreviewService, UPLOAD_ROLES
 from campaigniq.import_draft_bridge import RestoredUpload
 from campaigniq.persistence.account_data_session import LocalAccountDataGateway
 from campaigniq.ui.account_administration_view import validate_demo_directory
@@ -16,7 +16,7 @@ def render(st, store, config):
     st.title('Account monthly input preview')
     st.warning('LOCAL DEVELOPMENT • Demo accounts only. No publication is available.')
     st.caption('Input readiness does not establish closing inventory reconciliation or authorize publication. '
-               'Broker account-number binding is not configured in this prototype; use synthetic test documents.')
+               'Use synthetic test documents with full supported Schwab account headers.')
     directory = store._snapshot()
     validate_demo_directory(directory, config['registry_id'])
     users = {u.id: u for u in directory.users}
@@ -38,9 +38,29 @@ def render(st, store, config):
     account_id = st.selectbox('Brokerage account', list(accounts),
         format_func=lambda key: accounts[key].name + ' · ' + key[:8], key='import-account:' + actor.id)
     access = store.authorize(actor.identity, account_id)
-    service = AccountImportPreviewService(LocalAccountDataGateway(store))
+    service = BoundAccountImportPreviewService(LocalAccountDataGateway(store))
     # Keys include registry, actor and account; no document/result cache is shared.
     key = ':'.join((config['registry_id'], actor.id, account_id))
+    from campaigniq.broker_account_binding import bindings, KINDS
+    known=bindings(directory,account_id)
+    st.caption('Broker identifiers: ' + (', '.join(kind + ' ending ' + value.suffix for kind,value in known.items()) or 'Not bound'))
+    if actor.admin and not accounts[account_id].archived:
+        with st.expander('Bind demo broker account'):
+            st.caption('Schwab only. Securities and Forex may have different identifiers. '
+                       'Masked-only crypto evidence is not supported by this identity check yet.')
+            with st.form('binding:' + key + ':' + str(directory.revision), clear_on_submit=True):
+                kind=st.selectbox('Account identifier type',KINDS)
+                number=st.text_input('Full synthetic broker account identifier',type='password')
+                confirm=st.checkbox('Confirm replacement of the existing identifier')
+                if st.form_submit_button('Save broker binding'):
+                    from campaigniq.persistence.postgres_broker_binding import LocalBrokerBindingStore
+                    try:
+                        LocalBrokerBindingStore(store).bind(actor.identity,account_id,kind,number,
+                            expected_revision=directory.revision,confirm_replace=confirm)
+                    except (ValueError,PermissionError) as error:
+                        st.error(str(error))
+                    else:
+                        st.rerun()
     if access.writable:
         with st.form('new:' + key):
             year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2025))
@@ -93,6 +113,8 @@ def main():
             raise ValueError('Protected loopback server required')
         config = load_config(Path(os.environ[CONFIG_ENV]))
         render(st, preview_store(config), config)
+    except (ValueError, PermissionError) as error:
+        st.error(str(error))
     except Exception as error:
         # Streamlit rerun/stop exceptions derive from BaseException, not Exception.
         st.error('Preview stopped (' + type(error).__name__ + '). Reload and verify your local account access and documents.')

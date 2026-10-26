@@ -80,7 +80,7 @@ def context(monkeypatch):
             def fetchone(self): return None
         @contextmanager
         def operation(): yield Connection()
-        yield SimpleNamespace(drafts=repo, artifacts=artifacts, account=authorization, _operation=operation)
+        yield SimpleNamespace(drafts=repo, artifacts=artifacts, account=authorization, _operation=operation, _connection=Connection())
     monkeypatch.setattr(LocalAccountDataGateway, 'transaction', transaction)
     gateway = object.__new__(LocalAccountDataGateway)
     state.service = AccountImportPreviewService(gateway)
@@ -209,6 +209,7 @@ def _app(context, monkeypatch):
     from campaigniq.persistence.postgres_account_directory import LocalPostgresAccountDirectory
     module.store = object.__new__(LocalPostgresAccountDirectory)
     module.store._snapshot = lambda: context.directory
+    module.store._load = lambda conn: context.directory
     module.store.authorize = lambda identity, account_id: context.directory.authorize(identity, account_id)
     module.config = {'registry_id': context.registry}
     monkeypatch.setitem(sys.modules, module.__name__, module)

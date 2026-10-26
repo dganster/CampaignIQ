@@ -1,53 +1,66 @@
 # Account monthly input preview (local development)
 
-This increment connects the synthetic account selector to saved monthly drafts
-and the existing monthly input validator. It does not activate multi-account
-production storage, execute imports, reconcile closing inventory, or publish.
+The interactive synthetic preview now uses BoundAccountImportPreviewService.
+It saves account-specific drafts and runs the existing financial input validator,
+with an additional broker identity check. There is no execution or publication
+endpoint, production storage switch, or legacy-data migration in this increment.
 
-Run the full suite and the explicit account_import_preview_rehearsal runner.
-Then launch with:
+Run the full test suite and broker_binding_rehearsal --development-only. The
+browser launcher is still:
 
     PYTHONPATH=src python -m campaigniq.account_import_preview_ui --development-only
 
-The launcher uses only local campaigniq_dev and loopback port 8503. It creates a
-new synthetic registry, or accepts --resume with the private preview-config.json
-path printed by this launcher or the previous administration preview launcher.
-The administration preview on port 8502 can use the same --resume file for
-sharing, archive and revocation tests. No real sign-in is bypassed; this is an
-explicitly synthetic demo-user switch.
+It accepts --resume with a previously printed private preview-config.json path.
+The existing local socket/database, Render rejection, protected loopback, synthetic
+registry and enabled-user guards remain unchanged. No new database table or
+schema is needed for broker metadata.
 
-Choose a demo user, authorized account, and month. Create or resume a draft,
-choose a document role, save a synthetic document, and preview saved inputs.
-Missing/invalid evidence should appear as validation findings. These demo
-accounts have no migrated preceding authoritative history, so an opening-state
-finding is normal. Use only synthetic fixtures for this prototype. Broker
-account-number binding to the new account registry has not yet been implemented;
-input readiness must not be treated as a successful account identity check.
-The existing supported parsers are Schwab/thinkorswim; a free-text broker label
-does not establish support for a different broker's statements.
+On an authorized demo account, an administrator can expand Bind demo broker
+account and enter a full synthetic Schwab identifier. Securities and Forex are
+separate bindings: eight securities digits (optional 4-4 hyphen) and six to twelve
+Forex digits. Leading zeros are retained. Replacement needs an explicit checkbox
+and current directory revision. Binding an identifier to another account in the
+same registry is blocked, including when its existing account is archived.
+Binding metadata does not change an account's owner, grants or storage scope.
 
-Permissions are rechecked by the guarded account gateway on every operation.
-A directory share lock serializes administrative revocation against active work.
-Draft row locks serialize uploads against a preview and check the displayed
-revision before editing. View grants and archived accounts can preview; they
-cannot create drafts or upload. Disabled users cannot access accounts.
-Foreign draft identifiers cannot retrieve another account's evidence. UI widget
-keys include registry, user, account, draft and revision; previews are not cached
-or persisted in browser session state across account/user changes.
+Each change appends a versioned event to the existing verified directory audit.
+The digest, kind, broker and final four digits are retained; full identifiers are
+not retained in directory/audit records. Digests are comparison metadata, not
+encryption. Old bindings remain in the audit when replaced. Metadata and audit
+commit or roll back together. Admin permission is checked inside the directory
+row lock. The account gateway's existing share lock prevents a binding change
+from committing during a document save or preview.
 
-The service reuses restore_uploads and prepare_monthly_import. A pure staging
-module mirrors the existing dashboard extraction logic without importing the
-dashboard. A structural regression test checks that extraction logic remains
-equivalent. It supplies only the selected account's
-artifact adapter and keeps extracted files in a private temporary directory,
-removed on success or error. Only immutable validation summaries escape the
-transaction. Original documents remain in the local scoped draft repository;
-confirmed replacements retain superseded original bytes. The execution engine,
-live runtime builder and publication entry points are never called. Failed SQL
-continues to force the gateway's outer transaction to roll back.
+The UI shows only suffixes. Document uploads are staged privately and checked
+before a draft document write. A wrong account, missing binding, unknown format,
+masked identifier or conflicting headers rejects the upload; replacement
+confirmation cannot override an identity mismatch. Saved older documents are
+checked again during each preview, so changing the binding invalidates a prior
+identity match without deleting the document. Identity failures are displayed
+alongside input validation findings and prevent input readiness. A match does
+not waive financial validation, reconciliation or publication safeguards.
 
-The preview-staging fix backs up the previous development files before updating
-them; the original dashboard is unchanged. Original production runtime
-hashes, source fixtures, financial records and historical recovery materials are
-preserved. The local SQL runner retains synthetic rows and a report under
-CampaignIQ-Records/Development-Rehearsals. No data is reset or deleted.
+Recognized header families are Schwab Brokerage Statement Account Number,
+thinkorswim Account Statement for <full number> since/from, Forex Transaction
+Report Account (USD), and Forex monthly Account Account Currency. Opening,
+next-month assignment and realized documents must have a supported full Schwab
+account header. This is deliberately format-limited: some real or masked exports
+will remain unverified. The crypto statement reader currently recognizes only
+masked suffixes; the new identity gate therefore rejects crypto uploads rather
+than claiming a full identity match. Other broker labels do not imply supported
+parsers. Use synthetic fixtures only until real document coverage is reviewed.
+
+The earlier AccountImportPreviewService is retained as the explicitly unbound
+compatibility harness for previous local storage rehearsals; it is not the
+interactive entry point. No class in this prototype is a production API. Trusted
+server Python must not expose raw storage adapters to a browser.
+
+UI keys include registry, actor, account, draft and revision, and validation
+results are not cached across selections. View grants and archived accounts can
+read/preview; they cannot upload or create drafts. Disabled users are denied.
+Original documents, confirmed replacement versions, existing financial data,
+original dashboard runtime sources and historical recovery files are preserved.
+
+The installer backs up updated development files before replacement. The SQL
+rehearsal retains synthetic rows and its report under CampaignIQ-Records. Nothing
+is reset, deleted, imported or published to production.
