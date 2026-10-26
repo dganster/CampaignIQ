@@ -107,6 +107,23 @@ def render(st, store, config):
             st.info('Complete the missing or invalid inputs before reconciliation.')
 
 
+    if st.button('Preview closing inventory', key='reconcile:' + key):
+        from campaigniq.account_reconciliation_preview import reconcile_saved
+        result=reconcile_saved(service,actor.identity,account_id,draft.id,draft.revision,
+            forex_applicable=forex,crypto_applicable=crypto)
+        st.caption('Closing quantities only. No financial approval, import or publication has been performed.')
+        if result.inventory_reconciled:
+            st.success('Closing inventory reconciles with the supplied statement.')
+        else:
+            st.warning('Closing inventory or source controls do not reconcile. Review the differences.')
+        if result.closing_quantities:
+            st.dataframe([dict(Instrument=name,Quantity=quantity) for name,quantity in result.closing_quantities],hide_index=True)
+        if result.mismatches:
+            st.dataframe([dict(Instrument=row.instrument,Computed=row.computed,Statement=row.statement,Difference=row.difference)
+                          for row in result.mismatches],hide_index=True)
+        for finding in result.source_findings:st.warning(finding)
+
+
 def main():
     import streamlit as st
     try:

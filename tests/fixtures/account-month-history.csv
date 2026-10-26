@@ -1,0 +1,12 @@
+Account Statement for 12345678 since 1/1/25 through 1/31/25
+
+Cash Balance
+DATE,TIME,TYPE,REF #,DESCRIPTION,Misc Fees,Commissions & Fees,AMOUNT,BALANCE
+
+Account Trade History
+Notes,Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type
+,01/15/25 10:00:00,STOCK,BUY,+10,TO OPEN,SPY,,,STOCK,100,100,LMT
+
+Forex Statements
+,Date,Time,Type,Ref #,Description,Commissions & Fees,Amount,Amount(USD),Balance
+

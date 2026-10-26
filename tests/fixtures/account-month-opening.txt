@@ -1,0 +1,7 @@
+Schwab One Account
+Account Number    Statement Period
+1234-5678
+December 1-31, 2024
+Positions - Equities
+SPY  SYNTHETIC ETF 100.0000 100.0000 10,000.00 10,000.00 0.00
+Total Equities
