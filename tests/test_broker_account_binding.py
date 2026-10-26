@@ -159,8 +159,9 @@ def test_browser_binding_form_uses_admin_command_and_masks_display(context,monke
     next(b for b in app.button if b.label=='Save broker binding').click().run()
     assert not app.exception and len(calls)==1
     assert calls[0][4]=={'expected_revision':0,'confirm_replace':False}
-    assert any('securities ending 5678' in caption.value for caption in app.caption)
-    assert not any('12345678' in caption.value for caption in app.caption)
+    assert any('Securities ending 5678' in status.value for status in app.success)
+    assert not any('12345678' in status.value for status in app.success)
+    assert next(t for t in app.text_input if t.label=='Full synthetic broker account identifier').value == ''
     next(s for s in app.selectbox if s.label=='Demo user').select(c.directory.user(c.member).id).run()
     assert not app.exception
     assert not any(b.label=='Save broker binding' for b in app.button)

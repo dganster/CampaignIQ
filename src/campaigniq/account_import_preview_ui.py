@@ -43,14 +43,18 @@ def render(st, store, config):
     key = ':'.join((config['registry_id'], actor.id, account_id))
     from campaigniq.broker_account_binding import bindings, KINDS
     known=bindings(directory,account_id)
-    st.caption('Broker identifiers: ' + (', '.join(kind + ' ending ' + value.suffix for kind,value in known.items()) or 'Not bound'))
+    if known:
+        st.success('Broker account bound: ' + '; '.join(kind.capitalize() + ' ending ' + value.suffix for kind,value in sorted(known.items())))
+    else:
+        st.info('No broker account identifier is bound yet. Expand Bind demo broker account below to add one.')
     if actor.admin and not accounts[account_id].archived:
         with st.expander('Bind demo broker account'):
             st.caption('Schwab only. Securities and Forex may have different identifiers. '
                        'Masked-only crypto evidence is not supported by this identity check yet.')
             with st.form('binding:' + key + ':' + str(directory.revision), clear_on_submit=True):
                 kind=st.selectbox('Account identifier type',KINDS)
-                number=st.text_input('Full synthetic broker account identifier',type='password')
+                number=st.text_input('Full synthetic broker account identifier',type='default',autocomplete='off',
+                    help='Demo account number only, such as 12345678. This is not a password. The saved status shows only the final four digits.')
                 confirm=st.checkbox('Confirm replacement of the existing identifier')
                 if st.form_submit_button('Save broker binding'):
                     from campaigniq.persistence.postgres_broker_binding import LocalBrokerBindingStore
