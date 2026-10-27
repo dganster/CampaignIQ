@@ -89,7 +89,7 @@ def load_config(path):
     return value
 
 
-def render(st, service):
+def render(st, service, *, administration=None):
     st.title('Existing brokerage accounts')
     st.info('LOCAL DEVELOPMENT • Read-only access to existing workspace data.')
     claims = st.user.to_dict()
@@ -101,6 +101,9 @@ def render(st, service):
     if st.button('Sign out'):
         st.logout()
         return
+    if administration is not None:
+        from campaigniq.ui.account_signedin_administration_view import render as render_administration
+        render_administration(st, administration, st.user)
     try:
         accounts = service.choices(st.user)
         if not accounts:
@@ -128,9 +131,13 @@ def run_app(st):
                 or st.get_option('server.enableXsrfProtection') is not True):
             raise ValueError('Protected loopback server required')
         config = load_config(Path(os.environ[CONFIG_ENV]))
-        service = LocalLegacyAccountAccess(local_store(config['registry_id']),
+        store = local_store(config['registry_id'])
+        service = LocalLegacyAccountAccess(store,
                     trusted_issuer=config['issuer'], authorization=config['authorization'])
-        render(st, service)
+        from campaigniq.account_signedin_administration import LocalSignedInAdministration
+        administration = LocalSignedInAdministration(store,
+                    trusted_issuer=config['issuer'], authorization=config['authorization'])
+        render(st, service, administration=administration)
     except Exception:
         st.error('Local sign-in preview stopped. Verify local OIDC configuration and account-directory access.')
 
