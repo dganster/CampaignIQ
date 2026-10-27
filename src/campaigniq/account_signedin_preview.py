@@ -89,9 +89,9 @@ def load_config(path):
     return value
 
 
-def render(st, service, *, administration=None):
-    st.title('Existing brokerage accounts')
-    st.info('LOCAL DEVELOPMENT • Read-only access to existing workspace data.')
+def render(st, service, *, administration=None, inputs=None):
+    st.title('Brokerage accounts')
+    st.info('LOCAL DEVELOPMENT • Existing workspace data is read-only. New-account monthly inputs can be saved locally.')
     claims = st.user.to_dict()
     if claims.get('is_logged_in') is not True:
         st.caption('Use the configured OIDC sign-in. There is no demo-user selector.')
@@ -104,13 +104,16 @@ def render(st, service, *, administration=None):
     if administration is not None:
         from campaigniq.ui.account_signedin_administration_view import render as render_administration
         render_administration(st, administration, st.user)
+    if inputs is not None:
+        from campaigniq.ui.account_signedin_inputs_view import render as render_inputs
+        render_inputs(st, inputs, st.user)
     try:
         accounts = service.choices(st.user)
         if not accounts:
             st.info('No existing accounts are available to this sign-in.')
             return
         by_id = {a.id: a for a in accounts}
-        selected = st.selectbox('Brokerage account', list(by_id),
+        selected = st.selectbox('Existing brokerage account', list(by_id),
             format_func=lambda key: by_id[key].name + (' (archived)' if by_id[key].archived else '') + ' · ' + key[:8])
         if st.button('Verify existing saved data'):
             result = service.inventory(st.user, selected)
@@ -137,7 +140,11 @@ def run_app(st):
         from campaigniq.account_signedin_administration import LocalSignedInAdministration
         administration = LocalSignedInAdministration(store,
                     trusted_issuer=config['issuer'], authorization=config['authorization'])
-        render(st, service, administration=administration)
+        from campaigniq.account_signedin_inputs import SignedInMonthlyInputs
+        from campaigniq.persistence.signedin_account_data import LocalSignedInInputGateway
+        inputs = SignedInMonthlyInputs(LocalSignedInInputGateway(store,
+                    trusted_issuer=config['issuer'], authorization=config['authorization']))
+        render(st, service, administration=administration, inputs=inputs)
     except Exception:
         st.error('Local sign-in preview stopped. Verify local OIDC configuration and account-directory access.')
 
