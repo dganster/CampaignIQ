@@ -75,7 +75,12 @@ def verify_legacy_workspace_bindings(directory: Directory, authorization: Mappin
         if access is None or workspace in workspaces:
             raise ValueError("Ambiguous legacy workspace ownership")
         workspaces.add(workspace)
-        owner = directory.user(identity)
+        # Ownership survives disabling a user. Access is checked separately by
+        # signed_in_accounts/authorize; one disabled owner must not lock out all
+        # other workspace owners during this structural mapping check.
+        owner = next((u for u in directory.users if u.identity == identity), None)
+        if owner is None:
+            raise ValueError("Legacy owner identity is missing")
         if owner.workspace_id != workspace:
             raise ValueError("Legacy owner workspace differs")
         matches = tuple(a for a in directory.accounts if a.legacy and a.owner_id == owner.id)
