@@ -107,6 +107,8 @@ def render(st, service, *, administration=None, inputs=None):
     if inputs is not None:
         from campaigniq.ui.account_signedin_inputs_view import render as render_inputs
         render_inputs(st, inputs, st.user)
+        from campaigniq.ui.account_signedin_comparison_view import render as render_comparison
+        render_comparison(st, inputs, st.user)
     try:
         accounts = service.choices(st.user)
         if not accounts:

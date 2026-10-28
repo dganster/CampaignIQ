@@ -152,3 +152,18 @@ render(st, Mock())
     assert not at.exception
     assert [b.label for b in at.button] == ['Sign in']
     assert not at.selectbox
+
+
+def test_signedin_comparison_receives_same_server_session_and_service(monkeypatch):
+    from campaigniq.ui import account_signedin_inputs_view,account_signedin_comparison_view
+    inputs=Mock();legacy=Mock();legacy.choices.return_value=()
+    render_inputs=Mock();render_comparison=Mock()
+    monkeypatch.setattr(account_signedin_inputs_view,'render',render_inputs)
+    monkeypatch.setattr(account_signedin_comparison_view,'render',render_comparison)
+    ui=UI(False)
+    app.render(ui,legacy,inputs=inputs)
+    render_inputs.assert_not_called();render_comparison.assert_not_called()
+    ui=UI(True)
+    app.render(ui,legacy,inputs=inputs)
+    render_inputs.assert_called_once_with(ui,inputs,ui.user)
+    render_comparison.assert_called_once_with(ui,inputs,ui.user)
