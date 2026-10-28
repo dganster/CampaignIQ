@@ -110,6 +110,35 @@ def render(st, service, server_user):
                         Difference=row.difference) for row in result.mismatches], hide_index=True)
                 for finding in result.source_findings:
                     st.warning(finding)
+            if published and st.button('View published results', key=key + ':results'):
+                result = service.results(server_user, account_id, draft.id, draft.revision)
+                st.subheader('Published results · ' + result.month)
+                st.caption('Saved local generation • Source revision ' + str(result.revision) +
+                    ' • ' + str(result.original_documents) + ' original documents verified. Read-only view.')
+                st.write('Closing positions')
+                if result.positions:
+                    st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.positions], hide_index=True)
+                else:
+                    st.info('No open positions in the published lot state.')
+                with st.expander('Closing lots and source basis'):
+                    st.dataframe([dict(Instrument=row[0], Quantity=row[1], Lot=row[2], Basis=row[3],
+                        Source=row[4], Campaign=row[5]) for row in result.lots], hide_index=True)
+                st.write('Broker realized gain/loss, USD: ' + result.brokerage_realized_usd)
+                if result.realized:
+                    st.dataframe([dict(Date=row[0], Instrument=row[1], Quantity=row[2], Proceeds=row[3],
+                        Basis=row[4], Gain_loss=row[5]) for row in result.realized], hide_index=True)
+                else:
+                    st.caption('No broker realized records for this month.')
+                if result.forex_applicable:
+                    st.write('Forex settled P/L, USD: ' + result.forex_settled_usd)
+                    st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
+                    st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=row[2], Campaign=row[3])
+                        for row in result.forex_settlements], hide_index=True)
+                if result.crypto_applicable:
+                    st.write('Crypto evidence status: ' + result.crypto_status)
+                    st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
+                    for warning in result.crypto_warnings:
+                        st.warning(warning)
             if account.writable and not published:
                 with st.form(key + ':publication:' + str(forex) + ':' + str(crypto)):
                     confirm = st.checkbox('I authorize publication to the local development database',

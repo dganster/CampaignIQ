@@ -19,6 +19,10 @@ class SignedInMonthlyInputs(BoundAccountImportPreviewService):
         return reconcile_signedin(self, user, account_id, draft_id, revision,
             forex_applicable=forex_applicable, crypto_applicable=crypto_applicable)
 
+    def results(self, user, account_id, draft_id, revision):
+        from campaigniq.account_signedin_results import load_published_results
+        return load_published_results(self, user, account_id, draft_id, revision)
+
     def published(self, user, account_id, draft_id, revision):
         from campaigniq.account_signedin_publication import published_signedin
         return published_signedin(self, user, account_id, draft_id, revision)

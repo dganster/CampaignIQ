@@ -54,6 +54,12 @@ class Service:
         if kwargs['authorize_local_publication'] is not True: raise PermissionError('Confirmation required')
         st.session_state.calls.append('publish')
         st.session_state.published=True
+    def results(self,user,account,identifier,revision):
+        assert user is USER
+        st.session_state.calls.append('results')
+        return SimpleNamespace(month='2025-01',revision=4,original_documents=4,
+            positions=(('SPY','110'),),lots=(('SPY','110','lot-a','Unknown','Unknown','Unassigned'),),
+            brokerage_realized_usd='0',realized=(),forex_applicable=False,crypto_applicable=False)
     def preview(self,user,account,identifier,revision,**kwargs):
         assert user is USER
         st.session_state.calls.append('preview')
@@ -172,3 +178,12 @@ def test_previously_published_month_remains_readable_without_replace_button():
     assert not at.exception
     assert not any(b.label in ('Save document','Publish locally') for b in at.button)
     assert any(b.label=='Preview closing inventory' for b in at.button)
+
+
+def test_published_results_read_selected_month_and_show_110_shares():
+    at=screen(published=True)
+    button(at,'View published results').click().run(timeout=15)
+    assert not at.exception and at.session_state['calls']==['results']
+    assert any('Published results · 2025-01' in s.value for s in at.subheader)
+    assert at.dataframe[0].value.iloc[0]['Quantity']=='110'
+    assert not any(b.label in ('Save document','Publish locally') for b in at.button)
