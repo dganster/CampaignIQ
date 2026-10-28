@@ -125,6 +125,8 @@ def render(st, service, *, administration=None, inputs=None):
                            'Original document versions': result.document_versions,
                            'Original document bytes': result.original_bytes}], hide_index=True)
             st.caption('This checks storage access and original bytes; it does not rerun financial reconciliation.')
+        from campaigniq.ui.account_legacy_results_view import render as render_existing_results
+        render_existing_results(st, service, st.user, selected)
     except (ValueError, PermissionError):
         st.error('Account access or retained storage could not be verified. Reload after checking local configuration.')
 

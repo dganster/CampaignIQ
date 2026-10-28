@@ -90,6 +90,15 @@ class LocalLegacyAccountAccess:
                 if session is not None:
                     session._active = False
 
+    def published_months(self, user, account_id):
+        from campaigniq.account_legacy_results import published_months
+        with self._session(user, account_id) as (_, session, _):
+            return published_months(session.artifacts)
+
+    def published_results(self, user, account_id, year, month):
+        from campaigniq.account_legacy_results import load_existing_results
+        return load_existing_results(self, user, account_id, year, month)
+
     def inventory(self, user, account_id):
         """Compare existing adapters with direct source rows in one snapshot.
 

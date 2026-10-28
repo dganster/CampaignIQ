@@ -167,3 +167,14 @@ def test_signedin_comparison_receives_same_server_session_and_service(monkeypatc
     app.render(ui,legacy,inputs=inputs)
     render_inputs.assert_called_once_with(ui,inputs,ui.user)
     render_comparison.assert_called_once_with(ui,inputs,ui.user)
+
+
+def test_existing_results_receive_server_session_and_selected_account(monkeypatch):
+    from campaigniq.ui import account_legacy_results_view
+    render_results=Mock()
+    monkeypatch.setattr(account_legacy_results_view,'render',render_results)
+    legacy=Mock();legacy.choices.return_value=(LegacyAccountChoice('existing-account','Retained account',False),)
+    ui=UI(True)
+    app.render(ui,legacy)
+    render_results.assert_called_once_with(ui,legacy,ui.user,'existing-account')
+    legacy.published_results.assert_not_called()
