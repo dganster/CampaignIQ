@@ -1,4 +1,4 @@
-"""Saved monthly inputs for new real-sign-in LOCAL accounts; no publication."""
+"""Saved inputs, reconciliation and explicit LOCAL new-account publication."""
 from campaigniq.account_import_preview import UPLOAD_ROLES
 from campaigniq.broker_account_binding import KINDS
 from campaigniq.import_draft_bridge import RestoredUpload
@@ -9,7 +9,7 @@ def render(st, service, server_user):
         overview = service.gateway.overview(server_user)
         with st.expander('Monthly inputs for new brokerage accounts'):
             st.caption('Local development only. Existing workspace records are untouched. '
-                       'Saving documents and checking inputs does not reconcile or publish a month.')
+                       'Publish locally stores a reconciled month only in the local development database.')
             if not overview.accounts:
                 st.info('Add a new brokerage account in Local account administration first.')
                 return
@@ -70,7 +70,10 @@ def render(st, service, server_user):
             draft = drafts[selected]
             key += ':' + selected + ':' + str(draft.revision)
             st.caption('Saved document revision ' + str(draft.revision))
-            if account.writable:
+            published = service.published(server_user, account_id, draft.id, draft.revision)
+            if published:
+                st.success('This month is published locally. Saved originals are preserved.')
+            if account.writable and not published:
                 with st.form(key + ':upload', clear_on_submit=True):
                     role = st.selectbox('Document role', UPLOAD_ROLES, key=key + ':role')
                     upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file')
@@ -107,6 +110,17 @@ def render(st, service, server_user):
                         Difference=row.difference) for row in result.mismatches], hide_index=True)
                 for finding in result.source_findings:
                     st.warning(finding)
+            if account.writable and not published:
+                with st.form(key + ':publication:' + str(forex) + ':' + str(crypto)):
+                    confirm = st.checkbox('I authorize publication to the local development database',
+                        key=key + ':authorize:' + str(forex) + ':' + str(crypto))
+                    st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
+                               'Existing published months cannot be replaced.')
+                    if st.form_submit_button('Publish locally'):
+                        service.publish(server_user, account_id, draft.id, draft.revision,
+                            authorize_local_publication=confirm,
+                            forex_applicable=forex, crypto_applicable=crypto)
+                        st.rerun()
     except PermissionError:
         st.error('Current sign-in no longer has permission for this account. Reload the preview.')
     except ValueError as error:

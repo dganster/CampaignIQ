@@ -57,53 +57,61 @@ def publish_synthetic_month(service,identity,account_id,draft_id,revision,*,
         with session._operation() as conn:
             # Serialize this publisher across all drafts for the same account.
             conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',(session.artifacts.namespace,))
-        draft=service._lock(session,draft_id,write=True)
-        if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
-        start=date(draft.year,draft.month,1)
-        end=date(draft.year,draft.month,monthrange(draft.year,draft.month)[1])
-        existing=_periods(session.artifacts)
-        if not existing and session.artifacts.list_keys():
-            raise ValueError('Account storage has unreviewed artifacts; publication stopped')
-        guard=assess_backfill(end,existing)
-        if guard.blocked:raise ValueError(guard.message)
-        if existing and (existing[-1]!=start-timedelta(days=1)
-                         or not is_month_published_in_storage(session.artifacts,period_end=existing[-1])):
-            raise ValueError('Synthetic publisher requires the exact preceding published month')
-        prefix=f'{draft.year:04d}-{draft.month:02d}-'
-        if session.artifacts.list_keys(prefix=prefix):
-            raise ValueError('Existing artifacts for this month must be preserved; publication stopped')
-        uploads=restore_uploads(session.drafts,draft.id)
-        originals={str(getattr(role,'value',role)):dict(sha256=sha256(upload.content).hexdigest(),byte_size=len(upload.content))
-                   for role,upload in uploads.items()}
         directory=service.gateway._directory._load(session._connection)
-        actor=directory.user(identity)
-        with TemporaryDirectory(prefix='campaigniq-synthetic-publication-') as directory_name:
-            root=Path(directory_name)
-            supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
-            checks=service._identity_validations(session,uploads,supplied)
-            if any(not row.valid for row in checks):raise ValueError('Document account identity is unverified')
-            preflight=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
-                supplied_inputs=supplied,artifact_storage=session.artifacts,
-                forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
-            if not preflight.ready:raise ValueError('Required inputs are incomplete or invalid')
-            from campaigniq.monthly_import_execution import execute_monthly_import
-            # No reconciliation exception, history reseeding or filesystem archive.
-            # Every canonical artifact and visibility marker use one SQL connection.
-            outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
-                supplied_inputs=supplied,artifact_storage=session.artifacts)
-            if not outcome.finalized or not outcome.closing_reconciliation.reconciled:
-                raise ValueError('Closing inventory does not reconcile; synthetic publication rejected')
-            if outcome.closing_reconciliation.forex_source_findings:
-                raise ValueError('Forex source controls remain unresolved')
-            receipt=dict(format='campaigniq.synthetic_account_publication',version=1,
-                registry_id=service.gateway._directory.registry_id,account_id=account_id,actor_id=actor.id,
-                draft_id=str(draft.id),draft_revision=draft.revision,period_end=end.isoformat(),
-                original_documents=originals,production_publication_authorized=False)
-            text=json.dumps(receipt,sort_keys=True,indent=2)+'\n'
-            session.artifacts.write_text(prefix+'account-publication-receipt.json',text)
-            lot_key=prefix+'lot-book.json'
-            if (not is_month_published_in_storage(session.artifacts,period_end=end)
-                    or load_lot_book_from_storage(session.artifacts,lot_key).period_end!=end):
-                raise ValueError('Staged generation verification failed')
-            return SyntheticPublication(account_id,draft.year,draft.month,str(draft.id),draft.revision,
-                session.artifacts.list_keys(prefix=prefix),sha256(text.encode()).hexdigest())
+        return _publish_in_session(service,session,directory.user(identity).id,account_id,draft_id,revision,
+            forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
+            receipt_format='campaigniq.synthetic_account_publication')
+
+
+def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
+                        forex_applicable,crypto_applicable,receipt_format):
+    """Shared engine. Caller must establish authorized, serialized SQL transaction."""
+    draft=service._lock(session,draft_id,write=True)
+    if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
+    start=date(draft.year,draft.month,1)
+    end=date(draft.year,draft.month,monthrange(draft.year,draft.month)[1])
+    existing=_periods(session.artifacts)
+    if not existing and session.artifacts.list_keys():
+        raise ValueError('Account storage has unreviewed artifacts; publication stopped')
+    guard=assess_backfill(end,existing)
+    if guard.blocked:raise ValueError(guard.message)
+    if existing and (existing[-1]!=start-timedelta(days=1)
+                     or not is_month_published_in_storage(session.artifacts,period_end=existing[-1])):
+        raise ValueError('Local publisher requires the exact preceding published month')
+    prefix=f'{draft.year:04d}-{draft.month:02d}-'
+    if session.artifacts.list_keys(prefix=prefix):
+        raise ValueError('Existing artifacts for this month must be preserved; publication stopped')
+    uploads=restore_uploads(session.drafts,draft.id)
+    originals={str(getattr(role,'value',role)):dict(sha256=sha256(upload.content).hexdigest(),byte_size=len(upload.content))
+               for role,upload in uploads.items()}
+    with TemporaryDirectory(prefix='campaigniq-local-publication-') as directory_name:
+        root=Path(directory_name)
+        supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
+        checks=service._identity_validations(session,uploads,supplied)
+        if any(not row.valid for row in checks):raise ValueError('Document account identity is unverified')
+        preflight=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
+            supplied_inputs=supplied,artifact_storage=session.artifacts,
+            forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+        if not preflight.ready:raise ValueError('Required inputs are incomplete or invalid')
+        from campaigniq.monthly_import_execution import execute_monthly_import
+        # No reconciliation exception, history reseeding or filesystem archive.
+        # Every canonical artifact and visibility marker use one SQL connection.
+        outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
+            supplied_inputs=supplied,artifact_storage=session.artifacts)
+        if not outcome.finalized or not outcome.closing_reconciliation.reconciled:
+            raise ValueError('Closing inventory does not reconcile; local publication rejected')
+        if outcome.closing_reconciliation.forex_source_findings:
+            raise ValueError('Forex source controls remain unresolved')
+        receipt=dict(format=receipt_format,version=1,
+            registry_id=service.gateway._directory.registry_id,account_id=account_id,actor_id=actor_id,
+            draft_id=str(draft.id),draft_revision=draft.revision,period_end=end.isoformat(),
+            original_documents=originals,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
+                production_publication_authorized=False)
+        text=json.dumps(receipt,sort_keys=True,indent=2)+'\n'
+        session.artifacts.write_text(prefix+'account-publication-receipt.json',text)
+        lot_key=prefix+'lot-book.json'
+        if (not is_month_published_in_storage(session.artifacts,period_end=end)
+                or load_lot_book_from_storage(session.artifacts,lot_key).period_end!=end):
+            raise ValueError('Staged generation verification failed')
+        return SyntheticPublication(account_id,draft.year,draft.month,str(draft.id),draft.revision,
+            session.artifacts.list_keys(prefix=prefix),sha256(text.encode()).hexdigest())

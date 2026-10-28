@@ -1,7 +1,7 @@
 from streamlit.testing.v1 import AppTest
 
 
-def screen(*, ready=True, writable=True, administrator=True, draft=True, accounts=True, mismatch=False):
+def screen(*, ready=True, writable=True, administrator=True, draft=True, accounts=True, mismatch=False, published=False):
     code = '''
 import streamlit as st
 from types import SimpleNamespace
@@ -48,6 +48,12 @@ class Service:
         st.session_state.has_draft=True
         st.session_state.calls.append('create')
     def save(self,*args,**kwargs): raise AssertionError('No file was selected')
+    def published(self,*args): return st.session_state.get('published', PUBLISHED)
+    def publish(self,user,account,identifier,revision,**kwargs):
+        assert user is USER
+        if kwargs['authorize_local_publication'] is not True: raise PermissionError('Confirmation required')
+        st.session_state.calls.append('publish')
+        st.session_state.published=True
     def preview(self,user,account,identifier,revision,**kwargs):
         assert user is USER
         st.session_state.calls.append('preview')
@@ -61,7 +67,7 @@ class Service:
             differences,(),(('SPY','110'),))
 render(st,Service(),USER)
 '''
-    for key,value in (('READY',ready),('WRITABLE',writable),('ADMIN',administrator),('DRAFT',draft),('ACCOUNTS',accounts),('MISMATCH',mismatch)):
+    for key,value in (('READY',ready),('WRITABLE',writable),('ADMIN',administrator),('DRAFT',draft),('ACCOUNTS',accounts),('MISMATCH',mismatch),('PUBLISHED',published)):
         code = code.replace(key,str(value))
     return AppTest.from_string(code).run(timeout=15)
 
@@ -111,7 +117,7 @@ def test_create_resumes_selected_account_without_publication_controls():
     button(at,'Create or resume draft').click().run(timeout=15)
     assert not at.exception and at.session_state['calls']==['create']
     assert any(s.label == 'Saved month' for s in at.selectbox)
-    assert not any('publish' in b.label.lower() or 'reconcile' in b.label.lower() for b in at.button)
+    assert any(b.label=='Publish locally' for b in at.button)
 
 
 def test_view_only_account_has_preview_without_save_controls():
@@ -135,7 +141,7 @@ def test_closing_preview_displays_quantity_without_publication_control():
     assert not at.exception and at.session_state['calls']==['closing-preview']
     assert any('Closing inventory reconciles' in s.value for s in at.success)
     assert at.dataframe[0].value.iloc[0]['Quantity']=='110'
-    assert not any('publish' in b.label.lower() for b in at.button)
+    assert 'publish' not in at.session_state['calls']
 
 
 def test_closing_mismatch_remains_visible_and_does_not_show_success():
@@ -144,3 +150,25 @@ def test_closing_mismatch_remains_visible_and_does_not_show_success():
     assert not at.exception and at.warning
     assert not any('Closing inventory reconciles' in s.value for s in at.success)
     assert at.dataframe[1].value.iloc[0]['Difference']=='-1'
+
+
+def test_publication_requires_explicit_confirmation():
+    at=screen()
+    button(at,'Publish locally').click().run(timeout=15)
+    assert not at.exception and at.error and 'publish' not in at.session_state['calls']
+
+
+def test_confirmed_local_publication_hides_write_controls_after_commit():
+    at=screen()
+    next(c for c in at.checkbox if c.label=='I authorize publication to the local development database').check()
+    button(at,'Publish locally').click().run(timeout=15)
+    assert not at.exception and at.session_state['calls']==['publish']
+    assert not any(b.label in ('Save document','Publish locally') for b in at.button)
+    assert any('published locally' in s.value for s in at.success)
+
+
+def test_previously_published_month_remains_readable_without_replace_button():
+    at=screen(published=True)
+    assert not at.exception
+    assert not any(b.label in ('Save document','Publish locally') for b in at.button)
+    assert any(b.label=='Preview closing inventory' for b in at.button)
