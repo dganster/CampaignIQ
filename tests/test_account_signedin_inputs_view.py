@@ -1,7 +1,7 @@
 from streamlit.testing.v1 import AppTest
 
 
-def screen(*, ready=True, writable=True, administrator=True, draft=True, accounts=True):
+def screen(*, ready=True, writable=True, administrator=True, draft=True, accounts=True, mismatch=False):
     code = '''
 import streamlit as st
 from types import SimpleNamespace
@@ -9,6 +9,7 @@ from uuid import UUID
 from campaigniq.account_administration import Identity
 from campaigniq.account_legacy_access_rehearsal import RehearsalSession
 from campaigniq.account_import_preview import AccountInputPreview, InputStatus
+from campaigniq.account_reconciliation_preview import AccountReconciliationPreview, QuantityDifference
 from campaigniq.persistence.import_drafts import Draft
 from campaigniq.persistence.signedin_account_data import InputAccount, InputAccounts
 from campaigniq.ui.account_signedin_inputs_view import render
@@ -52,9 +53,15 @@ class Service:
         st.session_state.calls.append('preview')
         return AccountInputPreview(account,str(identifier),revision,2025,1,False,
             (InputStatus('opening_state',False,'Missing opening evidence'),))
+    def reconcile(self,user,account,identifier,revision,**kwargs):
+        assert user is USER
+        st.session_state.calls.append('closing-preview')
+        differences=(QuantityDifference('SPY','110','111','-1'),) if MISMATCH else ()
+        return AccountReconciliationPreview(account,str(identifier),revision,not MISMATCH,
+            differences,(),(('SPY','110'),))
 render(st,Service(),USER)
 '''
-    for key,value in (('READY',ready),('WRITABLE',writable),('ADMIN',administrator),('DRAFT',draft),('ACCOUNTS',accounts)):
+    for key,value in (('READY',ready),('WRITABLE',writable),('ADMIN',administrator),('DRAFT',draft),('ACCOUNTS',accounts),('MISMATCH',mismatch)):
         code = code.replace(key,str(value))
     return AppTest.from_string(code).run(timeout=15)
 
@@ -110,7 +117,7 @@ def test_create_resumes_selected_account_without_publication_controls():
 def test_view_only_account_has_preview_without_save_controls():
     at=screen(writable=False,administrator=False)
     assert not at.exception
-    assert [b.label for b in at.button] == ['Preview saved inputs']
+    assert [b.label for b in at.button] == ['Preview saved inputs', 'Preview closing inventory']
     button(at,'Preview saved inputs').click().run(timeout=15)
     assert not at.exception and at.session_state['calls']==['preview']
     assert any('No data was published' in info.value for info in at.info)
@@ -120,3 +127,20 @@ def test_empty_upload_does_not_call_save():
     at=screen()
     button(at,'Save document').click().run(timeout=15)
     assert not at.exception and at.error and not at.session_state['calls']
+
+
+def test_closing_preview_displays_quantity_without_publication_control():
+    at=screen()
+    button(at,'Preview closing inventory').click().run(timeout=15)
+    assert not at.exception and at.session_state['calls']==['closing-preview']
+    assert any('Closing inventory reconciles' in s.value for s in at.success)
+    assert at.dataframe[0].value.iloc[0]['Quantity']=='110'
+    assert not any('publish' in b.label.lower() for b in at.button)
+
+
+def test_closing_mismatch_remains_visible_and_does_not_show_success():
+    at=screen(mismatch=True)
+    button(at,'Preview closing inventory').click().run(timeout=15)
+    assert not at.exception and at.warning
+    assert not any('Closing inventory reconciles' in s.value for s in at.success)
+    assert at.dataframe[1].value.iloc[0]['Difference']=='-1'

@@ -92,6 +92,21 @@ def render(st, service, server_user):
                     st.success('Required input checks passed. Nothing was reconciled or published.')
                 else:
                     st.info('Complete the missing or invalid inputs. No data was published.')
+            if st.button('Preview closing inventory', key=key + ':reconcile'):
+                result = service.reconcile(server_user, account_id, draft.id, draft.revision,
+                    forex_applicable=forex, crypto_applicable=crypto)
+                st.caption('Read-only quantity reconciliation. No financial approval or publication has been performed.')
+                if result.inventory_reconciled:
+                    st.success('Closing inventory reconciles with the supplied statement.')
+                else:
+                    st.warning('Closing inventory or source controls do not reconcile. Review the differences.')
+                if result.closing_quantities:
+                    st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.closing_quantities], hide_index=True)
+                if result.mismatches:
+                    st.dataframe([dict(Instrument=row.instrument, Computed=row.computed, Statement=row.statement,
+                        Difference=row.difference) for row in result.mismatches], hide_index=True)
+                for finding in result.source_findings:
+                    st.warning(finding)
     except PermissionError:
         st.error('Current sign-in no longer has permission for this account. Reload the preview.')
     except ValueError as error:

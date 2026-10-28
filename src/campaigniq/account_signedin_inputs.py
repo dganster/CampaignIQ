@@ -14,6 +14,11 @@ class SignedInMonthlyInputs(BoundAccountImportPreviewService):
             raise ValueError('Real-sign-in local input gateway required')
         self.gateway = gateway
 
+    def reconcile(self, user, account_id, draft_id, revision, *, forex_applicable=True, crypto_applicable=True):
+        from campaigniq.account_signedin_reconciliation import reconcile_signedin
+        return reconcile_signedin(self, user, account_id, draft_id, revision,
+            forex_applicable=forex_applicable, crypto_applicable=crypto_applicable)
+
     # Inherited methods' first identity argument must be st.user here. The
     # gateway accepts only server-session claims and authorizes every call;
     # passing an Identity object or caller-supplied claims dict is denied.
