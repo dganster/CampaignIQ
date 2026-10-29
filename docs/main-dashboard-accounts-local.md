@@ -24,10 +24,23 @@ Rendering uses a private instance of the existing main dashboard module per
 request, never changes a shared imported module's storage globals, and never
 initializes the legacy runtime. Widgets, filters, visit-local routes and
 preference choices are namespaced by registry, signed-in user and account.
-Existing saved display preferences are read when present; changes apply only
-for the visit and do not write to financial artifact storage. Production
-preferences retain their existing behavior. A later dedicated preference
-store is required for durable changes in this new local composition.
+Personal display preferences now persist in the separate LOCAL table
+campaigniq_preferences_dev.account_preferences, keyed by registry, signed-in
+user and brokerage account. Existing financial-table preference bytes are read
+as a fallback and never copied, overwritten or removed. Other financial data
+and production preferences retain their existing behavior. Schema activation
+is an explicit administrator operation (the local rehearsal creates it for its
+new synthetic registry). Until activated, controls remain visit-local.
+
+Preference reads use a read-only repeatable snapshot. Saves hold a directory
+SHARE lock, recheck server sign-in and account access, serialize each preference
+key with an advisory transaction lock and reject stale revisions. Read-only
+financial grants may save personal display choices, including on archived
+accounts; disabled or revoked users cannot. A stored document checksum and
+strict value validation prevent overwriting corrupt preference rows; the UI
+keeps report access available with visit-local preferences in that case. Display
+preference changes do not modify the account directory or its audit ledger.
+The Reload saved preferences control recovers from another tab's newer save.
 
 Supplementary filesystem trade-history CSV evidence has not been attached to
 the scoped reader. The UI states this limitation, and report helpers receive

@@ -51,6 +51,8 @@ class LocalAccountDashboard:
         self.store = store
         self.issuer = trusted_issuer
         self.authorization = MappingProxyType(dict(authorization))
+        from campaigniq.account_preferences import LocalAccountPreferences
+        self.preferences = LocalAccountPreferences(store,trusted_issuer=trusted_issuer,authorization=authorization)
         self.legacy = LocalLegacyAccountAccess(store, trusted_issuer=trusted_issuer, authorization=authorization)
         self.inputs = SignedInMonthlyInputs(LocalSignedInInputGateway(store,
             trusted_issuer=trusted_issuer, authorization=authorization))

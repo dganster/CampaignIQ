@@ -18,7 +18,7 @@ def report_module():
     return module
 
 
-def render_reports(ui, snapshot, view, *, identity):
+def render_reports(ui, snapshot, view, *, identity, preferences_renderer=None):
     module = report_module()
     module.st = ui
     module.ACCESS = None  # Directory administration is composed separately.
@@ -29,8 +29,8 @@ def render_reports(ui, snapshot, view, *, identity):
         # has not been attached to this account-aware report reader yet.
         module.HISTORICAL_SOURCE_ROOT = Path(directory) / 'history'
         module.AUTHORITATIVE_STATE_DIR = Path(directory) / 'state'
-        module.render_dashboard(selected_view=view, preferences_renderer=lambda st:
-            render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False))
+        module.render_dashboard(selected_view=view, preferences_renderer=preferences_renderer or (lambda st:
+            render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False)))
 
 
 def render(st, service, *, administration):
@@ -100,6 +100,11 @@ def render(st, service, *, administration):
             st.info('No published reports for this account yet. Open Data to prepare its first month.')
             return
         st.caption(account.name+' • Published account records. Supplementary historical CSV evidence is not loaded here.')
-        render_reports(ui, snapshot, view, identity=st.user.to_dict()['sub'])
+        preferences_renderer = None
+        if hasattr(service,'preferences'):
+            from campaigniq.ui.account_preferences_view import render as personal_preferences
+            preferences_renderer = lambda scoped_ui: personal_preferences(scoped_ui,service.preferences,st.user,
+                selected,st.user.to_dict()['sub'],snapshot,administrator=overview.administrator)
+        render_reports(ui, snapshot, view, identity=st.user.to_dict()['sub'],preferences_renderer=preferences_renderer)
     except (ValueError, PermissionError, KeyError):
         st.error('Account access or saved report sources could not be verified. Reload after checking the account directory.')
