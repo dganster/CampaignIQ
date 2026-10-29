@@ -175,36 +175,41 @@ def require_dashboard_access() -> AccessContext | None:
     st.stop()
 
 
-ACCESS = require_dashboard_access()
+def initialize_dashboard():
+    """Explicit legacy startup. Authentication completes before runtime creation."""
+    global ACCESS, LOCAL_IMPORT_WORKSPACE, RUNTIME
+    global AUTHORITATIVE_STATE_DIR, HISTORICAL_SOURCE_ROOT, ARTIFACT_STORAGE
+    global ACCESS_HISTORY_STORAGE, ACCESS_HISTORY_ERROR
+    ACCESS = require_dashboard_access()
 
-# Local development only: explicitly select the same workspace for both
-# authoritative artifacts and persistent upload drafts. Never permit a
-# workspace override on Render or when an authenticated identity exists.
-from campaigniq.local_import_workspace import resolve_local_import_workspace
-LOCAL_IMPORT_WORKSPACE = resolve_local_import_workspace(
-    access_workspace=ACCESS.workspace_id if ACCESS is not None else None,
-    backend=os.environ.get("CAMPAIGNIQ_STORAGE_BACKEND", "filesystem"),
-    dsn=os.environ.get("CAMPAIGNIQ_DEV_DATABASE_URL", ""),
-    requested=os.environ.get("CAMPAIGNIQ_LOCAL_IMPORT_WORKSPACE", ""),
-    on_render=bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID")),
-)
+    # Local development only: explicitly select the same workspace for both
+    # authoritative artifacts and persistent upload drafts. Never permit a
+    # workspace override on Render or when an authenticated identity exists.
+    from campaigniq.local_import_workspace import resolve_local_import_workspace
+    LOCAL_IMPORT_WORKSPACE = resolve_local_import_workspace(
+        access_workspace=ACCESS.workspace_id if ACCESS is not None else None,
+        backend=os.environ.get("CAMPAIGNIQ_STORAGE_BACKEND", "filesystem"),
+        dsn=os.environ.get("CAMPAIGNIQ_DEV_DATABASE_URL", ""),
+        requested=os.environ.get("CAMPAIGNIQ_LOCAL_IMPORT_WORKSPACE", ""),
+        on_render=bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID")),
+    )
 
-RUNTIME = build_local_runtime(
-    project_root=PROJECT_ROOT,
-    workspace_id=LOCAL_IMPORT_WORKSPACE,
-)
-AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
-HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
-ARTIFACT_STORAGE = RUNTIME.artifact_storage
+    RUNTIME = build_local_runtime(
+        project_root=PROJECT_ROOT,
+        workspace_id=LOCAL_IMPORT_WORKSPACE,
+    )
+    AUTHORITATIVE_STATE_DIR = RUNTIME.authoritative_state_root
+    HISTORICAL_SOURCE_ROOT = RUNTIME.historical_source_root
+    ARTIFACT_STORAGE = RUNTIME.artifact_storage
 
-# CAMPAIGNIQ_ACCESS_HISTORY
-ACCESS_HISTORY_STORAGE = access_history_storage(PROJECT_ROOT)
-ACCESS_HISTORY_ERROR = record_session_access(
-    ACCESS,
-    st.user.to_dict() if ACCESS is not None else {},
-    st.session_state,
-    ACCESS_HISTORY_STORAGE,
-)
+    # CAMPAIGNIQ_ACCESS_HISTORY
+    ACCESS_HISTORY_STORAGE = access_history_storage(PROJECT_ROOT)
+    ACCESS_HISTORY_ERROR = record_session_access(
+        ACCESS,
+        st.user.to_dict() if ACCESS is not None else {},
+        st.session_state,
+        ACCESS_HISTORY_STORAGE,
+    )
 
 MONTHLY_UPLOAD_ROLES = (
     (
@@ -388,7 +393,7 @@ def lifecycle_timeline_rows(
 
 
 
-def _position_evidence():
+def _position_evidence(history_monthly_attributions, lifecycle_history):
     fingerprint = evidence_fingerprint(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, history_monthly_attributions)
     cached = st.session_state.get("campaigniq_position_evidence")
     if cached is None or cached[0] != fingerprint:
@@ -430,7 +435,7 @@ def _render_position_history(entries, *, include_campaign=False, realized_record
         st.caption("Carried position marks a verified starting balance. Its original opening trade is not available in this history.")
 
 
-def _choose_history_scope(entries, lifecycle_rows, *, key):
+def _choose_history_scope(entries, lifecycle_rows, *, key, history_monthly_attributions):
     from campaigniq.ui.history_scope import scope_history, history_coverage
 
     scope = st.radio("History range", ("Selected period", "All history"), horizontal=True, key=key)
@@ -1628,56 +1633,21 @@ def render_monthly_import_wizard():
 
 
 def _published_artifact_keys(*, suffix: str):
-    keys = []
-    cutover = publication_cutover_from_storage(ARTIFACT_STORAGE)
-    for key in ARTIFACT_STORAGE.list_keys(suffix=suffix):
-        month_text = key.removesuffix(suffix)
-        try:
-            month_start = date.fromisoformat(f"{month_text}-01")
-        except ValueError:
-            continue
-        if month_start.month == 12:
-            next_month = date(month_start.year + 1, 1, 1)
-        else:
-            next_month = date(month_start.year, month_start.month + 1, 1)
-        period_end = next_month - date.resolution
-        if cutover is None or period_end < cutover or ARTIFACT_STORAGE.exists(
-            finalized_month_marker_key(period_end=period_end)
-        ):
-            keys.append(key)
-    return tuple(keys)
+    from campaigniq.dashboard_sources import published_artifact_keys
+    return published_artifact_keys(ARTIFACT_STORAGE, suffix=suffix)
 
 
 def load_summaries():
-    """Load authoritative persisted periods and calculate monthly analytics."""
-    realized_keys = _published_artifact_keys(suffix="-realized-attributions.json")
-    forex_keys = _published_artifact_keys(suffix="-forex-settlement-attributions.json")
-
-    if not realized_keys:
-        raise FileNotFoundError(
-            f"No persisted attribution files found in {AUTHORITATIVE_STATE_DIR}"
-        )
-
-    monthly_attributions, monthly_forex_attributions = (
-        load_persisted_monthly_campaign_attributions_from_storage(
-            ARTIFACT_STORAGE,
-            realized_keys=realized_keys,
-            forex_keys=forex_keys,
-        )
-    )
-
-    summaries = summarize_multi_month_analytics(
-        monthly_attributions=monthly_attributions,
-        monthly_forex_attributions=monthly_forex_attributions,
-    )
-
-    return summaries, monthly_attributions, monthly_forex_attributions
+    """Load published report sources without creating another runtime."""
+    from campaigniq.dashboard_sources import load_dashboard_sources
+    return load_dashboard_sources(ARTIFACT_STORAGE, source_description=AUTHORITATIVE_STATE_DIR)
 
 
 # Streamlit UI must not execute during ordinary Python imports (pytest).
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-if get_script_run_ctx(suppress_warning=True) is not None:
+def render_dashboard():
+    """Render the existing dashboard after explicit application composition."""
     st.set_page_config(
         page_title="CampaignIQ",
         page_icon="📈",
@@ -2080,7 +2050,7 @@ if get_script_run_ctx(suppress_warning=True) is not None:
             d3.metric("Last close", selected.last_closed_date.strftime("%b %d, %Y"))
             st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
             st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
-            evidence, history_gaps = _position_evidence()
+            evidence, history_gaps = _position_evidence(history_monthly_attributions, lifecycle_history)
             realized_records = ()
             if selected_id in forex_campaign_records:
                 forex_ids = {a.campaign_id for a in forex_campaign_records[selected_id]}
@@ -2128,7 +2098,8 @@ if get_script_run_ctx(suppress_warning=True) is not None:
             lifecycle_rows = [row for item in lifecycle_summary.symbols if item.symbol in selected.symbols
                               for row in lifecycle_timeline_rows(item)]
             underlying_history, lifecycle_rows = _choose_history_scope(
-                underlying_history, lifecycle_rows, key=f"campaigniq_history_scope_{selected_id}")
+                underlying_history, lifecycle_rows, key=f"campaigniq_history_scope_{selected_id}",
+                history_monthly_attributions=history_monthly_attributions)
             all_realized_records = tuple(a for attrs in history_monthly_attributions.values() for a in attrs
                                         if underlying_symbol(a.record.instrument) in selected.symbols)
             _render_position_history(underlying_history, include_campaign=True, realized_records=all_realized_records,
@@ -2336,7 +2307,7 @@ if get_script_run_ctx(suppress_warning=True) is not None:
                             st.caption("These are differences between saved month-end quantities. They do not identify trades, splits, or other causes.")
         st.divider()
         st.subheader("Position history by underlying")
-        evidence, history_gaps = _position_evidence()
+        evidence, history_gaps = _position_evidence(history_monthly_attributions, lifecycle_history)
         lifecycle_by_symbol = {summary.symbol: summary for summary in lifecycle_summary.symbols}
         history_symbols = sorted(set(lifecycle_by_symbol) |
             {underlying_symbol(_deserialize_instrument(row["instrument"])) for row in evidence} |
@@ -2354,7 +2325,8 @@ if get_script_run_ctx(suppress_warning=True) is not None:
                                   if underlying_symbol(_deserialize_instrument(row["instrument"])) == lifecycle_symbol]
             underlying_history, scoped_lifecycle_rows = _choose_history_scope(
                 underlying_history, lifecycle_timeline_rows(selected_lifecycle) if selected_lifecycle is not None else (),
-                key="campaigniq_underlying_history_scope")
+                key="campaigniq_underlying_history_scope",
+                history_monthly_attributions=history_monthly_attributions)
             _render_position_history(underlying_history, include_campaign=True,
                 realized_records=tuple(a for attrs in history_monthly_attributions.values() for a in attrs
                     if underlying_symbol(a.record.instrument) == lifecycle_symbol),
@@ -2796,7 +2768,7 @@ if get_script_run_ctx(suppress_warning=True) is not None:
         render_profit_concentration(st, concentration_scope)
         from campaigniq.ui.strategy_evidence import load_strategy_entries, campaign_open_status, load_observed_strategies
         from campaigniq.ui.strategy_comparison_view import render_strategy_comparison
-        strategy_history, strategy_history_gaps = _position_evidence()
+        strategy_history, strategy_history_gaps = _position_evidence(history_monthly_attributions, lifecycle_history)
         strategy_entries = load_strategy_entries(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, strategy_history, concentration_scope.campaigns)
         strategy_status = campaign_open_status(ARTIFACT_STORAGE, summaries[-1].period_end, concentration_scope.campaigns)
         observed_entries = load_observed_strategies(ARTIFACT_STORAGE, HISTORICAL_SOURCE_ROOT, strategy_history,
@@ -3082,3 +3054,8 @@ if get_script_run_ctx(suppress_warning=True) is not None:
                 "No maximum-drawdown contribution interval is present in the "
                 "available equity/options history."
             )
+
+
+if __name__ == "__main__" and get_script_run_ctx(suppress_warning=True) is not None:
+    initialize_dashboard()
+    render_dashboard()
