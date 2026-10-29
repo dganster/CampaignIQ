@@ -4,7 +4,7 @@ from campaigniq.broker_account_binding import KINDS
 from campaigniq.import_draft_bridge import RestoredUpload
 
 
-def render(st, service, server_user):
+def render(st, service, server_user, *, selected_account_id=None):
     try:
         overview = service.gateway.overview(server_user)
         with st.expander('Monthly inputs for new brokerage accounts'):
@@ -14,7 +14,9 @@ def render(st, service, server_user):
                 st.info('Add a new brokerage account in Local account administration first.')
                 return
             choices = {a.id:a for a in overview.accounts}
-            account_id = st.selectbox('New brokerage account', list(choices),
+            if selected_account_id is not None and selected_account_id not in choices:
+                raise PermissionError('Selected account is unavailable')
+            account_id = selected_account_id if selected_account_id is not None else st.selectbox('New brokerage account', list(choices),
                 format_func=lambda key: choices[key].name + (' [archived]' if choices[key].archived else '') + ' · ' + key[:8],
                 key='new-account-selection:' + overview.user_id + ':' + service.gateway._directory.registry_id)
             account = choices[account_id]

@@ -67,7 +67,7 @@ def preferred_timezone(state, browser_zone):
     return resolve_viewer_timezone(browser_zone if selected == AUTO_ZONE else selected)
 
 
-def render_preferences(ui, storage, access):
+def render_preferences(ui, storage, access, *, persist=True):
     # Shared-password/local sessions have no individual identity to persist.
     identity = access.identity_id if access is not None else None
     owner = (identity, access.workspace_id if access is not None else None)
@@ -87,7 +87,7 @@ def render_preferences(ui, storage, access):
 
     def changed():
         ui.session_state[error_key] = ""
-        if identity:
+        if identity and persist:
             try:
                 save_preferences(storage, identity, {
                     "fit_columns": ui.session_state[FIT_KEY],
@@ -107,7 +107,8 @@ def render_preferences(ui, storage, access):
         ui.caption(f"Display time zone: {zone.key}." + (" Browser time zone unavailable." if fallback else ""))
         ui.selectbox("Default reporting period", PERIODS, key=PERIOD_KEY, on_change=changed,
                      help="Used when no reporting dates are selected. Quarters use the latest published year; an unavailable quarter falls back to YTD. Changing this preference does not change the current report.")
-        ui.caption("Saved for your account across visits." if identity else
+        ui.caption("Applies for this visit; existing saved preferences are preserved." if not persist else
+                   "Saved for your account across visits." if identity else
                    "Applies for this visit. Sign in with an individual account to save preferences.")
         if ui.session_state.get(error_key):
             ui.warning(ui.session_state[error_key])

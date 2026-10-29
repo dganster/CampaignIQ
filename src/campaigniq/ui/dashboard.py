@@ -1646,7 +1646,7 @@ def load_summaries():
 # Streamlit UI must not execute during ordinary Python imports (pytest).
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-def render_dashboard():
+def render_dashboard(*, selected_view=None, preferences_renderer=None):
     """Render the existing dashboard after explicit application composition."""
     st.set_page_config(
         page_title="CampaignIQ",
@@ -1664,29 +1664,34 @@ def render_dashboard():
     st.caption(f"Build: {build_id[:7]}")
 
     if authentication_mode() == AUTH_MODE_OIDC:
-        if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
-            st.logout()
+        if selected_view is None:
+            if st.sidebar.button("Sign out", key="campaigniq_sign_out"):
+                st.logout()
 
     # CAMPAIGNIQ_UI_STAGE1
     navigation_views = ("Overview", "Campaigns", "Performance", "Positions", "Data", "Crypto")
     if is_access_admin(ACCESS):
         navigation_views += ("Access History",)
-    restore_browser_route(st, navigation_views)
-
     def route_changed():
         previous = st.session_state.get("campaigniq_last_url_route", {})
         if previous.get("view") in navigation_views and previous["view"] != st.session_state.get("campaigniq_primary_view"):
             st.session_state["campaigniq_return_route"] = json.dumps(previous, separators=(",", ":"))
         publish_route(st)
 
-    view = st.sidebar.radio(
-        "Navigate",
-        navigation_views,
-        key="campaigniq_primary_view",
-        on_change=route_changed,
-    )
-    render_return_button(st, navigation_views)
-    render_preferences(st, ARTIFACT_STORAGE, ACCESS)
+    if selected_view is None:
+        restore_browser_route(st, navigation_views)
+        view = st.sidebar.radio("Navigate", navigation_views,
+            key="campaigniq_primary_view", on_change=route_changed)
+        render_return_button(st, navigation_views)
+    else:
+        if selected_view not in ("Overview", "Campaigns", "Performance", "Positions", "Crypto"):
+            raise ValueError("Account report view is unsupported")
+        view = selected_view
+        st.session_state["campaigniq_primary_view"] = view
+    if preferences_renderer is None:
+        render_preferences(st, ARTIFACT_STORAGE, ACCESS)
+    else:
+        preferences_renderer(st)
 
     if view == "Access History":
         if not is_access_admin(ACCESS):
@@ -2425,7 +2430,7 @@ def render_dashboard():
         )
         metric3.metric(
             "Campaign Win Rate",
-            f"{float(multi_month_campaign_performance.win_rate):.1%}",
+            f"{float(multi_month_campaign_performance.win_rate):.1%}" if multi_month_campaign_performance.win_rate is not None else "—",
         )
         metric4.metric(
             "Broker Records",

@@ -148,7 +148,10 @@ def run_app(st):
         from campaigniq.persistence.signedin_account_data import LocalSignedInInputGateway
         inputs = SignedInMonthlyInputs(LocalSignedInInputGateway(store,
                     trusted_issuer=config['issuer'], authorization=config['authorization']))
-        render(st, service, administration=administration, inputs=inputs)
+        from campaigniq.account_dashboard import LocalAccountDashboard
+        from campaigniq.ui.account_dashboard_view import render as render_main_dashboard
+        dashboard = LocalAccountDashboard(store, trusted_issuer=config['issuer'], authorization=config['authorization'])
+        render_main_dashboard(st, dashboard, administration=administration)
     except Exception:
         st.error('Local sign-in preview stopped. Verify local OIDC configuration and account-directory access.')
 
