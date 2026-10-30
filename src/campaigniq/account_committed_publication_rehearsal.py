@@ -60,7 +60,8 @@ def cleanup_clone(control,name,oid,role_oids,before):
         for role in role_oids:control.execute(sql.SQL('DROP ROLE {}').format(sql.Identifier(role)))
 
 
-def run_rehearsal(output,*,development_only):
+def run_rehearsal(output,*,development_only,verify_dashboard=False):
+    if type(verify_dashboard) is not bool:raise ValueError('Explicit dashboard rehearsal mode required')
     import psycopg
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
@@ -69,7 +70,8 @@ def run_rehearsal(output,*,development_only):
     token=uuid4().hex;database=clone_name('campaigniq_pub_rehearsal_'+token)
     roles=['ciq_commit_input_'+token[:16],'ciq_commit_publish_'+token[:16]]
     role_oids={};roles_committed=False;clone_oid=None;before=None;before_acl=None
-    report=dict(format='campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
+    report_name='deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
+    report=dict(format='campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
         source_database=DATABASE,disposable_database=database,production_connection_made=False,account_mode_activated=False)
     def passed(name):report['checks'][name]=True;print(name.replace('_',' ')+': PASS',flush=True)
     @contextmanager
@@ -248,6 +250,11 @@ def run_rehearsal(output,*,development_only):
             assert snapshot()==prior
             passed('independently_committed_receipt_conflict_withholds_entire_result_without_reader_repair')
 
+            if verify_dashboard:
+                from types import SimpleNamespace
+                from campaigniq.account_deployment_dashboard_rehearsal import verify_parity
+                verify_parity(SimpleNamespace(reader=reader,inputs=service,publisher=publisher,user=user,foreign=foreign,
+                    identities=identities,accounts=(a,b),drafts=drafts,revisions=revisions,owner=owner,snapshot=snapshot),passed)
             with owner() as conn:assert {k:v for k,v in inventory(conn).items() if not k.startswith(m.SCHEMA+'.')}==before
             passed('every_copied_existing_financial_document_preference_and_directory_row_unchanged')
         report['passed']=True
@@ -277,6 +284,6 @@ def run_rehearsal(output,*,development_only):
             report.update(passed=False,cleanup_error_type=type(cleanup_error).__name__);raise
         finally:
             if control is not None:control.close()
-            save(output/'committed-publication-report.json',report);print('Report:',output/'committed-publication-report.json',flush=True)
+            save(output/report_name,report);print('Report:',output/report_name,flush=True)
     print('Retained LOCAL restore unchanged. Committed tests used a disposable clone, now removed. Production unchanged.')
     return report

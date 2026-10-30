@@ -122,3 +122,16 @@ def test_committed_bundle_and_report_transport_remain_fixed_and_private(tmp_path
     output=tmp_path/'reports';output.mkdir()
     a.receive_report(output,record('committed-publication-report.json'))
     with pytest.raises(ValueError):a.run_admin_rehearsal(tmp_path/'never',development_only=True,publication=True,committed=True)
+
+
+def test_dashboard_job_is_fixed_and_report_is_private(tmp_path):
+    destination=tmp_path/'dashboard.zip';a.build_bundle(destination,job='dashboard')
+    with zipfile.ZipFile(destination) as archive:
+        assert json.loads(archive.read('bundle.json'))['job']=='dashboard'
+        archive.extractall(tmp_path/'isolated')
+    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_dashboard_rehearsal,account_deployment_dashboard,account_deployment_comparison"
+    subprocess.run([sys._base_executable,'-I','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],check=True,capture_output=True,text=True)
+    output=tmp_path/'reports';output.mkdir()
+    a.receive_report(output,record('deployment-dashboard-report.json'))
+    assert (output/'deployment-dashboard-report.json').stat().st_mode&0o777==0o600
+    with pytest.raises(ValueError):a.run_admin_rehearsal(tmp_path/'never',development_only=True,committed=True,dashboard=True)
