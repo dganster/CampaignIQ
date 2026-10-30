@@ -13,7 +13,7 @@ SOURCE_SHA256=m.digest(dict(version=3,policy=POLICY,protocol='explicit role OID 
 def review_publication_grants(conn,role):
     require_transaction(conn);role_name(role);m.verify_schema(conn)
     rows=conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-    if rows not in ([(1,),(2,)],[(1,),(2,),(3,)]):raise ValueError('Reviewed input-role migration required first')
+    if rows not in ([(1,),(2,)],[(1,),(2,),(3,)],[(1,),(2,),(3,),(4,)]):raise ValueError('Reviewed input-role migration required first')
     state=_role_state(conn,role,POLICY)
     return dict(format='campaigniq.publication-grants',version=3,role=role,
         role_oid=conn.execute('SELECT oid FROM pg_roles WHERE rolname=%s',(role,)).fetchone()[0],
@@ -28,7 +28,7 @@ def apply_publication_grants(conn,role,*,reviewed_sha256):
     plan=review_publication_grants(conn,role)
     if m.digest(plan)!=reviewed_sha256:raise ValueError('Reviewed publication grant proposal differs')
     rows=conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-    if rows==[(1,),(2,),(3,)]:
+    if rows in ([(1,),(2,),(3,)],[(1,),(2,),(3,),(4,)]):
         _verify_complete(conn,role,POLICY);return False
     for schema in ('public','campaigniq_accounts'):
         conn.execute(sql.SQL('GRANT USAGE ON SCHEMA {} TO {}').format(sql.Identifier(schema),sql.Identifier(role)))

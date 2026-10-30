@@ -40,7 +40,7 @@ def cleanup_clone(control,name,oid,role_oids,before):
     from psycopg import sql
     clone_name(name)
     suffix=name.removeprefix('campaigniq_pub_rehearsal_')[:16]
-    if not set(role_oids).issubset({'ciq_commit_input_'+suffix,'ciq_commit_publish_'+suffix}):
+    if not set(role_oids).issubset({'ciq_commit_input_'+suffix,'ciq_commit_publish_'+suffix,'ciq_commit_prefs_'+suffix}):
         raise ValueError('Temporary role identity names differ; retained for recovery')
     actual=control.execute('SELECT oid,pg_get_userbyid(datdba) FROM pg_database WHERE datname=%s',(name,)).fetchone()
     if actual!=(oid,'postgres'):raise ValueError('Disposable database identity differs; retained for recovery')
@@ -60,8 +60,8 @@ def cleanup_clone(control,name,oid,role_oids,before):
         for role in role_oids:control.execute(sql.SQL('DROP ROLE {}').format(sql.Identifier(role)))
 
 
-def run_rehearsal(output,*,development_only,verify_dashboard=False):
-    if type(verify_dashboard) is not bool:raise ValueError('Explicit dashboard rehearsal mode required')
+def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_preferences=False):
+    if any(type(x) is not bool for x in (verify_dashboard,verify_preferences)) or (verify_dashboard and verify_preferences):raise ValueError('One explicit rehearsal mode required')
     import psycopg
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
@@ -69,9 +69,10 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False):
     output.mkdir(parents=True,exist_ok=False,mode=0o700)
     token=uuid4().hex;database=clone_name('campaigniq_pub_rehearsal_'+token)
     roles=['ciq_commit_input_'+token[:16],'ciq_commit_publish_'+token[:16]]
+    if verify_preferences:roles.append('ciq_commit_prefs_'+token[:16])
     role_oids={};roles_committed=False;clone_oid=None;before=None;before_acl=None
-    report_name='deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
-    report=dict(format='campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
+    report_name='deployment-preferences-report.json' if verify_preferences else 'deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
+    report=dict(format='campaigniq.deployment-preferences-rehearsal' if verify_preferences else 'campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
         source_database=DATABASE,disposable_database=database,production_connection_made=False,account_mode_activated=False)
     def passed(name):report['checks'][name]=True;print(name.replace('_',' ')+': PASS',flush=True)
     @contextmanager
@@ -108,6 +109,22 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False):
             for role in roles:role_oids[role]=conn.execute('SELECT oid FROM pg_roles WHERE rolname=%s',(role,)).fetchone()[0]
             plan=review_runtime_grants(conn,roles[0]);apply_runtime_grants(conn,roles[0],reviewed_sha256=m.digest(plan));save(output/'reviewed-grant-plan.json',plan)
             plan=review_publication_grants(conn,roles[1]);apply_publication_grants(conn,roles[1],reviewed_sha256=m.digest(plan));save(output/'reviewed-publication-grant-plan.json',plan)
+            if verify_preferences:
+                from campaigniq.account_preference_roles import review_preference_grants,apply_preference_grants
+                plan=review_preference_grants(conn,roles[2]);unchanged=role_catalog_digest(conn)
+                try:
+                    with conn.transaction():
+                        apply_preference_grants(conn,roles[2],reviewed_sha256=m.digest(plan))
+                        raise RuntimeError('injected preference grant failure')
+                except RuntimeError:pass
+                assert role_catalog_digest(conn)==unchanged
+                plan=review_preference_grants(conn,roles[2])
+                try:apply_preference_grants(conn,roles[2],reviewed_sha256='0'*64)
+                except ValueError:pass
+                else:raise AssertionError('Changed preference grant review accepted')
+                assert apply_preference_grants(conn,roles[2],reviewed_sha256=m.digest(plan))
+                repeat=review_preference_grants(conn,roles[2]);assert not apply_preference_grants(conn,roles[2],reviewed_sha256=m.digest(repeat))
+                save(output/'reviewed-preference-grant-plan.json',plan)
             scopes=tuple(row[0] for row in conn.execute("SELECT DISTINCT namespace FROM public.artifact_storage_dev WHERE namespace LIKE 'workspace-%' ORDER BY 1").fetchall())
             if len(scopes)<2:raise ValueError('Two retained namespaces required')
             identities=tuple(Identity('https://committed-publication.invalid','synthetic-'+str(i)) for i in range(len(scopes)))
@@ -120,7 +137,7 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False):
         def store(role):
             target=AccountDatabaseTarget('never-connected.invalid',database,role)
             return PostgresAccountDirectory('host=never-connected.invalid port=5432 dbname='+database+' user='+role+' sslmode=verify-full',settings,target)
-        reader,writer=map(store,roles);gateway=PostgresAccountDataGateway(reader);service=DeploymentMonthlyInputs(gateway);publisher=DeploymentAccountPublisher(service,writer)
+        reader,writer=map(store,roles[:2]);gateway=PostgresAccountDataGateway(reader);service=DeploymentMonthlyInputs(gateway);publisher=DeploymentAccountPublisher(service,writer)
         def restricted(role,*,readonly):
             @contextmanager
             def opened():
@@ -250,6 +267,16 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False):
             assert snapshot()==prior
             passed('independently_committed_receipt_conflict_withholds_entire_result_without_reader_repair')
 
+            if verify_preferences:
+                from types import SimpleNamespace
+                from campaigniq.account_deployment_preferences_rehearsal import verify_preferences as verify_personal
+                preference_store=store(roles[2])
+                @contextmanager
+                def preference_connection(*,readonly):
+                    with restricted(roles[2],readonly=readonly) as conn:yield conn
+                with patch.object(preference_store,'_connection',new=preference_connection):
+                    verify_personal(SimpleNamespace(store=preference_store,reader=reader,user=user,foreign=foreign,
+                        accounts=(a,b),owner=owner,snapshot=snapshot,restricted=restricted,roles=roles),passed)
             if verify_dashboard:
                 from types import SimpleNamespace
                 from campaigniq.account_deployment_dashboard_rehearsal import verify_parity

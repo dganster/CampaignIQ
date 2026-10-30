@@ -64,8 +64,9 @@ class LocalAccountPreferences:
                 PRIMARY KEY(registry_id,user_id,account_id))''')
 
     @staticmethod
-    def _read(conn,key):
-        row=conn.execute('SELECT revision,document,document_sha256 FROM '+TABLE+
+    def _read(conn,key,*,table=TABLE):
+        if table not in (TABLE,"campaigniq_accounts.account_preferences"):raise ValueError("Fixed preference table required")
+        row=conn.execute('SELECT revision,document,document_sha256 FROM '+table+
             ' WHERE registry_id=%s AND user_id=%s AND account_id=%s',key).fetchone()
         if row is None:return 0,None
         revision,payload,digest=row

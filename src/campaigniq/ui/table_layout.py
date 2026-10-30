@@ -7,7 +7,7 @@ import re
 from hashlib import sha256
 import pandas as pd
 
-FIT_KEY = "campaigniq_fit_table_columns"
+from campaigniq.ui.preferences import FIT_KEY
 
 
 def _state(ui):

@@ -109,7 +109,7 @@ def apply_runtime_grants(conn,role,*,reviewed_sha256):
     if not isinstance(reviewed_sha256,str) or migration.digest(plan)!=reviewed_sha256:
         raise ValueError('Reviewed runtime grant proposal differs')
     rows=conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-    if rows in ([(1,),(2,)],[(1,),(2,),(3,)]):
+    if rows in ([(1,),(2,)],[(1,),(2,),(3,)],[(1,),(2,),(3,),(4,)]):
         _verify_complete(conn,role)
         return False
     if rows!=[(1,)]:raise ValueError('Unexpected role migration state')

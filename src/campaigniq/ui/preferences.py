@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from campaigniq.ui.access_history_view import resolve_viewer_timezone
 
-from campaigniq.ui.table_layout import FIT_KEY
+FIT_KEY = "campaigniq_fit_table_columns"
 
 
 def preference_key(identity_id):
