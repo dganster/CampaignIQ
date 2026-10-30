@@ -32,7 +32,7 @@ def role_name(value):
     return value
 
 
-def _role_state(conn,role):
+def _role_state(conn,role,policy=POLICY):
     role_name(role)
     row=conn.execute('''SELECT oid,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
         FROM pg_roles WHERE rolname=%s''',(role,)).fetchone()
@@ -51,7 +51,7 @@ def _role_state(conn,role):
             WHERE n.nspname=%s AND c.relowner=%s LIMIT 1''',(schema,row[0],schema,row[0])).fetchone():
             raise PermissionError('Runtime role cannot own account or retained storage')
     grants=[]
-    for schema,table,allowed in POLICY:
+    for schema,table,allowed in policy:
         values=[]
         for privilege in PRIVILEGES:
             actual=conn.execute('SELECT has_table_privilege(%s,%s,%s)',(role,schema+'.'+table,privilege)).fetchone()
@@ -109,7 +109,7 @@ def apply_runtime_grants(conn,role,*,reviewed_sha256):
     if not isinstance(reviewed_sha256,str) or migration.digest(plan)!=reviewed_sha256:
         raise ValueError('Reviewed runtime grant proposal differs')
     rows=conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-    if rows==[(1,),(2,)]:
+    if rows in ([(1,),(2,)],[(1,),(2,),(3,)]):
         _verify_complete(conn,role)
         return False
     if rows!=[(1,)]:raise ValueError('Unexpected role migration state')
@@ -127,9 +127,9 @@ def apply_runtime_grants(conn,role,*,reviewed_sha256):
     return True
 
 
-def _verify_complete(conn,role):
-    state=_role_state(conn,role)
-    for actual,(_,_,allowed) in zip(state,POLICY):
+def _verify_complete(conn,role,policy=POLICY):
+    state=_role_state(conn,role,policy)
+    for actual,(_,_,allowed) in zip(state,policy):
         if set(actual[2])!=set(allowed):raise PermissionError('Runtime grants incomplete')
     for schema in ('public','campaigniq_accounts'):
         if conn.execute('SELECT has_schema_privilege(%s,%s,%s)',(role,schema,'USAGE')).fetchone()!=(True,):

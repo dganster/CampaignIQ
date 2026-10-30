@@ -130,6 +130,9 @@ class PostgresAccountDirectory:
         self.settings=settings;self.target=target
         self._conninfo=target.conninfo(dsn)
 
+    @property
+    def registry_id(self):return self.settings.registry_id
+
     @contextmanager
     def _connection(self,*,readonly):
         import psycopg

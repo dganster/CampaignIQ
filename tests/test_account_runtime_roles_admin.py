@@ -97,3 +97,16 @@ def test_worker_checksum_failure_precedes_package_execution(tmp_path):
     result=subprocess.run([sys._base_executable,'-I','-c',prelude+a.WORKER],input=destination.getvalue(),capture_output=True)
     assert result.returncode!=0 and b'Bundle checksum differs' in result.stderr
     assert b'PACKAGE MUST NOT EXECUTE' not in result.stderr
+
+
+def test_publication_bundle_includes_only_named_public_synthetic_fixtures(tmp_path):
+    destination=tmp_path/'publication.zip';a.build_bundle(destination,job='publication')
+    from campaigniq.account_reconciliation_rehearsal import ROLES
+    with zipfile.ZipFile(destination) as archive:
+        manifest=json.loads(archive.read('bundle.json'))
+        assert manifest['job']=='publication'
+        assert {n for n in archive.namelist() if n.startswith('tests/')}=={'tests/fixtures/'+n for n in ROLES.values()}
+        archive.extractall(tmp_path/'isolated')
+    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_publication_rehearsal;from campaigniq.account_selection_rehearsal import synthetic_sources;assert len(synthetic_sources('12345678'))==4"
+    subprocess.run([sys._base_executable,'-I','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],check=True,capture_output=True,text=True)
+    with pytest.raises(ValueError):a.build_bundle(tmp_path/'bad.zip',job='arbitrary')

@@ -117,4 +117,9 @@ def verify_schema(conn):
             and isinstance(rows[0][2],str) and len(rows[0][2])==64
             and rows[1]==(2,role_source,role_catalog_digest(conn))):
         return
+    if (len(rows)==3 and rows[0][0:2]==(VERSION,SOURCE_SHA256)
+            and isinstance(rows[0][2],str) and len(rows[0][2])==64
+            and rows[1][0:2]==(2,role_source) and isinstance(rows[1][2],str) and len(rows[1][2])==64):
+        from campaigniq.account_publication_roles import SOURCE_SHA256 as publication_source
+        if rows[2]==(3,publication_source,role_catalog_digest(conn)):return
     raise ValueError('Migration source, version or schema integrity differs')

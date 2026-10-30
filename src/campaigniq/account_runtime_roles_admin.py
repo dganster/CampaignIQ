@@ -22,6 +22,7 @@ from campaigniq.account_data_backend_rehearsal import save
 PREFIX='CAMPAIGNIQ_LOCAL_ROLE_REPORT '
 DISTRIBUTIONS=('psycopg','psycopg-binary','psycopg-pool','typing_extensions')
 MAX_BUNDLE=128*1024*1024
+JOBS={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal'}
 
 # Isolated stdlib bootstrap: no dependency imports until the verified private
 # bundle is extracted. All elevated work runs as postgres, never as root.
@@ -46,7 +47,7 @@ try:
         if set(names)!=set(manifest['sha256'])|{'bundle.json'}:raise ValueError('Bundle inventory differs')
         for name,expected in manifest['sha256'].items():
             relative=pathlib.PurePosixPath(name)
-            if relative.is_absolute() or '..' in relative.parts or relative.parts[0] not in ('code','deps'):
+            if relative.is_absolute() or '..' in relative.parts or relative.parts[0] not in ('code','deps','tests'):
                 raise ValueError('Unsafe bundle path')
             item=archive.getinfo(name)
             if stat.S_ISLNK(item.external_attr>>16):raise ValueError('Symlink bundle entry')
@@ -57,7 +58,11 @@ try:
             with target.open('xb') as handle:handle.write(data)
             target.chmod(0o600)
     sys.path[:0]=[str(root/'code'),str(root/'deps')]
-    from campaigniq import account_runtime_roles_rehearsal as runner
+    import importlib
+    job=manifest.get('job','roles')
+    jobs={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal'}
+    if job not in jobs:raise ValueError('Unknown fixed local rehearsal')
+    runner=importlib.import_module('campaigniq.'+jobs[job])
     original_save=runner.save
     def export(path,value):
         original_save(path,value)
@@ -76,7 +81,8 @@ def _add_file(archive,manifest,path,name):
     archive.writestr(name,data)
 
 
-def build_bundle(destination):
+def build_bundle(destination,*,job='roles'):
+    if job not in JOBS:raise ValueError('Unknown local rehearsal')
     """Copy only package Python source and installed PostgreSQL driver files."""
     import zipfile
     import psycopg
@@ -97,7 +103,11 @@ def build_bundle(destination):
                 if '..' in relative.parts or '__pycache__' in relative.parts:continue
                 path=Path(dist.locate_file(relative))
                 _add_file(archive,hashes,path,'deps/'+relative.as_posix())
-        archive.writestr('bundle.json',json.dumps(dict(python=list(sys.version_info[:2]),sha256=hashes),sort_keys=True))
+        if job=='publication':
+            from campaigniq.account_reconciliation_rehearsal import ROLES
+            for name in sorted(ROLES.values()):
+                _add_file(archive,hashes,source.parents[1]/'tests/fixtures'/name,'tests/fixtures/'+name)
+        archive.writestr('bundle.json',json.dumps(dict(python=list(sys.version_info[:2]),sha256=hashes,job=job),sort_keys=True))
     if destination.stat().st_size>MAX_BUNDLE:raise ValueError('Rehearsal bundle too large')
     return hashlib.sha256(destination.read_bytes()).hexdigest()
 
@@ -114,7 +124,7 @@ def administrator_command():
 def receive_report(output,line):
     value=json.loads(line[len(PREFIX):])
     name=value['name']
-    if name not in ('prewrite-recovery-receipt.json','reviewed-grant-plan.json','account-runtime-roles-report.json'):
+    if name not in ('prewrite-recovery-receipt.json','reviewed-grant-plan.json','account-runtime-roles-report.json','reviewed-publication-grant-plan.json','account-deployment-publication-report.json'):
         raise ValueError('Unexpected administrator receipt name')
     data=base64.b64decode(value['data'],validate=True)
     if len(data)>1024*1024:raise ValueError('Oversize administrator receipt')
@@ -123,7 +133,8 @@ def receive_report(output,line):
     return name,parsed
 
 
-def run_admin_rehearsal(output,*,development_only):
+def run_admin_rehearsal(output,*,development_only,publication=False):
+    if type(publication) is not bool:raise ValueError('Explicit publication rehearsal mode required')
     # Retain the ordinary local target/override guard before any sudo process.
     restore_conninfo(development_only=development_only)
     command=administrator_command()
@@ -131,7 +142,7 @@ def run_admin_rehearsal(output,*,development_only):
     received={}
     with tempfile.TemporaryDirectory(prefix='campaigniq-role-stage-') as staging:
         bundle=Path(staging)/'rehearsal.zip'
-        bundle_sha=build_bundle(bundle)
+        bundle_sha=build_bundle(bundle,job='publication') if publication else build_bundle(bundle)
         save(output/'administrator-rehearsal-request.json',dict(database=DATABASE,os_account='postgres',
             bundle_sha256=bundle_sha,normal_user_privileges_changed=False,transaction_policy='forced rollback',
             production_connection_made=False))
@@ -146,21 +157,25 @@ def run_admin_rehearsal(output,*,development_only):
                 status=process.wait()
             except BaseException:
                 process.terminate();process.wait();raise
-    report=received.get('account-runtime-roles-report.json')
+    report_name='account-deployment-publication-report.json' if publication else 'account-runtime-roles-report.json'
+    report=received.get(report_name)
     if status!=0 or report is None or report.get('passed') is not True:
         raise RuntimeError('Administrator rehearsal did not complete; preserve saved reports. No role elevation was applied to your user.')
-    if set(received)!=set(('prewrite-recovery-receipt.json','reviewed-grant-plan.json','account-runtime-roles-report.json')):
+    expected={'prewrite-recovery-receipt.json','reviewed-grant-plan.json',report_name}
+    if publication:expected.add('reviewed-publication-grant-plan.json')
+    if set(received)!=expected:
         raise RuntimeError('Required administrator receipts incomplete')
-    print('Report:',output/'account-runtime-roles-report.json',flush=True)
+    print('Report:',output/report_name,flush=True)
     return report
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--development-only',action='store_true',required=True)
+    parser.add_argument('--publication',action='store_true')
     args=parser.parse_args()
     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]
-    try:run_admin_rehearsal(Path.home()/'CampaignIQ-Records/Development-Rehearsals'/('Account-runtime-roles-admin-'+stamp),development_only=args.development_only)
+    try:run_admin_rehearsal(Path.home()/'CampaignIQ-Records/Development-Rehearsals'/('Account-runtime-roles-admin-'+stamp),development_only=args.development_only,publication=args.publication)
     except (ValueError,RuntimeError,OSError,metadata.PackageNotFoundError) as error:
         parser.exit(1,str(error)+'\n')
 
