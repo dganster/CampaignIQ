@@ -6,6 +6,7 @@ from decimal import Decimal
 import json
 import re
 
+from campaigniq.broker_report_period import validate_broker_report_date
 from campaigniq.account_signedin_results import _instrument, _decimal
 from campaigniq.persistence.account_directory_codec import checksum
 from campaigniq.persistence.lot_book_store import load_lot_book_from_storage
@@ -70,7 +71,7 @@ def _results(storage,account_id,year,month,source_rows):
     rows=[];total=Decimal(0)
     for item in realized.attributions:
         row=item.record
-        if not start<=row.closed_date<=end:raise ValueError('Retained realized record falls outside selected month')
+        validate_broker_report_date(row.closed_date,period_start=start,period_end=end)
         for value in (row.quantity,row.proceeds,row.cost_basis,row.gain_loss):_decimal(value)
         rows.append((row.closed_date.isoformat(),_instrument(row.instrument),str(row.quantity),
             str(row.proceeds),str(row.cost_basis),str(row.gain_loss)))

@@ -6,6 +6,7 @@ from decimal import Decimal
 from hashlib import sha256
 import json
 
+from campaigniq.broker_report_period import validate_broker_report_date
 from campaigniq.account_import_preview import AccountImportPreviewService
 from campaigniq.account_reconciliation_preview import ReadOnlyArtifacts
 from campaigniq.account_signedin_inputs import SignedInMonthlyInputs
@@ -89,7 +90,7 @@ def _results_session(service,session,draft,account_id,revision):
     broker_rows=[];broker_total=Decimal(0)
     for attribution in realized.attributions:
         row=attribution.record
-        if not start<=row.closed_date<=end:raise ValueError('Realized record falls outside selected month')
+        validate_broker_report_date(row.closed_date,period_start=start,period_end=end)
         for value in (row.quantity,row.proceeds,row.cost_basis,row.gain_loss):_decimal(value)
         broker_rows.append((row.closed_date.isoformat(),_instrument(row.instrument),str(row.quantity),
             str(row.proceeds),str(row.cost_basis),str(row.gain_loss)))

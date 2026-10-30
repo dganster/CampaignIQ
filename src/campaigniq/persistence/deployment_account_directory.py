@@ -98,7 +98,10 @@ class DirectoryTransaction:
                 raise ValueError('Configured identity issuer required')
         directory,actor=self._actor(user,lock=True)
         updated=getattr(directory,command)(actor.identity,expected_revision=expected_revision,**arguments)
-        if updated.revision!=directory.revision+1 or updated.events[:-1]!=directory.events:
+        return self._persist_transition(directory,updated)
+
+    def _persist_transition(self,current,updated):
+        if updated.revision!=current.revision+1 or updated.events[:-1]!=current.events:
             raise ValueError('Invalid directory transition')
         verify_legacy_workspace_bindings(updated,self.settings.authorization,trusted_issuer=self.settings.trusted_issuer)
         from psycopg.types.json import Jsonb
@@ -106,7 +109,7 @@ class DirectoryTransaction:
         result=self.conn.execute('''UPDATE campaigniq_accounts.directories
             SET revision=%s,document=%s,document_sha256=%s,updated_at=now()
             WHERE registry_id=%s AND revision=%s''',
-            (updated.revision,Jsonb(document),checksum(document),self.settings.registry_id,directory.revision))
+            (updated.revision,Jsonb(document),checksum(document),self.settings.registry_id,current.revision))
         if result.rowcount!=1:raise ValueError('Directory changed; reload')
         self._append_event(updated.events[-1])
         if self._load()!=updated:raise ValueError('Directory write verification differs')
