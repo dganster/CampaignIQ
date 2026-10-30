@@ -4,14 +4,15 @@ from campaigniq.broker_account_binding import KINDS
 from campaigniq.import_draft_bridge import RestoredUpload
 
 
-def render(st, service, server_user, *, selected_account_id=None):
+def render(st, service, server_user, *, selected_account_id=None, deployment=False):
+    if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         overview = service.gateway.overview(server_user)
         with st.expander('Monthly inputs for new brokerage accounts'):
-            st.caption('Local development only. Existing workspace records are untouched. '
-                       'Publish locally stores a reconciled month only in the local development database.')
+            st.caption('Save source documents, check closing inventory, and publish a reconciled month for the selected account.' if deployment else
+                'Local development only. Existing workspace records are untouched. Publish locally stores a reconciled month only in the local development database.')
             if not overview.accounts:
-                st.info('Add a new brokerage account in Local account administration first.')
+                st.info('Add a new brokerage account in Account administration first.' if deployment else 'Add a new brokerage account in Local account administration first.')
                 return
             choices = {a.id:a for a in overview.accounts}
             if selected_account_id is not None and selected_account_id not in choices:
@@ -22,7 +23,9 @@ def render(st, service, server_user, *, selected_account_id=None):
             account = choices[account_id]
             key = 'signedin-input:' + service.gateway._directory.registry_id + ':' + overview.user_id + ':' + account_id
             if not service.gateway.storage_ready(server_user):
-                if overview.administrator:
+                if deployment:
+                    st.error('Account storage could not be verified. Contact an administrator.')
+                elif overview.administrator:
                     st.info('Initialize the separate local input tables before saving drafts.')
                     if st.button('Enable local monthly input storage', key=key + ':initialize'):
                         service.gateway.initialize(server_user)
@@ -74,7 +77,7 @@ def render(st, service, server_user, *, selected_account_id=None):
             st.caption('Saved document revision ' + str(draft.revision))
             published = service.published(server_user, account_id, draft.id, draft.revision)
             if published:
-                st.success('This month is published locally. Saved originals are preserved.')
+                st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
             if account.writable and not published:
                 with st.form(key + ':upload', clear_on_submit=True):
                     role = st.selectbox('Document role', UPLOAD_ROLES, key=key + ':role')
@@ -115,7 +118,7 @@ def render(st, service, server_user, *, selected_account_id=None):
             if published and st.button('View published results', key=key + ':results'):
                 result = service.results(server_user, account_id, draft.id, draft.revision)
                 st.subheader('Published results · ' + result.month)
-                st.caption('Saved local generation • Source revision ' + str(result.revision) +
+                st.caption(('Saved generation • Source revision ' if deployment else 'Saved local generation • Source revision ') + str(result.revision) +
                     ' • ' + str(result.original_documents) + ' original documents verified. Read-only view.')
                 st.write('Closing positions')
                 if result.positions:
@@ -141,20 +144,23 @@ def render(st, service, server_user, *, selected_account_id=None):
                     st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
                     for warning in result.crypto_warnings:
                         st.warning(warning)
-            if account.writable and not published:
+            publication_enabled=getattr(service,'publication_enabled',True)
+            if account.writable and not published and not publication_enabled:
+                st.caption('Publication is not enabled for this application.')
+            if account.writable and not published and publication_enabled:
                 with st.form(key + ':publication:' + str(forex) + ':' + str(crypto)):
-                    confirm = st.checkbox('I authorize publication to the local development database',
+                    confirm = st.checkbox((f'I authorize publication for {account.name} · {draft.year:04d}-{draft.month:02d}' if deployment else 'I authorize publication to the local development database'),
                         key=key + ':authorize:' + str(forex) + ':' + str(crypto))
                     st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
                                'Existing published months cannot be replaced.')
-                    if st.form_submit_button('Publish locally'):
+                    if st.form_submit_button('Publish month' if deployment else 'Publish locally'):
                         service.publish(server_user, account_id, draft.id, draft.revision,
-                            authorize_local_publication=confirm,
+                            **({"confirm_publication":confirm} if deployment else {"authorize_local_publication":confirm}),
                             forex_applicable=forex, crypto_applicable=crypto)
                         st.rerun()
     except PermissionError:
-        st.error('Current sign-in no longer has permission for this account. Reload the preview.')
+        st.error('Current sign-in no longer has permission for this account. Reload the account list.' if deployment else 'Current sign-in no longer has permission for this account. Reload the preview.')
     except ValueError as error:
         st.error(str(error))
     except Exception:
-        st.error('Local inputs could not be verified. Reload before retrying.')
+        st.error('Account inputs could not be verified. Reload before retrying.' if deployment else 'Local inputs could not be verified. Reload before retrying.')

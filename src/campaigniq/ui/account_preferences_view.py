@@ -34,12 +34,16 @@ class PreferenceStorage:
     def initialize(self):raise PermissionError('Explicit administrator action required')
 
 
-def render(ui,service,user,account_id,identity,snapshot,*,administrator=False):
+def render(ui,service,user,account_id,identity,snapshot,*,administrator=False,deployment=False):
+    if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         adapter=PreferenceStorage(service,user,account_id,identity,snapshot)
     except PreferenceIntegrityError:
         ui.sidebar.warning('Saved display preferences could not be verified. Changes apply for this visit.')
         render_preferences(ui,snapshot,AccessContext(identity,account_id),persist=False)
+        return
+    if deployment and not adapter.saved.storage_ready:
+        ui.sidebar.error("Saved preference storage could not be verified.")
         return
     if not adapter.saved.storage_ready and administrator:
         if ui.sidebar.button('Enable local preference storage',key='enable-preference-storage'):

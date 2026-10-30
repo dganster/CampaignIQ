@@ -4,17 +4,18 @@ from hashlib import sha256
 from campaigniq.account_signedin_comparison import PublishedSelection
 
 
-def render(st,service,server_user):
+def render(st,service,server_user,*,deployment=False):
+    if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         overview=service.gateway.overview(server_user)
         with st.expander('Compare published accounts'):
-            st.caption('Local published months only. Account results remain separate. '
-                'Combined quantities are optional; monetary results are never combined here.')
+            st.caption(('Published months for new accounts only. ' if deployment else 'Local published months only. ')+
+                'Account results remain separate. Combined quantities are optional; monetary results are never combined here.')
             if not overview.accounts:
                 st.info('No new brokerage accounts are available for comparison.')
                 return
             if not service.gateway.storage_ready(server_user):
-                st.info('Enable local monthly input storage before comparing published accounts.')
+                st.info('Account storage could not be verified.' if deployment else 'Enable local monthly input storage before comparing published accounts.')
                 return
             accounts={a.id:a for a in overview.accounts}
             root='signedin-comparison:'+service.gateway._directory.registry_id+':'+overview.user_id
@@ -73,4 +74,4 @@ def render(st,service,server_user):
     except (ValueError,FileNotFoundError):
         st.error('The entire comparison could not be verified. Reload comparison sources and check the selected published months.')
     except Exception:
-        st.error('Local comparison stopped. No partial results are displayed.')
+        st.error('Account comparison stopped. No partial results are displayed.' if deployment else 'Local comparison stopped. No partial results are displayed.')

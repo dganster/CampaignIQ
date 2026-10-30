@@ -34,7 +34,9 @@ def render_reports(ui, snapshot, view, *, identity, preferences_renderer=None):
             render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False)))
 
 
-def render(st, service, *, administration):
+def render(st, service, *, administration, deployment=False):
+    if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
+    mode={"deployment":True} if deployment else {}
     if st.user.to_dict().get('is_logged_in') is not True:
         st.title('CampaignIQ')
         if st.button('Sign in'): st.login()
@@ -42,7 +44,7 @@ def render(st, service, *, administration):
     try:
         overview = service.choices(st.user)
         root = 'account-dashboard:' + service.store.registry_id + ':' + overview.user_id + ':'
-        st.sidebar.caption('LOCAL DEVELOPMENT • Existing data is read-only')
+        st.sidebar.caption('Account workspace • Existing accounts are read-only' if deployment else 'LOCAL DEVELOPMENT • Existing data is read-only')
         if st.sidebar.button('Sign out', key=root+'logout'):
             # Discard cached account screen state at logout. Financial bytes
             # are not stored in session state or a process-global report cache.
@@ -55,7 +57,7 @@ def render(st, service, *, administration):
             st.info('No brokerage accounts are available to this sign-in.')
             if overview.administrator:
                 from campaigniq.ui.account_signedin_administration_view import render as admin
-                admin(st, administration, st.user)
+                admin(st, administration, st.user, **mode)
             return
         selector = root+'account'
         if st.session_state.get(selector) not in choices: st.session_state[selector] = next(iter(choices))
@@ -74,26 +76,26 @@ def render(st, service, *, administration):
         ui.session_state['_last-report-view'] = view
         if view == 'Administration':
             from campaigniq.ui.account_signedin_administration_view import render as admin
-            admin(ui, administration, st.user)
+            admin(ui, administration, st.user, **mode)
             return
         if view == 'Compare accounts':
             from campaigniq.ui.account_signedin_comparison_view import render as compare
-            compare(ui, service.inputs, st.user)
+            compare(ui, service.inputs, st.user, **mode)
             return
         if view == 'Data':
             st.title('Data · '+account.name)
             if account.legacy:
-                st.info('Existing saved account data is read-only in this local development view.')
+                st.info('Existing saved account data is read-only.' if deployment else 'Existing saved account data is read-only in this local development view.')
                 if ui.button('Verify existing saved data'):
                     result = service.legacy.inventory(st.user, selected)
                     ui.success('Original documents and storage adapters match.')
                     ui.dataframe([{'Artifacts':result.artifact_count,'Active drafts':result.active_drafts,
                                    'Original versions':result.document_versions}], hide_index=True)
                 from campaigniq.ui.account_legacy_results_view import render as existing
-                existing(ui, service.legacy, st.user, selected)
+                existing(ui, service.legacy, st.user, selected, **mode)
             else:
                 from campaigniq.ui.account_signedin_inputs_view import render as inputs
-                inputs(ui, service.inputs, st.user, selected_account_id=selected)
+                inputs(ui, service.inputs, st.user, selected_account_id=selected, **mode)
             return
         snapshot = service.snapshot(st.user, selected, include_history=True)
         if not snapshot.list_keys(suffix='-realized-attributions.json'):
@@ -112,7 +114,7 @@ def render(st, service, *, administration):
         if hasattr(service,'preferences'):
             from campaigniq.ui.account_preferences_view import render as personal_preferences
             preferences_renderer = lambda scoped_ui: personal_preferences(scoped_ui,service.preferences,st.user,
-                selected,st.user.to_dict()['sub'],snapshot,administrator=overview.administrator)
+                selected,st.user.to_dict()['sub'],snapshot,administrator=overview.administrator,**mode)
         render_reports(ui, snapshot, view, identity=st.user.to_dict()['sub'],preferences_renderer=preferences_renderer)
     except (ValueError, PermissionError, KeyError):
         st.error('Account access or saved report sources could not be verified. Reload after checking the account directory.')

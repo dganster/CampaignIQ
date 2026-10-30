@@ -150,3 +150,17 @@ def test_preferences_job_has_fixed_reports_and_rejects_combined_modes(tmp_path):
         a.receive_report(output,record(name))
         assert (output/name).stat().st_mode&0o777==0o600
     with pytest.raises(ValueError):a.run_admin_rehearsal(tmp_path/'never',development_only=True,dashboard=True,preferences=True)
+
+
+def test_application_bundle_imports_without_site_packages_and_has_fixed_private_reports(tmp_path):
+    destination=tmp_path/'application.zip';a.build_bundle(destination,job='application')
+    with zipfile.ZipFile(destination) as archive:
+        assert json.loads(archive.read('bundle.json'))['job']=='application'
+        archive.extractall(tmp_path/'isolated')
+    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_application,account_deployment_application_rehearsal"
+    result=subprocess.run([sys._base_executable,'-I','-S','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+    output=tmp_path/'reports';output.mkdir()
+    a.receive_report(output,record('deployment-application-report.json'))
+    assert (output/'deployment-application-report.json').stat().st_mode&0o777==0o600
+    with pytest.raises(ValueError):a.run_admin_rehearsal(tmp_path/'never',development_only=True,preferences=True,application=True)

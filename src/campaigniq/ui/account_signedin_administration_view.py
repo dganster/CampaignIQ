@@ -2,13 +2,14 @@
 from campaigniq.account_administration import Permission
 
 
-def render(st, service, server_user):
+def render(st, service, server_user, *, deployment=False):
+    if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         directory = service.snapshot(server_user)
     except PermissionError:
         return
     except Exception:
-        st.error('Local administration access could not be verified.')
+        st.error('Administration access could not be verified.' if deployment else 'Local administration access could not be verified.')
         return
     actor = next(u for u in directory.users if u.identity.issuer == service._issuer
                  and u.identity.subject == server_user.to_dict().get('sub'))
@@ -34,14 +35,14 @@ def render(st, service, server_user):
         except ValueError as error:
             st.error(str(error))
         except Exception:
-            st.error('The local action failed. Reload before retrying.')
+            st.error('The action failed. Reload before retrying.' if deployment else 'The local action failed. Reload before retrying.')
         else:
             st.session_state[epoch_key] = epoch + 1
-            st.session_state[root + 'flash'] = 'Local directory change saved and audited. Production unchanged.'
+            st.session_state[root + 'flash'] = 'Directory change saved and audited.' if deployment else 'Local directory change saved and audited. Production unchanged.'
             st.rerun()
 
-    with st.expander('Local account administration'):
-        st.caption('Changes affect only this local account directory. Financial data remains read-only. '
+    with st.expander('Account administration' if deployment else 'Local account administration'):
+        st.caption(('Manage users, brokerage accounts, and sharing. ' if deployment else 'Changes affect only this local account directory. Financial data remains read-only. ')+
                    'Administrator status alone grants no access to another owner’s financial records.')
         if st.button('Reload directory', key=root + 'reload'):
             st.session_state[epoch_key] = epoch + 1
@@ -87,7 +88,7 @@ def render(st, service, server_user):
         with accounts_tab:
             st.dataframe([dict(Account=a.name, Owner=labels[a.owner_id], Broker=a.broker,
                 Status='Archived' if a.archived else 'Active',
-                Storage='Retained existing workspace' if a.legacy else 'New account; financial activation pending')
+                Storage='Retained existing workspace' if a.legacy else ('New brokerage account' if deployment else 'New account; financial activation pending'))
                 for a in directory.accounts], hide_index=True)
             if directory.accounts:
                 target = st.selectbox('Account to manage', list(account_labels), format_func=account_labels.get,
@@ -108,12 +109,12 @@ def render(st, service, server_user):
                 owner = st.selectbox('New account owner', list(owners), format_func=owners.get, key=form_key + ':owner')
                 name = st.text_input('New account name', key=form_key + ':name')
                 broker = st.text_input('Broker', value='schwab', key=form_key + ':broker')
-                st.caption('Adds directory metadata only. New-account financial storage and imports are not activated here.')
+                st.caption('Adds a brokerage account for its selected owner. Save its broker binding before uploading documents.' if deployment else 'Adds directory metadata only. New-account financial storage and imports are not activated here.')
                 if st.form_submit_button('Add account'):
                     apply(expected, 'add_account', owner_id=owner, name=name, broker=broker)
         with grants_tab:
-            st.caption('Owners have implicit edit permission. This preview still provides only financial reads, '
-                       'even when an Edit grant is recorded.')
+            st.caption('Owners have edit permission. View permits reading; Edit permits preparing new-account months. Existing accounts remain read-only.' if deployment else
+                'Owners have implicit edit permission. This preview still provides only financial reads, even when an Edit grant is recorded.')
             if directory.accounts and len(directory.users) > 1:
                 target = st.selectbox('Account for sharing', list(account_labels), format_func=account_labels.get,
                                       key=key + 'grant-account')

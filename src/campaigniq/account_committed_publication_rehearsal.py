@@ -60,8 +60,8 @@ def cleanup_clone(control,name,oid,role_oids,before):
         for role in role_oids:control.execute(sql.SQL('DROP ROLE {}').format(sql.Identifier(role)))
 
 
-def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_preferences=False):
-    if any(type(x) is not bool for x in (verify_dashboard,verify_preferences)) or (verify_dashboard and verify_preferences):raise ValueError('One explicit rehearsal mode required')
+def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_preferences=False,verify_application=False):
+    if any(type(x) is not bool for x in (verify_dashboard,verify_preferences,verify_application)) or sum((verify_dashboard,verify_preferences,verify_application))>1:raise ValueError('One explicit rehearsal mode required')
     import psycopg
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
@@ -69,10 +69,10 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
     output.mkdir(parents=True,exist_ok=False,mode=0o700)
     token=uuid4().hex;database=clone_name('campaigniq_pub_rehearsal_'+token)
     roles=['ciq_commit_input_'+token[:16],'ciq_commit_publish_'+token[:16]]
-    if verify_preferences:roles.append('ciq_commit_prefs_'+token[:16])
+    if verify_preferences or verify_application:roles.append('ciq_commit_prefs_'+token[:16])
     role_oids={};roles_committed=False;clone_oid=None;before=None;before_acl=None
-    report_name='deployment-preferences-report.json' if verify_preferences else 'deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
-    report=dict(format='campaigniq.deployment-preferences-rehearsal' if verify_preferences else 'campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
+    report_name='deployment-application-report.json' if verify_application else 'deployment-preferences-report.json' if verify_preferences else 'deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
+    report=dict(format='campaigniq.deployment-application-rehearsal' if verify_application else 'campaigniq.deployment-preferences-rehearsal' if verify_preferences else 'campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
         source_database=DATABASE,disposable_database=database,production_connection_made=False,account_mode_activated=False)
     def passed(name):report['checks'][name]=True;print(name.replace('_',' ')+': PASS',flush=True)
     @contextmanager
@@ -109,7 +109,7 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             for role in roles:role_oids[role]=conn.execute('SELECT oid FROM pg_roles WHERE rolname=%s',(role,)).fetchone()[0]
             plan=review_runtime_grants(conn,roles[0]);apply_runtime_grants(conn,roles[0],reviewed_sha256=m.digest(plan));save(output/'reviewed-grant-plan.json',plan)
             plan=review_publication_grants(conn,roles[1]);apply_publication_grants(conn,roles[1],reviewed_sha256=m.digest(plan));save(output/'reviewed-publication-grant-plan.json',plan)
-            if verify_preferences:
+            if verify_preferences or verify_application:
                 from campaigniq.account_preference_roles import review_preference_grants,apply_preference_grants
                 plan=review_preference_grants(conn,roles[2]);unchanged=role_catalog_digest(conn)
                 try:
@@ -267,16 +267,19 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             assert snapshot()==prior
             passed('independently_committed_receipt_conflict_withholds_entire_result_without_reader_repair')
 
-            if verify_preferences:
+            if verify_preferences or verify_application:
                 from types import SimpleNamespace
-                from campaigniq.account_deployment_preferences_rehearsal import verify_preferences as verify_personal
+                if verify_application:
+                    from campaigniq.account_deployment_application_rehearsal import verify_application as verify_personal
+                else:
+                    from campaigniq.account_deployment_preferences_rehearsal import verify_preferences as verify_personal
                 preference_store=store(roles[2])
                 @contextmanager
                 def preference_connection(*,readonly):
                     with restricted(roles[2],readonly=readonly) as conn:yield conn
                 with patch.object(preference_store,'_connection',new=preference_connection):
-                    verify_personal(SimpleNamespace(store=preference_store,reader=reader,user=user,foreign=foreign,
-                        accounts=(a,b),owner=owner,snapshot=snapshot,restricted=restricted,roles=roles),passed)
+                    verify_personal(SimpleNamespace(store=preference_store,reader=reader,writer=writer,user=user,foreign=foreign,
+                        accounts=(a,b),drafts=drafts,revisions=revisions,identities=identities,owner=owner,snapshot=snapshot,restricted=restricted,roles=roles),passed)
             if verify_dashboard:
                 from types import SimpleNamespace
                 from campaigniq.account_deployment_dashboard_rehearsal import verify_parity
