@@ -13,10 +13,13 @@ def verify_application(c,passed):
     before=c.snapshot()
     disabled=DeploymentApplication(c.reader,c.writer,c.store)
     app=DeploymentApplication(c.reader,c.writer,c.store,publication_enabled=True)
+    from campaigniq.account_deployment_startup import verify_startup
+    verify_startup(app)
     assert c.snapshot()==before and disabled.inputs.publication_enabled is False
     assert app.preferences.store is c.store and app.inputs._publisher.writer is c.writer
     assert app.inputs._inputs.gateway._directory is c.reader
     passed('application_composes_three_distinct_restricted_roles_without_connection_side_effects_or_implicit_publication')
+    passed('startup_checks_all_three_actual_roles_schema_audit_and_trusted_mapping_in_readonly_transactions')
     def command(action,**values):return app.administration.execute(c.user,app.administration.snapshot(c.user).revision,action,**values)
     directory=app.administration.snapshot(c.user);owner=directory.user(c.user.identity).id
     try:app.administration.snapshot(c.foreign)

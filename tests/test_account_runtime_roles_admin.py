@@ -157,7 +157,7 @@ def test_application_bundle_imports_without_site_packages_and_has_fixed_private_
     with zipfile.ZipFile(destination) as archive:
         assert json.loads(archive.read('bundle.json'))['job']=='application'
         archive.extractall(tmp_path/'isolated')
-    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_application,account_deployment_application_rehearsal"
+    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_application,account_deployment_application_rehearsal,account_deployment_startup,account_release_config,account_release_packet"
     result=subprocess.run([sys._base_executable,'-I','-S','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],capture_output=True,text=True)
     assert result.returncode==0,result.stderr
     output=tmp_path/'reports';output.mkdir()
