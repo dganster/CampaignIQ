@@ -89,12 +89,7 @@ def apply_migrations(conn):
     conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('campaigniq_accounts:migrations',0))")
     exists=conn.execute('SELECT 1 FROM pg_namespace WHERE nspname=%s',(SCHEMA,)).fetchone()
     if exists:
-        tables={row[0] for row in conn.execute(
-          "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
-        if tables != TABLES:raise ValueError('Untracked or incomplete account schema; no adoption')
-        rows=conn.execute('SELECT version,source_sha256,catalog_sha256 FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-        if rows != [(VERSION,SOURCE_SHA256,catalog_digest(conn))]:
-            raise ValueError('Migration source, version or schema integrity differs')
+        verify_schema(conn)
         return False
     for statement in SQL.split(';'):
         if statement.strip():conn.execute(statement)
@@ -104,3 +99,14 @@ def apply_migrations(conn):
     if conn.info.transaction_status != TransactionStatus.INTRANS:
         raise ValueError('Migration transaction failed')
     return True
+
+
+def verify_schema(conn):
+    """Read-only compatibility check. Never initializes or migrates a schema."""
+    conn.execute("SET LOCAL search_path=pg_catalog")
+    tables={row[0] for row in conn.execute(
+      "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
+    if tables != TABLES:raise ValueError('Untracked or incomplete account schema; no adoption')
+    rows=conn.execute('SELECT version,source_sha256,catalog_sha256 FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
+    if rows != [(VERSION,SOURCE_SHA256,catalog_digest(conn))]:
+        raise ValueError('Migration source, version or schema integrity differs')
