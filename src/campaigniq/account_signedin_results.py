@@ -52,8 +52,8 @@ def _decimal(value):
     return result
 
 
-def _results_session(service,session,draft,account_id,revision):
-    if not _published_session(service,session,account_id,draft,revision):
+def _results_session(service,session,draft,account_id,revision,*,receipt_format='campaigniq.signedin_local_account_publication'):
+    if not _published_session(service,session,account_id,draft,revision,receipt_format=receipt_format):
         raise ValueError('This saved month has not been published locally')
     month=f'{draft.year:04d}-{draft.month:02d}'
     prefix=month+'-'

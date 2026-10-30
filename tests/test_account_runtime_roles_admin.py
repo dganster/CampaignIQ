@@ -110,3 +110,15 @@ def test_publication_bundle_includes_only_named_public_synthetic_fixtures(tmp_pa
     code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_deployment_publication_rehearsal;from campaigniq.account_selection_rehearsal import synthetic_sources;assert len(synthetic_sources('12345678'))==4"
     subprocess.run([sys._base_executable,'-I','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],check=True,capture_output=True,text=True)
     with pytest.raises(ValueError):a.build_bundle(tmp_path/'bad.zip',job='arbitrary')
+
+
+def test_committed_bundle_and_report_transport_remain_fixed_and_private(tmp_path):
+    destination=tmp_path/'committed.zip';a.build_bundle(destination,job='committed')
+    with zipfile.ZipFile(destination) as archive:
+        assert json.loads(archive.read('bundle.json'))['job']=='committed'
+        archive.extractall(tmp_path/'isolated')
+    code="import sys;sys.path[:0]=sys.argv[1:];from campaigniq import account_committed_publication_rehearsal;from campaigniq.account_selection_rehearsal import synthetic_sources;assert len(synthetic_sources('12345678'))==4"
+    subprocess.run([sys._base_executable,'-I','-c',code,str(tmp_path/'isolated/code'),str(tmp_path/'isolated/deps')],check=True,capture_output=True,text=True)
+    output=tmp_path/'reports';output.mkdir()
+    a.receive_report(output,record('committed-publication-report.json'))
+    with pytest.raises(ValueError):a.run_admin_rehearsal(tmp_path/'never',development_only=True,publication=True,committed=True)

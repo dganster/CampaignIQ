@@ -66,7 +66,7 @@ def published_signedin(service, user, account_id, draft_id, revision):
         return _published_session(service, session, account_id, draft, revision)
 
 
-def _published_session(service, session, account_id, draft, revision):
+def _published_session(service, session, account_id, draft, revision, *, receipt_format='campaigniq.signedin_local_account_publication'):
     """Verify the selected generation on an already scoped session."""
     end = date(draft.year, draft.month, monthrange(draft.year, draft.month)[1])
     prefix = f'{draft.year:04d}-{draft.month:02d}-'
@@ -79,7 +79,7 @@ def _published_session(service, session, account_id, draft, revision):
     receipt = json.loads(session.artifacts.read_text(required[2]))
     from campaigniq.persistence.lot_book_store import load_lot_book_from_storage
     if (marker != dict(format='campaigniq.finalized_month', version=1, period_end=end.isoformat())
-        or receipt.get('format') != 'campaigniq.signedin_local_account_publication'
+        or receipt.get('format') != receipt_format
         or receipt.get('registry_id') != service.gateway._directory.registry_id
         or receipt.get('account_id') != account_id or receipt.get('draft_id') != str(draft.id)
         or receipt.get('draft_revision') != revision or receipt.get('period_end') != end.isoformat()
