@@ -108,5 +108,13 @@ def verify_schema(conn):
       "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
     if tables != TABLES:raise ValueError('Untracked or incomplete account schema; no adoption')
     rows=conn.execute('SELECT version,source_sha256,catalog_sha256 FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
-    if rows != [(VERSION,SOURCE_SHA256,catalog_digest(conn))]:
-        raise ValueError('Migration source, version or schema integrity differs')
+    current=catalog_digest(conn)
+    if rows == [(VERSION,SOURCE_SHA256,current)]:return
+    # Version 1 SQL/checksum is immutable. A reviewed grant transition records a
+    # second catalog signature; runtime verification still performs no writes.
+    from campaigniq.account_runtime_roles import SOURCE_SHA256 as role_source,role_catalog_digest
+    if (len(rows)==2 and rows[0][0:2]==(VERSION,SOURCE_SHA256)
+            and isinstance(rows[0][2],str) and len(rows[0][2])==64
+            and rows[1]==(2,role_source,role_catalog_digest(conn))):
+        return
+    raise ValueError('Migration source, version or schema integrity differs')
