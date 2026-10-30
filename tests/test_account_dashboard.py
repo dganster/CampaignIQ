@@ -139,3 +139,20 @@ def test_scoped_values_survive_widget_cleanup_without_restoring_trigger_or_uploa
     assert 'publish' not in a.saved and 'source' not in a.saved
     del a['range']
     with pytest.raises(KeyError):a['range']
+
+
+def test_history_originals_join_the_new_account_readonly_snapshot(new_dashboard,monkeypatch):
+    from hashlib import sha256
+    from campaigniq import account_history_evidence as history
+    c=new_dashboard
+    original=c.repositories[c.account].docs[(c.draft.id,'thinkorswim_trade_history')][2]
+    observations=[]
+    def rows(conn,scope,*,legacy):
+        observations.append((conn,scope,legacy))
+        assert conn is c.read_sessions[-1]._connection
+        return [('source',sha256(original).hexdigest(),original)]
+    monkeypatch.setattr(history,'retained_history_rows',rows)
+    snapshot=c.dashboard.snapshot(c.user,c.account,include_history=True)
+    assert snapshot.history.originals[0].content==original and not snapshot.history.gaps
+    assert len(observations)==1 and observations[0][2] is False
+    assert c.snapshots==[True] and all(not x._active for x in c.read_sessions)

@@ -42,13 +42,29 @@ keeps report access available with visit-local preferences in that case. Display
 preference changes do not modify the account directory or its audit ledger.
 The Reload saved preferences control recovers from another tab's newer save.
 
-Supplementary filesystem trade-history CSV evidence has not been attached to
-the scoped reader. The UI states this limitation, and report helpers receive
-an empty temporary history location rather than another workspace's or the
-developer's files. Published record analytics remain available; unsupported
-history classifications retain the existing incomplete/unclassified behavior.
-Browser URL sharing/back-forward restoration is not enabled for scoped reports;
-report routes remain account-specific visit state.
+Supplementary trade-history evidence now comes from the selected account's
+saved original documents, read in the same read-only repeatable snapshot as
+its published artifacts. The exact byte size and SHA256 must match that
+month's published Thinkorswim input provenance and the original's stored hash.
+A current securities broker binding, when present, is rechecked. A retained
+superseded document or a document in an abandoned draft may supply the exact
+published original; an unpublished replacement is never substituted.
+
+Only matching originals are staged, without changing their bytes, in a private
+temporary directory under canonical month filenames. Uploaded filenames are
+never used as paths. The existing journal/source, roll and strategy readers
+still apply their own provenance and campaign checks. The directory and files
+are deleted when rendering ends, including Streamlit stop/rerun paths. There
+is no shared-folder search and no filesystem fallback to another account.
+
+The UI reports how many published months have matching retained originals.
+Unavailable, changed or unbound originals leave a supplementary-history gap;
+financial records and published journals are not rewritten. Existing validation
+of published new-account source receipts and originals stays active. Missing original
+bytes are not reconstructed from totals. Original documents, all prior
+versions and financial artifacts remain unchanged. Browser URL sharing and
+back-forward restoration remain outside this scoped composition; reporting
+routes stay account-specific visit state.
 
 The Performance page also handles unavailable campaign win rate as an em dash
 instead of attempting float(None), which affected accounts with no closed

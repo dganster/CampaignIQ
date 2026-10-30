@@ -24,10 +24,11 @@ def render_reports(ui, snapshot, view, *, identity, preferences_renderer=None):
     module.ACCESS = None  # Directory administration is composed separately.
     module.ARTIFACT_STORAGE = snapshot
     with TemporaryDirectory(prefix='campaigniq-dashboard-') as directory:
-        # Never discover another account's CSVs or the developer test fixtures.
-        # Published artifacts supply the reports; supplementary CSV evidence
-        # has not been attached to this account-aware report reader yet.
-        module.HISTORICAL_SOURCE_ROOT = Path(directory) / 'history'
+        # The root contains only this authorized snapshot's retained originals.
+        # Uploaded filenames and shared developer folders are never consulted.
+        from campaigniq.account_history_evidence import HistoryEvidence,materialize_history
+        history=snapshot.history or HistoryEvidence()
+        module.HISTORICAL_SOURCE_ROOT = materialize_history(Path(directory)/'history',history)
         module.AUTHORITATIVE_STATE_DIR = Path(directory) / 'state'
         module.render_dashboard(selected_view=view, preferences_renderer=preferences_renderer or (lambda st:
             render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False)))
@@ -94,12 +95,19 @@ def render(st, service, *, administration):
                 from campaigniq.ui.account_signedin_inputs_view import render as inputs
                 inputs(ui, service.inputs, st.user, selected_account_id=selected)
             return
-        snapshot = service.snapshot(st.user, selected)
+        snapshot = service.snapshot(st.user, selected, include_history=True)
         if not snapshot.list_keys(suffix='-realized-attributions.json'):
             st.title('CampaignIQ · '+account.name)
             st.info('No published reports for this account yet. Open Data to prepare its first month.')
             return
-        st.caption(account.name+' • Published account records. Supplementary historical CSV evidence is not loaded here.')
+        st.caption(account.name+' • Published account records.')
+        history=snapshot.history
+        if history is not None:
+            st.caption(f'Trade-history originals verified for {len(history.originals)} of {len(history.published_months)} published months.')
+            if history.gaps:
+                with ui.expander('Trade-history evidence coverage'):
+                    ui.caption('Published journals and financial records remain available. Supplementary source details require their matching retained originals.')
+                    for gap in history.gaps:ui.caption(gap)
         preferences_renderer = None
         if hasattr(service,'preferences'):
             from campaigniq.ui.account_preferences_view import render as personal_preferences

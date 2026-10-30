@@ -16,7 +16,8 @@ from campaigniq.dashboard_sources import published_artifact_keys
 
 class ReportSnapshot:
     """Detached immutable account bytes. Never a reusable database capability."""
-    def __init__(self, namespace, rows):
+    def __init__(self, namespace, rows, *, history=None):
+        self.history = history
         self.namespace = namespace
         self._rows = MappingProxyType(dict(rows))
     def exists(self, key): return key in self._rows
@@ -66,7 +67,8 @@ class LocalAccountDashboard:
                 DashboardAccount(a.id, a.name, a.legacy, a.archived)
                 for a in directory.accounts if a.id in actor.account_ids))
 
-    def snapshot(self, user, account_id):
+    def snapshot(self, user, account_id, *, include_history=False):
+        if type(include_history) is not bool:raise ValueError("Explicit history selection required")
         # Authorize again: a selected UI account or prior overview is no capability.
         with self.legacy._authorized(user) as (_, directory, actor):
             directory.authorize(actor.identity, account_id)
@@ -78,7 +80,17 @@ class LocalAccountDashboard:
                     'WHERE namespace=%s ORDER BY artifact_key', (session.account.storage_scope,)).fetchall()
                 adapter = [(key, session.artifacts.read_text(key)) for key in session.artifacts.list_keys()]
                 if rows != adapter: raise ValueError('Legacy report source parity differs')
-                return ReportSnapshot(session.account.storage_scope, rows)
+                snapshot=ReportSnapshot(session.account.storage_scope, rows)
+                if include_history:
+                    from campaigniq.account_history_evidence import retained_history_rows,bind_history
+                    from campaigniq.broker_account_binding import bindings
+                    # Same connection/snapshot as financial sources, with fresh
+                    # directory authorization retained by the legacy session.
+                    current=self.store._load(conn)
+                    snapshot.history=bind_history(snapshot,
+                        retained_history_rows(conn,session.account.storage_scope,legacy=True),
+                        known_bindings=bindings(current,account_id))
+                return snapshot
         gateway = self.inputs.gateway
         # Like the results service: hold directory SHARE lock, financial reads
         # in a separate READ ONLY repeatable snapshot, and expire all handles.
@@ -106,6 +118,12 @@ class LocalAccountDashboard:
                     rows = [(k, session.artifacts.read_text(k)) for k in session.artifacts.list_keys()
                             if any(k.startswith(prefix) for prefix in visible)]
                     result = ReportSnapshot(session.artifacts.namespace, rows)
+                    if include_history:
+                        from campaigniq.account_history_evidence import retained_history_rows,bind_history
+                        from campaigniq.broker_account_binding import bindings
+                        result.history=bind_history(result,
+                            retained_history_rows(conn,session.artifacts.namespace,legacy=False),
+                            known_bindings=bindings(directory,account_id))
                     session._check()
                     return result
                 finally:

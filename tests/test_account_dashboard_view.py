@@ -26,7 +26,7 @@ class Service:
         return DashboardChoices('owner',False,(
             DashboardAccount('a','First account',True,False),
             DashboardAccount('b','Second account',True,False)))
-    def snapshot(self,user,account_id):
+    def snapshot(self,user,account_id,*,include_history=False):
         assert user.to_dict()['sub']=='owner'
         return ReportSnapshot(account_id,_candidate('12345678',double=account_id=='b'))
 class UI:
@@ -59,3 +59,28 @@ def test_account_selection_main_reports_and_screen_preferences_remain_separate(m
     assert not app.exception
     assert next(c for c in app.checkbox if c.label=='Fit columns to contents').value
     assert next(s for s in app.selectbox if s.label=='Time zone').value=='America/Denver'
+
+
+def test_account_reports_stage_only_matching_originals_and_remove_temp_files(monkeypatch):
+    import campaigniq.account_history_evidence as history
+    captured=[];materialize=history.materialize_history
+    def inspect(root,evidence):
+        path=materialize(root,evidence)
+        assert len(evidence.originals)==1
+        assert (path/'Account Trade History January 2025.csv').read_bytes()==evidence.originals[0].content
+        captured.append(path)
+        return path
+    monkeypatch.setattr(history,'materialize_history',inspect)
+    code=app_code().replace("        return ReportSnapshot(account_id,_candidate('12345678',double=account_id=='b'))",'''        from hashlib import sha256
+        from campaigniq.account_history_evidence import bind_history
+        from campaigniq.account_selection_rehearsal import synthetic_sources
+        from campaigniq.import_contract import MonthlyInputRole
+        snapshot=ReportSnapshot(account_id,_candidate('12345678',double=account_id=='b'))
+        raw=synthetic_sources('12345678',double=account_id=='b')[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY].getvalue()
+        snapshot.history=bind_history(snapshot,[('source',sha256(raw).hexdigest(),raw)])
+        return snapshot''')
+    app=AppTest.from_string(code).run(timeout=25)
+    assert not app.exception and captured and all(not p.exists() for p in captured)
+    assert any('verified for 1 of 1' in caption.value for caption in app.caption)
+    next(r for r in app.radio if r.label=='Navigate').set_value('Positions').run(timeout=25)
+    assert not app.exception and all(not p.exists() for p in captured)
