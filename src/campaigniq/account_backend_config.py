@@ -47,6 +47,7 @@ class AccountDatabaseTarget:
     database: str
     user: str
     port: int = 5432
+    transport: str = "verified-tls"
 
     def __post_init__(self):
         if (not isinstance(self.host,str) or len(self.host)>253 or
@@ -62,6 +63,10 @@ class AccountDatabaseTarget:
         for value in (self.database,self.user):
             if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]{0,62}',value):
                 raise ValueError('Explicit database and runtime role required')
+        if self.transport not in ('verified-tls','render-private-tls'):
+            raise ValueError('Explicit reviewed database transport required')
+        if self.transport=='render-private-tls' and not re.fullmatch(r'dpg-[a-z0-9]+-[a-z]',self.host):
+            raise ValueError('Render private TLS requires an exact internal database hostname')
         if type(self.port) is not int or not 1<=self.port<=65535:raise ValueError('Invalid database port')
 
     def conninfo(self,dsn):
@@ -72,7 +77,8 @@ class AccountDatabaseTarget:
         try:values=conninfo_to_dict(dsn)
         except Exception:raise ValueError('Invalid account database settings') from None
         allowed={'host','port','dbname','user','password','sslmode','sslrootcert','connect_timeout','application_name'}
-        expected=dict(host=self.host,port=str(self.port),dbname=self.database,user=self.user,sslmode='verify-full')
+        mode='require' if self.transport=='render-private-tls' else 'verify-full'
+        expected=dict(host=self.host,port=str(self.port),dbname=self.database,user=self.user,sslmode=mode)
         if set(values)-allowed or any(values.get(k)!=v for k,v in expected.items()):
             raise ValueError('Account database endpoint, role or verified TLS differs')
         values.update(connect_timeout='5',application_name='campaigniq_accounts')

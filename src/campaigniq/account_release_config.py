@@ -50,14 +50,15 @@ class AccountReleaseConfig:
     metadata_url:str
     publication_enabled:bool
     sha256:str
+    transport:str = "verified-tls"
     def __repr__(self):return 'AccountReleaseConfig(<private reviewed settings>)'
-    def target(self,role):return AccountDatabaseTarget(self.host,self.database,dict(self.roles)[role],self.port)
+    def target(self,role):return AccountDatabaseTarget(self.host,self.database,dict(self.roles)[role],self.port,self.transport)
 
 
 def parse_release(raw,*,reviewed_sha256):
     value=strict_json(raw)
     exact(value,('format','version','schema_version','registry_id','trusted_issuer','legacy_authorization','target','roles','source_files','auth','publication_enabled'))
-    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version']!=1
+    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version'] not in (1,2)
         or type(value['schema_version']) is not int or value['schema_version']!=4 or type(value['publication_enabled']) is not bool):
         raise ValueError('Unsupported account release configuration')
     if not isinstance(reviewed_sha256,str) or not re.fullmatch('[0-9a-f]{64}',reviewed_sha256) or digest(value)!=reviewed_sha256:
@@ -67,11 +68,13 @@ def parse_release(raw,*,reviewed_sha256):
     settings=AccountDirectorySettings(value['registry_id'],value['trusted_issuer'],tuple(sorted(mapping.items())))
     issuer=https(settings.trusted_issuer)
     if issuer.path not in ('','/'):raise ValueError('Account release requires the reviewed root issuer')
-    exact(value['target'],('host','port','database'));exact(value['roles'],('inputs','publication','preferences'))
+    target_keys=('host','port','database','transport') if value['version']==2 else ('host','port','database')
+    exact(value['target'],target_keys);exact(value['roles'],('inputs','publication','preferences'))
+    transport=value['target'].get('transport','verified-tls')
     if any(type(role) is not str for role in value['roles'].values()) or len(set(value['roles'].values()))!=3:raise ValueError('Three distinct runtime roles required')
     from campaigniq.account_runtime_roles import role_name
     for role in value['roles'].values():
-        role_name(role);AccountDatabaseTarget(value['target']['host'],value['target']['database'],role,value['target']['port'])
+        role_name(role);AccountDatabaseTarget(value['target']['host'],value['target']['database'],role,value['target']['port'],transport)
     files=value['source_files']
     if type(files) is not dict or not files:raise ValueError('Exact release source inventory required')
     for name,checksum in files.items():
@@ -87,7 +90,7 @@ def parse_release(raw,*,reviewed_sha256):
     if not isinstance(auth['client_id'],str) or not auth['client_id'] or auth['client_id']!=auth['client_id'].strip():
         raise ValueError('Explicit reviewed sign-in client required')
     return AccountReleaseConfig(settings,value['target']['host'],value['target']['port'],value['target']['database'],
-        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value))
+        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value),transport)
 
 
 def source_inventory(repo):
@@ -128,12 +131,14 @@ def release_document(settings,targets,auth,*,repo,publication_enabled=False):
         raise ValueError('Trusted account settings and three explicit role targets required')
     values=list(targets.values())
     if any(type(target) is not AccountDatabaseTarget for target in values):raise ValueError('Explicit reviewed role targets required')
-    endpoint=lambda target:(target.host,target.port,target.database)
+    endpoint=lambda target:(target.host,target.port,target.database,target.transport)
     if len({endpoint(target) for target in values})!=1:raise ValueError('Same reviewed database target required')
     target=targets['inputs']
     value=dict(format='campaigniq.account_release',version=1,schema_version=4,registry_id=settings.registry_id,
         trusted_issuer=settings.trusted_issuer,legacy_authorization=dict(settings.authorization),
         target=dict(host=target.host,port=target.port,database=target.database),roles={role:t.user for role,t in targets.items()},
         source_files=source_inventory(repo),auth=dict(auth),publication_enabled=publication_enabled)
+    if target.transport!='verified-tls':
+        value['version']=2;value['target']['transport']=target.transport
     parse_release(json.dumps(value),reviewed_sha256=digest(value))
     return value

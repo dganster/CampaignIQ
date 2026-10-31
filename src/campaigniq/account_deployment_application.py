@@ -85,7 +85,7 @@ class DeploymentApplication:
         stores=(input_store,publication_store,preference_store)
         if any(type(store) is not PostgresAccountDirectory for store in stores):raise ValueError('Three explicit deployment directory services required')
         if type(publication_enabled) is not bool:raise ValueError('Explicit publication availability required')
-        endpoint=lambda store:(store.target.host,store.target.port,store.target.database)
+        endpoint=lambda store:(store.target.host,store.target.port,store.target.database,store.target.transport)
         if (any(store.settings!=input_store.settings or endpoint(store)!=endpoint(input_store) for store in stores)
             or len({store.target.user for store in stores})!=3):
             raise ValueError('Same reviewed target and trusted mapping with three distinct roles required')
