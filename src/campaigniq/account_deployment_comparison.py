@@ -25,7 +25,7 @@ def compare_deployment_accounts(service,user,year,month,selections,*,include_pos
             try:
                 drafts=[]
                 for item in selections:
-                    session,_=_open_session(conn,gateway._directory.settings,user,item.account_id)
+                    session,_=_open_session(conn,gateway._directory.settings,user,item.account_id,continue_existing=gateway._continue_existing)
                     sessions.append(session);draft=service._lock(session,item.draft_id)
                     if (draft.year,draft.month)!=(year,month) or draft.revision!=item.revision:
                         raise ValueError('Selected month or displayed source revision changed')

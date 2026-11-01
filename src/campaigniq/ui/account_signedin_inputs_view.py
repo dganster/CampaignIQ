@@ -8,7 +8,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         overview = service.gateway.overview(server_user)
-        with st.expander('Monthly inputs for new brokerage accounts'):
+        with st.expander('Monthly inputs' if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 'Monthly inputs for new brokerage accounts'):
             st.caption('Save source documents, check closing inventory, and publish a reconciled month for the selected account.' if deployment else
                 'Local development only. Existing workspace records are untouched. Publish locally stores a reconciled month only in the local development database.')
             if not overview.accounts:
@@ -59,8 +59,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     st.rerun()
             if account.writable:
                 with st.form(key + ':create'):
-                    year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2025, key=key + ':year'))
-                    month = int(st.number_input('Month', min_value=1, max_value=12, value=1, key=key + ':month'))
+                    year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2026 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 2025, key=key + ':year'))
+                    month = int(st.number_input('Month', min_value=1, max_value=12, value=10 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 1, key=key + ':month'))
                     if st.form_submit_button('Create or resume draft'):
                         service.create(server_user, account_id, year, month)
                         st.rerun()
@@ -68,7 +68,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 st.info('View access only. Saved documents remain readable; uploads are disabled.')
             drafts = {str(d.id):d for d in service.drafts(server_user, account_id)}
             if not drafts:
-                st.info('No saved drafts for this new account.')
+                st.info('No saved monthly drafts.')
                 return
             selected = st.selectbox('Saved month', list(drafts),
                 format_func=lambda value: f'{drafts[value].year:04d}-{drafts[value].month:02d}', key=key + ':draft')

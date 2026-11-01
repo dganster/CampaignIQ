@@ -38,7 +38,7 @@ class DeploymentInputViewGateway:
             accounts=tuple(InputAccount(a.id,a.name,a.archived,
                 directory.authorize(actor.identity,a.id).writable,
                 tuple(sorted((kind,value.suffix) for kind,value in bindings(directory,a.id).items())))
-                for a in directory.accounts if not a.legacy and a.id in actor.account_ids)
+                for a in directory.accounts if (not a.legacy or self._backend._continue_existing) and a.id in actor.account_ids)
             return InputAccounts(actor.administrator,directory.revision,accounts,actor.user_id)
     def storage_ready(self,user):
         # The connection validates the versioned schema. No initialize fallback.
@@ -81,7 +81,7 @@ class DeploymentLegacyView:
 
 
 class DeploymentApplication:
-    def __init__(self,input_store,publication_store,preference_store,*,publication_enabled=False):
+    def __init__(self,input_store,publication_store,preference_store,*,publication_enabled=False,continue_existing=False):
         stores=(input_store,publication_store,preference_store)
         if any(type(store) is not PostgresAccountDirectory for store in stores):raise ValueError('Three explicit deployment directory services required')
         if type(publication_enabled) is not bool:raise ValueError('Explicit publication availability required')
@@ -90,7 +90,8 @@ class DeploymentApplication:
             or len({store.target.user for store in stores})!=3):
             raise ValueError('Same reviewed target and trusted mapping with three distinct roles required')
         self.store=input_store;self.publication_enabled=publication_enabled
-        self._dashboard=DeploymentAccountDashboard(input_store)
+        self.continue_existing=continue_existing
+        self._dashboard=DeploymentAccountDashboard(input_store,continue_existing=continue_existing)
         self.administration=DeploymentAdministration(input_store)
         inputs=self._dashboard.inputs
         self.inputs=DeploymentMonthlyApplication(inputs,DeploymentAccountPublisher(inputs,publication_store),publication_enabled=publication_enabled)

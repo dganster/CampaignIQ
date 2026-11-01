@@ -11,9 +11,9 @@ from campaigniq.persistence.deployment_account_data import PostgresAccountDataGa
 
 
 class DeploymentAccountDashboard:
-    def __init__(self,store):
+    def __init__(self,store,*,continue_existing=False):
         if type(store) is not PostgresAccountDirectory:raise ValueError('Explicit deployment directory required')
-        self.store=store;self.gateway=PostgresAccountDataGateway(store);self.inputs=DeploymentMonthlyInputs(self.gateway)
+        self.store=store;self.gateway=PostgresAccountDataGateway(store,continue_existing=continue_existing);self.inputs=DeploymentMonthlyInputs(self.gateway)
 
     def choices(self,user):
         with self.store._connection(readonly=True) as conn:
@@ -26,7 +26,7 @@ class DeploymentAccountDashboard:
         choices=self.choices(user);selected=next((a for a in choices.accounts if a.id==account_id),None)
         if selected is None:raise PermissionError('Selected account is unavailable')
         # Each route reauthorizes in its own guarded read-only financial snapshot.
-        if selected.legacy:
+        if selected.legacy and not self.gateway._continue_existing:
             with self.gateway.legacy_transaction(user,account_id) as (conn,session,_):
                 rows=conn.execute('SELECT artifact_key,content FROM public.artifact_storage_dev WHERE namespace=%s ORDER BY artifact_key',(session.account.storage_scope,)).fetchall()
                 adapter=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys()]
@@ -46,13 +46,16 @@ class DeploymentAccountDashboard:
                 if _published_session(self.inputs,session,account_id,draft,draft.revision,receipt_format='campaigniq.deployment_account_publication'):
                     _deployment_results_session(self.inputs,session,draft,account_id,draft.revision)
                     visible.append(f'{draft.year:04d}-{draft.month:02d}-')
-            if set(session.artifacts.list_keys(suffix='-finalized.json'))!={p+'finalized.json' for p in visible}:
+            retained=getattr(session,'retained_rows',())
+            retained_keys={k for k,v in retained}
+            if set(session.artifacts.list_keys(suffix='-finalized.json'))-retained_keys!={p+'finalized.json' for p in visible}:
                 raise ValueError('Published generation has no matching saved source draft')
-            rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if any(k.startswith(p) for p in visible)]
+            rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or (retained and k=='.campaigniq-monthly-publication-v1.json')]
             result=ReportSnapshot(session.account.storage_scope,rows)
             if include_history:
                 conn=session._connection;directory=DirectoryTransaction(conn,self.store.settings)._load()
                 originals=conn.execute('SELECT d.id,d.sha256,d.content FROM campaigniq_accounts.import_draft_documents d '
                     'JOIN campaigniq_accounts.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(session.account.storage_scope,ROLE)).fetchall()
+                if selected.legacy:originals+=retained_history_rows(conn,session.account.storage_scope,legacy=True)
                 result.history=bind_history(result,originals,known_bindings=bindings(directory,account_id))
             session._check();return result

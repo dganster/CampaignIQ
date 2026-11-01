@@ -44,7 +44,7 @@ def render(st, service, *, administration, deployment=False):
     try:
         overview = service.choices(st.user)
         root = 'account-dashboard:' + service.store.registry_id + ':' + overview.user_id + ':'
-        st.sidebar.caption('Account workspace • Existing accounts are read-only' if deployment else 'LOCAL DEVELOPMENT • Existing data is read-only')
+        st.sidebar.caption(('Account workspace' if getattr(service,'continue_existing',False) else 'Account workspace • Existing accounts are read-only') if deployment else 'LOCAL DEVELOPMENT • Existing data is read-only')
         if st.sidebar.button('Sign out', key=root+'logout'):
             # Discard cached account screen state at logout. Financial bytes
             # are not stored in session state or a process-global report cache.
@@ -85,7 +85,7 @@ def render(st, service, *, administration, deployment=False):
         if view == 'Data':
             st.title('Data · '+account.name)
             if account.legacy:
-                st.info('Existing saved account data is read-only.' if deployment else 'Existing saved account data is read-only in this local development view.')
+                st.info(('Published history is preserved. Continue with a new reporting month below.' if getattr(service,'continue_existing',False) else 'Existing saved account data is read-only.') if deployment else 'Existing saved account data is read-only in this local development view.')
                 if ui.button('Verify existing saved data'):
                     result = service.legacy.inventory(st.user, selected)
                     ui.success('Original documents and storage adapters match.')
@@ -93,6 +93,9 @@ def render(st, service, *, administration, deployment=False):
                                    'Original versions':result.document_versions}], hide_index=True)
                 from campaigniq.ui.account_legacy_results_view import render as existing
                 existing(ui, service.legacy, st.user, selected, **mode)
+                if deployment and getattr(service,"continue_existing",False):
+                    from campaigniq.ui.account_signedin_inputs_view import render as inputs
+                    inputs(ui,service.inputs,st.user,selected_account_id=selected,**mode)
             else:
                 from campaigniq.ui.account_signedin_inputs_view import render as inputs
                 inputs(ui, service.inputs, st.user, selected_account_id=selected, **mode)

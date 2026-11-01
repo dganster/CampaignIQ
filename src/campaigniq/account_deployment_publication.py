@@ -29,6 +29,11 @@ class AppendOnlyArtifacts:
     def __getattr__(self,name):return getattr(self._reader,name)
     def write_text(self,key,content):
         self._session._check(write=True)
+        if hasattr(self._session,'retained_rows'):
+            from campaigniq.account_continuation import future_key,validate_protocol
+            future_key(key)
+            if key=='.campaigniq-monthly-publication-v1.json':validate_protocol(content)
+            if self._reader.exists(key):raise PermissionError('Existing continuation or retained artifacts cannot be replaced')
         with self._session._operation() as conn:
             conn.execute('INSERT INTO campaigniq_accounts.artifact_storage_dev(namespace,artifact_key,content) VALUES(%s,%s,%s)',
                 (self.namespace,key,content))
@@ -58,7 +63,7 @@ class DeploymentAccountPublisher:
                 conn.execute('SELECT registry_id FROM campaigniq_accounts.directories WHERE registry_id=%s FOR SHARE',(self.writer.settings.registry_id,))
                 directory,actor=DirectoryTransaction(conn,self.writer.settings)._actor(user)
                 access=directory.authorize(actor.identity,account_id,write=True)
-                new_schwab_account(directory,account_id)
+                account=new_schwab_account(directory,account_id,continue_existing=self.inputs.gateway._continue_existing)
                 conn.execute('SET LOCAL search_path=campaigniq_accounts,pg_catalog,pg_temp')
                 rows=conn.execute("""SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                     WHERE c.oid IN(to_regclass('artifact_storage_dev'),to_regclass('import_drafts'),to_regclass('import_draft_documents')) ORDER BY c.relname""").fetchall()
@@ -66,8 +71,11 @@ class DeploymentAccountPublisher:
                     raise ValueError('Exact publication storage schema missing')
                 session=DeploymentDataSession(conn,access,True,self.writer.registry_id)
                 session._physical_scope=access.storage_scope
-                session.artifacts=AppendOnlyArtifacts(session)
                 conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',(access.storage_scope,))
+                if self.inputs.gateway._continue_existing:
+                    from campaigniq.account_continuation import attach_continuation
+                    attach_continuation(session,account)
+                session.artifacts=AppendOnlyArtifacts(session)
                 yield session,actor.user_id
                 session._check()
             finally:
