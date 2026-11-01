@@ -51,24 +51,31 @@ class AccountReleaseConfig:
     publication_enabled:bool
     sha256:str
     transport:str = "verified-tls"
+    continue_existing:bool = False
     def __repr__(self):return 'AccountReleaseConfig(<private reviewed settings>)'
     def target(self,role):return AccountDatabaseTarget(self.host,self.database,dict(self.roles)[role],self.port,self.transport)
 
 
 def parse_release(raw,*,reviewed_sha256):
     value=strict_json(raw)
-    exact(value,('format','version','schema_version','registry_id','trusted_issuer','legacy_authorization','target','roles','source_files','auth','publication_enabled'))
-    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version'] not in (1,2)
+    keys=('format','version','schema_version','registry_id','trusted_issuer','legacy_authorization','target','roles','source_files','auth','publication_enabled')
+    if type(value) is dict and value.get('version')==3:keys+=('continue_existing',)
+    exact(value,keys)
+    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version'] not in (1,2,3)
         or type(value['schema_version']) is not int or value['schema_version']!=4 or type(value['publication_enabled']) is not bool):
         raise ValueError('Unsupported account release configuration')
     if not isinstance(reviewed_sha256,str) or not re.fullmatch('[0-9a-f]{64}',reviewed_sha256) or digest(value)!=reviewed_sha256:
         raise ValueError('Reviewed release checksum differs')
+    continuation=value.get('continue_existing',False)
+    if type(continuation) is not bool:raise ValueError('Explicit continuation availability required')
     mapping=value['legacy_authorization']
     if type(mapping) is not dict:raise ValueError('Explicit legacy owner mapping required')
+    if continuation and set(mapping.values())!={'workspace-dennis','workspace-andrew'}:
+        raise ValueError('Continuation requires the two reviewed retained workspace bindings')
     settings=AccountDirectorySettings(value['registry_id'],value['trusted_issuer'],tuple(sorted(mapping.items())))
     issuer=https(settings.trusted_issuer)
     if issuer.path not in ('','/'):raise ValueError('Account release requires the reviewed root issuer')
-    target_keys=('host','port','database','transport') if value['version']==2 else ('host','port','database')
+    target_keys=('host','port','database','transport') if value['version'] in (2,3) else ('host','port','database')
     exact(value['target'],target_keys);exact(value['roles'],('inputs','publication','preferences'))
     transport=value['target'].get('transport','verified-tls')
     if any(type(role) is not str for role in value['roles'].values()) or len(set(value['roles'].values()))!=3:raise ValueError('Three distinct runtime roles required')
@@ -90,7 +97,7 @@ def parse_release(raw,*,reviewed_sha256):
     if not isinstance(auth['client_id'],str) or not auth['client_id'] or auth['client_id']!=auth['client_id'].strip():
         raise ValueError('Explicit reviewed sign-in client required')
     return AccountReleaseConfig(settings,value['target']['host'],value['target']['port'],value['target']['database'],
-        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value),transport)
+        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value),transport,continuation)
 
 
 def source_inventory(repo):
@@ -121,12 +128,13 @@ def validate_auth(config,auth):
     except Exception:raise ValueError('Server sign-in settings do not match the reviewed release') from None
 
 
-def release_document(settings,targets,auth,*,repo,publication_enabled=False):
+def release_document(settings,targets,auth,*,repo,publication_enabled=False,continue_existing=False):
     """Build a review proposal from explicit trusted inputs, never a browser form.
 
     No credentials are accepted here. Caller stores the result privately and
     obtains independent review of its canonical digest before runtime use.
     """
+    if type(continue_existing) is not bool:raise ValueError('Explicit continuation availability required')
     if type(settings) is not AccountDirectorySettings or type(targets) is not dict or set(targets)!={'inputs','publication','preferences'}:
         raise ValueError('Trusted account settings and three explicit role targets required')
     values=list(targets.values())
@@ -140,5 +148,7 @@ def release_document(settings,targets,auth,*,repo,publication_enabled=False):
         source_files=source_inventory(repo),auth=dict(auth),publication_enabled=publication_enabled)
     if target.transport!='verified-tls':
         value['version']=2;value['target']['transport']=target.transport
+    if continue_existing:
+        value['version']=3;value['continue_existing']=True;value['target']['transport']=target.transport
     parse_release(json.dumps(value),reviewed_sha256=digest(value))
     return value

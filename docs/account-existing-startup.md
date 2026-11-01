@@ -1,0 +1,11 @@
+# Explicit startup configuration for existing-account continuation
+
+This local development change wires the tested continuation composition into the checksum-bound release configuration. Version 3 requires an explicit boolean `continue_existing` field, explicit database transport, and the exact retained Dennis/Andrew workspace mapping. Versions 1 and 2 retain disabled continuation behavior. Construction opens no database connection.
+
+Publication availability remains a separate explicit boolean. The launcher retains the initial-publication restriction for releases without continuation; a version-3 continuation release can propose publication availability only through a newly reviewed checksum-bound configuration. Changing either availability setting invalidates the prior release checksum. Current private runtime files, credentials, environment pointer and production deployment are untouched.
+
+No database migration, privilege change, source copying or automatic financial publication is introduced. Existing publication requests still require account authorization, current source revision, matching broker identity, exact preceding month, complete source inputs, independent reconciliation, and explicit month confirmation. Before actual uploads, each existing account needs its securities identifier recorded through the audited binding controls; the previous inventory found neither binding recorded. No full account numbers appear in this package.
+
+Validation here: 91 focused startup, release, application and continuation tests passed. These include strict configuration fields, backward compatibility, source/checksum mismatch rejection, offline composition, and the exact launcher check-only path with publication/continuation settings. The user's prior full suite passed 3,546 tests, and the database rehearsal preserved all 314 artifacts, 20 drafts and 72 originals while testing same-account October drafts and actual restricted-role publication in a separate synthetic account.
+
+This is not a production activation package. After local tests, the final committed sources and candidate configuration still need a read-only production startup rehearsal and concrete activation review.

@@ -34,7 +34,8 @@ def main():
     if set(runtime['connections'])!={name for _,name in ROLE_ENV}:raise ValueError('Three runtime role connections required')
     release_path=path.with_name('release.private.json')
     config=read_release(release_path,reviewed_sha256=runtime['release_sha256'])
-    if config.publication_enabled is not False:raise ValueError('Initial account activation must keep publication disabled')
+    if config.publication_enabled and not config.continue_existing:
+        raise ValueError('Publication requires an explicitly reviewed existing-account continuation release')
     auth=tomllib.loads((root/'.streamlit/secrets.toml').read_text())['auth']
     application=compose_release(config,runtime['connections'],auth,repo=root)
     verify_startup(application)
