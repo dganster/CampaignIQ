@@ -50,29 +50,9 @@ def _role_state(conn,role,policy=POLICY):
             UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             WHERE n.nspname=%s AND c.relowner=%s LIMIT 1''',(schema,row[0],schema,row[0])).fetchone():
             raise PermissionError('Runtime role cannot own account or retained storage')
-    grants=[]
-    for schema,table,allowed in policy:
-        values=[]
-        for privilege in PRIVILEGES:
-            actual=conn.execute('SELECT has_table_privilege(%s,%s,%s)',(role,schema+'.'+table,privilege)).fetchone()
-            if actual not in ((True,),(False,)):raise ValueError('Missing role privilege result')
-            if actual==(True,):
-                if privilege not in allowed:raise PermissionError('Unexpected existing runtime grants; no automatic revocation')
-                values.append(privilege)
-        for privilege in PRIVILEGES:
-            if conn.execute('SELECT has_table_privilege(%s,%s,%s)',
-                    (role,schema+'.'+table,privilege+' WITH GRANT OPTION')).fetchone()!=(False,):
-                raise PermissionError('Runtime grant options are prohibited')
-        # Column grants can otherwise bypass table-level denial.
-        for privilege in ('SELECT','INSERT','UPDATE','REFERENCES'):
-            if conn.execute('SELECT has_any_column_privilege(%s,%s,%s)',
-                    (role,schema+'.'+table,privilege+' WITH GRANT OPTION')).fetchone()!=(False,):
-                raise PermissionError('Runtime column grant options are prohibited')
-            if privilege not in allowed and conn.execute('SELECT has_any_column_privilege(%s,%s,%s)',
-                    (role,schema+'.'+table,privilege)).fetchone()!=(False,):
-                raise PermissionError('Unexpected column grants; no automatic revocation')
-        grants.append((schema,table,tuple(values)))
-    return tuple(grants)
+    from campaigniq.account_role_privilege_batch import read_privileges
+    return read_privileges(conn,role,policy,PRIVILEGES)
+
 
 
 

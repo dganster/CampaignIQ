@@ -20,6 +20,14 @@ class Connection:
         from psycopg import sql
         if isinstance(query,sql.Composable):query=query.as_string()
         self.calls.append((query,args))
+        if '/* campaigniq_batched_privileges */' in query:
+            tables,privileges=args[-2:]
+            rows=[]
+            for number,table in enumerate(tables,1):
+                for privilege in privileges:
+                    column=self.column if privilege in ('SELECT','INSERT','UPDATE','REFERENCES') else False
+                    rows.append((number,privilege,privilege in self.grants.get(table,()),self.option,column,column))
+            return Result(rows)
         if 'SELECT oid,rolsuper' in query:return Result((self.oid,self.elevated,False,False,False,False))
         if 'SELECT oid FROM pg_roles' in query:return Result((self.oid,))
         if 'FROM pg_auth_members' in query:return Result((1,) if self.member else None)
