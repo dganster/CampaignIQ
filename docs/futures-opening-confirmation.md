@@ -37,15 +37,19 @@ Read-only status uses the existing authorized account snapshot. Changing the
 Trade History or account binding invalidates the old assertion. Revocation and
 disabled users are rechecked; archived authorized history remains readable.
 
-## Remaining integration
+## Connected preview and remaining integration
 
-This change does not make the securities parser accept futures series codes,
-establish independently verified ending positions, or integrate the futures PDF,
-futures identity and financial generation into publication. The isolated futures
-accounting preview still reports its opening-state assumption. The validated
-confirmation is now available through the account input service for that next
-integration. Neither the confirmation nor status response authorizes publication.
-No October month is published by installing, saving or checking this confirmation.
+The account input service now offers a separate read-only futures accounting
+preview using this validated confirmation and an exact saved futures PDF. The
+owner explicitly confirms the PDF account association; its GMI identifier remains
+separate from securities and Forex bindings. See futures-account-preview.md.
+The standalone CLI still labels its empty-opening assumption because it does not
+have an authenticated account session or a stored owner confirmation.
+
+The ordinary securities parser and monthly publication pipeline remain unchanged.
+Independent ending positions and futures publication integration are still pending.
+Neither the confirmation nor its status response authorizes publication. No October
+month is published by installing, saving or checking the confirmation.
 
 ## Verification
 

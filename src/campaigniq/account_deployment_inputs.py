@@ -128,3 +128,51 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             receipt=validate_receipt(self,session,draft)
             return dict(confirmed=True,evidence_type='user_confirmation',broker_verified=False,
                 publication_authorized=False,opening_as_of=receipt['opening_as_of'])
+
+    def save_futures_statement(self,user,account_id,draft_id,revision,upload,*,confirm_same_account=False,replace=False):
+        from campaigniq import account_futures_preview as futures
+        from campaigniq.persistence.import_drafts import MAX_DOCUMENT_BYTES
+        import json
+        if confirm_same_account is not True or type(replace) is not bool or type(revision) is not int or revision<0:
+            raise ValueError('Explicit futures statement association, displayed revision and replacement choice required')
+        content=upload.getvalue()
+        if upload.media_type!='application/pdf' or not content.startswith(b'%PDF-') or len(content)>MAX_DOCUMENT_BYTES:
+            raise ValueError('A futures monthly statement PDF at most 20 MiB is required')
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saving futures statement')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month futures originals are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can associate a futures statement')
+            prior=futures.load_receipt(session,draft)
+            original=futures.existing_pdf(session,draft,prior)
+            if original is not None and original!=content and not replace:
+                raise ValueError('Confirm replacement of the futures statement; the prior original is preserved')
+            context,_=futures.evaluate(self,session,draft,content)
+            if prior is not None and prior['gmi_account_digest']!=context['gmi_account_digest']:
+                raise ValueError('Futures statement GMI account changed; separate account review required')
+            if prior is not None and all(prior[key]==value for key,value in context.items()):return draft.revision
+            receipt=futures.make_receipt(session,draft,actor.user_id,context)
+            if original!=content:
+                session.drafts.upload(draft.id,futures.PDF_ROLE,upload.name,'application/pdf',content,replace=original is not None)
+            result=session.drafts.upload(draft.id,futures.RECEIPT_ROLE,'futures-statement-association.json','text/plain',
+                (json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode(),replace=prior is not None)
+            if futures.load_receipt(session,session.drafts.get(draft.id))!=receipt:
+                raise ValueError('Futures statement association post-write verification failed')
+            from campaigniq import account_futures_opening as opening
+            for role,expected in ((futures.PDF_ROLE,context['statement_sha256']),
+                    (opening.HISTORY,context['history_sha256']),(opening.ROLE,context['opening_confirmation_sha256'])):
+                if futures.digest(session.drafts.document(draft.id,role)[2])!=expected:
+                    raise ValueError('Futures statement source post-write verification failed')
+            return result
+
+    def futures_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_futures_preview import connected_preview
+        if type(revision) is not int or revision<0:raise ValueError('Displayed revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before futures preview')
+            return connected_preview(self,session,draft)

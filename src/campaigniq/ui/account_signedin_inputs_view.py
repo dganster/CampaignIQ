@@ -126,6 +126,36 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                                 service.confirm_empty_futures_opening(server_user,account_id,draft.id,draft.revision,
                                     confirm_empty_opening=empty)
                                 st.rerun()
+            if deployment and hasattr(service, 'futures_preview'):
+                with st.expander('Futures statement and accounting preview'):
+                    st.caption('Save the empty opening confirmation first. This separate preview does not publish a month.')
+                    if account.writable and not published:
+                        with st.form(key + ':futures-statement', clear_on_submit=False):
+                            futures_pdf = st.file_uploader('Futures monthly statement PDF', type=['pdf'], key=key + ':futures-pdf')
+                            same = st.checkbox('I confirm this futures statement belongs to the selected account and month', key=key + ':futures-association')
+                            change = st.checkbox('Replace saved futures statement; preserve prior original', key=key + ':futures-replace')
+                            st.caption('This records your account association. The futures GMI number is separate from securities and Forex identifiers.')
+                            if st.form_submit_button('Save futures statement'):
+                                if futures_pdf is None:
+                                    st.error('Choose the futures statement PDF first.')
+                                else:
+                                    service.save_futures_statement(server_user,account_id,draft.id,draft.revision,
+                                        RestoredUpload(futures_pdf.name,futures_pdf.type,futures_pdf.getvalue()),
+                                        confirm_same_account=same,replace=change)
+                                    st.rerun()
+                    if st.button('Preview saved futures accounting', key=key + ':futures-preview'):
+                        futures = service.futures_preview(server_user,account_id,draft.id,draft.revision)
+                        st.write('Futures/options realized result after fees, USD: ' + futures['realized_net_usd'])
+                        st.dataframe([dict(Component='Option result before fees', USD=futures['option_realized_usd']),
+                            dict(Component='Underlying futures result before fees', USD=futures['futures_realized_usd']),
+                            dict(Component='Fees', USD=futures['fees_cash_usd'])], hide_index=True)
+                        st.caption('Opening positions and statement account association: confirmed by account owner, not independently broker-verified. '
+                            'Cash sweeps are transfers and are excluded from the trading result.')
+                        st.write('Calculated ending futures positions', futures['calculated_ending_futures'])
+                        st.write('Calculated ending futures-option positions', futures['calculated_ending_options'])
+                        for finding in futures['blockers']:
+                            st.warning(finding)
+                        st.info('Read-only futures preview. No month was published.')
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
             if st.button('Preview saved inputs', key=key + ':preview'):
