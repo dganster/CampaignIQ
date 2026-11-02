@@ -137,6 +137,7 @@ def test_view_only_account_has_preview_without_save_controls():
 
 def test_empty_upload_does_not_call_save():
     at=screen()
+    next(s for s in at.selectbox if s.label == 'Document role').select('schwab_brokerage_statement').run(timeout=15)
     button(at,'Save document').click().run(timeout=15)
     assert not at.exception and at.error and not at.session_state['calls']
 
@@ -187,3 +188,21 @@ def test_published_results_read_selected_month_and_show_110_shares():
     assert any('Published results · 2025-01' in s.value for s in at.subheader)
     assert at.dataframe[0].value.iloc[0]['Quantity']=='110'
     assert not any(b.label in ('Save document','Publish locally') for b in at.button)
+
+
+def test_upload_requires_explicit_type_and_keeps_type_after_error():
+    at=screen()
+    role=next(s for s in at.selectbox if s.label=='Document role')
+    assert role.value is None and button(at,'Save document').disabled
+    role.select('thinkorswim_trade_history').run(timeout=15)
+    assert not button(at,'Save document').disabled
+    button(at,'Save document').click().run(timeout=15)
+    assert at.error and not at.session_state['calls']
+    assert next(s for s in at.selectbox if s.label=='Document role').value=='thinkorswim_trade_history'
+
+
+def test_forex_guidance_uses_selected_month_with_year_boundary():
+    at=screen()
+    next(s for s in at.selectbox if s.label=='Document role').select('schwab_forex_transaction_report').run(timeout=15)
+    assert any('December 31, 2024 through January 31, 2025' in x.value for x in at.info)
+    assert not at.session_state['calls']

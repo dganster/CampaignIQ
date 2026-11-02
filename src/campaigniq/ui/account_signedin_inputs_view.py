@@ -1,4 +1,7 @@
 """Saved inputs, reconciliation and explicit LOCAL new-account publication."""
+from calendar import monthrange
+from datetime import date, timedelta
+
 from campaigniq.account_import_preview import UPLOAD_ROLES
 from campaigniq.broker_account_binding import KINDS
 from campaigniq.import_draft_bridge import RestoredUpload
@@ -79,13 +82,20 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if published:
                 st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
             if account.writable and not published:
-                with st.form(key + ':upload', clear_on_submit=True):
-                    role = st.selectbox('Document role', UPLOAD_ROLES, key=key + ':role')
+                role = st.selectbox('Document role', UPLOAD_ROLES, index=None,
+                    placeholder='Select a document type…', key=key + ':role')
+                if role == 'schwab_forex_transaction_report':
+                    start = date(draft.year, draft.month, 1) - timedelta(days=1)
+                    end = date(draft.year, draft.month, monthrange(draft.year, draft.month)[1])
+                    st.info(f'Forex Transaction Report: export {start:%B %d, %Y} through {end:%B %d, %Y}.')
+                with st.form(key + ':upload', clear_on_submit=False):
                     upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file')
                     replace = st.checkbox('Confirm replacement of this role; preserve the previous original', key=key + ':replace')
-                    associated = st.checkbox('I confirm this Gain/Loss report belongs to the selected account and month', key=key + ':associate') if deployment else False
-                    if st.form_submit_button('Save document'):
-                        if upload is None:
+                    associated = st.checkbox('I confirm this Gain/Loss report belongs to the selected account and month', key=key + ':associate') if deployment and role == 'schwab_realized_gain_loss' else False
+                    if st.form_submit_button('Save document', disabled=role is None):
+                        if role is None:
+                            st.error('Select a document type first.')
+                        elif upload is None:
                             st.error('Choose a document first.')
                         else:
                             restored=RestoredUpload(upload.name, upload.type, upload.getvalue())
