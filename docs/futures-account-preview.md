@@ -16,8 +16,8 @@ After selecting the account and month:
 
 The result separates option P/L, underlying futures P/L and fees. Transfers are
 excluded from trading P/L. It labels the opening positions and statement account
-association as owner-confirmed, not independent broker verification. Ending books
-remain calculated, not independently verified. It never publishes a month.
+association as owner-confirmed, not independent broker verification. Ending books remain calculated and may also carry a separately saved owner confirmation;
+they are never relabelled as independently broker-verified. It never publishes a month.
 
 ## Identity and source boundaries
 
@@ -50,13 +50,18 @@ confirmation, binding or PDF withholds the entire result. No stale cached partia
 result or combined account total is returned. Temporary PDF/text/history files are
 removed on success or failure. No raw GMI account number appears in stored metadata.
 
-## Remaining work
+## Monthly preview and remaining publication work
 
-This is a separate account futures preview. It does not yet make the ordinary
-monthly securities parser accept futures series or persist a futures financial
-generation. Independent ending-position evidence and publication integration remain
-pending. Crypto stays separate. Successful previews explicitly retain
-publication_authorized=false and production_integration_enabled=false.
+The Data view now includes a read-only monthly check that combines a verified,
+separate futures calculation with the ordinary securities/Forex reconciliation and
+explicit crypto controls. See futures-monthly-preview.md for source lineage and the
+owner's optional empty-ending confirmation. The full original history is preserved;
+only a temporary labelled derivative is used for the securities check.
+
+The deployment publisher explicitly blocks futures activity until financial generation,
+report integration and database rehearsal are complete. Crypto stays separate and
+cannot be omitted from the combined month's readiness check. Successful previews
+retain publication_authorized=false and production_integration_enabled=false.
 
 Unit and UI tests use synthetic sources and a transaction-capable memory fixture.
 The supplied October sources were additionally evaluated with synthetic local session

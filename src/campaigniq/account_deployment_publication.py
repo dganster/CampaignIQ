@@ -86,6 +86,11 @@ class DeploymentAccountPublisher:
         if type(revision) is not int or any(type(flag) is not bool for flag in (forex_applicable,crypto_applicable)):
             raise ValueError('Displayed source revision and explicit market choices required')
         with self._transaction(user,account_id) as (session,actor):
+            from campaigniq.futures_monthly_preview import has_futures
+            draft=self.inputs._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
+            if has_futures(session,draft):
+                raise PermissionError('Futures monthly publication is disabled pending complete generation/report integration; use the read-only monthly preview. No rows changed.')
             result=_publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,
                 forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
                 receipt_format='campaigniq.deployment_account_publication')

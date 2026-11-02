@@ -98,7 +98,7 @@ def existing_pdf(session,draft,receipt):
     return content
 
 
-def connected_preview(service,session,draft):
+def connected_preview(service,session,draft,*,include_closing=True):
     receipt=load_receipt(session,draft)
     content=existing_pdf(session,draft,receipt)
     if receipt is None or content is None:raise ValueError('Save and confirm the futures monthly statement first')
@@ -113,4 +113,7 @@ def connected_preview(service,session,draft):
     result['blockers']=['Ending positions are calculated, not independently verified.',
                         'Futures publication integration remains pending.',
                         'Crypto remains separate and requires its own statement.']
+    if include_closing:
+        from campaigniq.account_futures_closing import attach_status
+        result=attach_status(session,draft,result)
     return result

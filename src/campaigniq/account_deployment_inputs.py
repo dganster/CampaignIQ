@@ -176,3 +176,43 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             draft=self._lock(session,draft_id)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before futures preview')
             return connected_preview(self,session,draft)
+
+    def confirm_empty_futures_closing(self,user,account_id,draft_id,revision,*,confirm_empty_closing=False):
+        import json
+        from campaigniq import account_futures_closing as closing
+        from campaigniq.account_futures_preview import connected_preview
+        if confirm_empty_closing is not True or type(revision) is not int or revision<0:
+            raise ValueError('Explicit empty-ending confirmation and displayed revision required')
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before confirming ending positions')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month ending confirmations are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can confirm ending positions')
+            prior=closing.load_receipt(session,draft)
+            result=connected_preview(self,session,draft,include_closing=False)
+            receipt=closing.make_receipt(session,draft,actor.user_id,result)
+            if prior is not None and prior['evidence_graph_sha256']==receipt['evidence_graph_sha256']:
+                return draft.revision
+            revision=session.drafts.upload(draft.id,closing.ROLE,'futures-empty-closing-confirmation.json','text/plain',
+                (json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode(),replace=prior is not None)
+            saved=session.drafts.get(draft.id)
+            if closing.load_receipt(session,saved)!=receipt:
+                raise ValueError('Futures ending confirmation post-write verification failed')
+            # Re-read source links and calculation within the same transaction.
+            checked=connected_preview(self,session,saved)
+            if checked['closing_positions_confirmed_by_owner'] is not True:
+                raise ValueError('Futures ending confirmation could not be verified')
+            return revision
+
+    def futures_monthly_preview(self,user,account_id,draft_id,revision,*,forex_applicable=True,crypto_applicable=True):
+        from campaigniq.futures_monthly_preview import monthly_preview
+        if type(revision) is not int or revision<0 or any(type(v) is not bool for v in (forex_applicable,crypto_applicable)):
+            raise ValueError('Displayed revision and explicit market choices required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before monthly futures preview')
+            return monthly_preview(self,session,draft,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)

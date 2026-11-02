@@ -143,6 +143,15 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                                         RestoredUpload(futures_pdf.name,futures_pdf.type,futures_pdf.getvalue()),
                                         confirm_same_account=same,replace=change)
                                     st.rerun()
+                    if hasattr(service, 'confirm_empty_futures_closing') and account.writable and not published:
+                        end_of_month = date(draft.year,draft.month,monthrange(draft.year,draft.month)[1])
+                        with st.form(key + ':futures-closing'):
+                            empty_end = st.checkbox(f'I confirm this account had no futures or futures-options positions open on {end_of_month:%B %d, %Y}',
+                                key=key + ':empty-ending-futures')
+                            if st.form_submit_button('Save empty futures ending confirmation'):
+                                service.confirm_empty_futures_closing(server_user,account_id,draft.id,draft.revision,
+                                    confirm_empty_closing=empty_end)
+                                st.rerun()
                     if st.button('Preview saved futures accounting', key=key + ':futures-preview'):
                         futures = service.futures_preview(server_user,account_id,draft.id,draft.revision)
                         st.write('Futures/options realized result after fees, USD: ' + futures['realized_net_usd'])
@@ -151,6 +160,10 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                             dict(Component='Fees', USD=futures['fees_cash_usd'])], hide_index=True)
                         st.caption('Opening positions and statement account association: confirmed by account owner, not independently broker-verified. '
                             'Cash sweeps are transfers and are excluded from the trading result.')
+                        if futures.get('closing_positions_confirmed_by_owner'):
+                            st.caption('Ending positions also confirmed empty by account owner; not independently broker-verified.')
+                        else:
+                            st.info('Ending positions are calculated only. Save the owner ending-position confirmation before the monthly check.')
                         st.write('Calculated ending futures positions', futures['calculated_ending_futures'])
                         st.write('Calculated ending futures-option positions', futures['calculated_ending_options'])
                         for finding in futures['blockers']:
@@ -158,6 +171,21 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.info('Read-only futures preview. No month was published.')
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
+            if deployment and hasattr(service, 'futures_monthly_preview'):
+                with st.expander('Monthly preview including futures'):
+                    st.caption('Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
+                    if st.button('Check monthly sources including futures', key=key + ':monthly-futures'):
+                        monthly = service.futures_monthly_preview(server_user,account_id,draft.id,draft.revision,
+                            forex_applicable=forex,crypto_applicable=crypto)
+                        st.dataframe(monthly['validations'],hide_index=True)
+                        st.write('Securities closing inventory reconciled:',monthly['securities_inventory_reconciled'])
+                        st.write('Futures/options result after fees, USD:',monthly['futures']['realized_net_usd'])
+                        st.caption('Full original Trade History preserved. A labelled temporary projection separates already-verified futures rows for the securities checks.')
+                        for finding in monthly['source_findings']:
+                            st.warning(finding)
+                        if monthly['inventory_mismatches']:
+                            st.dataframe(monthly['inventory_mismatches'],hide_index=True)
+                        st.info(monthly['publication_blocker'])
             if st.button('Preview saved inputs', key=key + ':preview'):
                 result = service.preview(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)
