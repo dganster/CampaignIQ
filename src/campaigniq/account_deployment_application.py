@@ -56,6 +56,8 @@ class DeploymentMonthlyApplication:
     def create(self,*args,**kwargs):return self._inputs.create(*args,**kwargs)
     def save(self,*args,**kwargs):return self._inputs.save(*args,**kwargs)
     def save_associated_gain_loss(self,*args,**kwargs):return self._inputs.save_associated_gain_loss(*args,**kwargs)
+    def confirm_empty_futures_opening(self,*args,**kwargs):return self._inputs.confirm_empty_futures_opening(*args,**kwargs)
+    def futures_opening_status(self,*args,**kwargs):return self._inputs.futures_opening_status(*args,**kwargs)
     def preview(self,*args,**kwargs):return self._inputs.preview(*args,**kwargs)
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)

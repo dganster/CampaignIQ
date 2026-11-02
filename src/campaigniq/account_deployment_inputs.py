@@ -88,3 +88,43 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
         except (ValueError,KeyError,TypeError) as error:
             replacement=InputStatus('account:'+ROLE,False,str(error))
         return tuple(replacement if item.role=='account:'+ROLE else item for item in checks)
+
+    def confirm_empty_futures_opening(self,user,account_id,draft_id,revision,*,confirm_empty_opening=False):
+        """Owner assertion only. It grants no access and never publishes artifacts."""
+        import json
+        from campaigniq.account_futures_opening import ROLE,source_context,make_receipt,load_receipt
+        if confirm_empty_opening is not True or type(revision) is not int or revision < 0:
+            raise ValueError('Explicit empty-opening confirmation and displayed revision required')
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before confirming')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month opening confirmations are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can confirm opening positions')
+            prior=load_receipt(session,draft) # Corrupt prior assertions cannot be silently replaced.
+            context=source_context(self,session,draft)
+            if prior is not None and all(prior[key]==value for key,value in context.items()):
+                return draft.revision
+            receipt=make_receipt(session,draft,actor.user_id,context)
+            revision=session.drafts.upload(draft.id,ROLE,'futures-empty-opening-confirmation.json','text/plain',
+                (json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode(),replace=prior is not None)
+            # Verify inside the same transaction so an injected failure cannot leave a receipt.
+            from campaigniq.account_futures_opening import validate_receipt
+            if validate_receipt(self,session,session.drafts.get(draft.id))!=receipt:
+                raise ValueError('Futures opening confirmation post-write verification failed')
+            return revision
+
+    def futures_opening_status(self,user,account_id,draft_id,revision):
+        from campaigniq.account_futures_opening import load_receipt,validate_receipt
+        if type(revision) is not int or revision < 0:raise ValueError('Displayed revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before reading confirmation')
+            receipt=load_receipt(session,draft)
+            if receipt is None:return dict(confirmed=False,evidence_type='missing',broker_verified=False,publication_authorized=False)
+            receipt=validate_receipt(self,session,draft)
+            return dict(confirmed=True,evidence_type='user_confirmation',broker_verified=False,
+                publication_authorized=False,opening_as_of=receipt['opening_as_of'])

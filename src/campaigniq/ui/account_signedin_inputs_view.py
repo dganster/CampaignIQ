@@ -106,6 +106,26 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                             else:
                                 service.save(server_user, account_id, draft.id, draft.revision, role,restored,replace=replace)
                             st.rerun()
+            if deployment and hasattr(service, 'confirm_empty_futures_opening'):
+                with st.expander('Futures opening positions'):
+                    as_of = date(draft.year,draft.month,1) - timedelta(days=1)
+                    st.caption('For accounts resuming futures trading with no carried positions. '
+                        'This records your confirmation, not independent broker verification, and does not publish a month.')
+                    if st.button('Check saved futures opening confirmation', key=key + ':futures-opening-status'):
+                        status = service.futures_opening_status(server_user,account_id,draft.id,draft.revision)
+                        if status['confirmed']:
+                            st.success('No futures or futures-options positions as of ' + status['opening_as_of'] +
+                                ' — confirmed by account owner; not independently broker-verified.')
+                        else:
+                            st.info('No saved futures opening confirmation for this month.')
+                    if account.writable and not published:
+                        with st.form(key + ':futures-opening'):
+                            empty = st.checkbox(f'I confirm this account had no futures or futures-options positions open on {as_of:%B %d, %Y}',
+                                key=key + ':empty-futures')
+                            if st.form_submit_button('Save empty futures opening confirmation'):
+                                service.confirm_empty_futures_opening(server_user,account_id,draft.id,draft.revision,
+                                    confirm_empty_opening=empty)
+                                st.rerun()
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
             if st.button('Preview saved inputs', key=key + ':preview'):
