@@ -22,6 +22,6 @@ def _deployment_results_session(service,session,draft,account_id,revision):
     uploads=restore_uploads(session.drafts,draft.id)
     with TemporaryDirectory(prefix='campaigniq-deployment-results-') as root:
         supplied=stage_monthly_uploads(upload_dir=Path(root),uploads=uploads)
-        if any(not item.valid for item in service._identity_validations(session,uploads,supplied)):
+        if any(not item.valid for item in service._identity_validations(session,uploads,supplied,draft=draft)):
             raise ValueError('Current broker identity differs from retained publication sources')
     return _results_session(service,session,draft,account_id,revision,receipt_format='campaigniq.deployment_account_publication')

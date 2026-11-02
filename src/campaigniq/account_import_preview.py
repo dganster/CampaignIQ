@@ -52,7 +52,7 @@ class AccountImportPreviewService:
         # The interactive preview uses BoundAccountImportPreviewService below.
         pass
 
-    def _identity_validations(self, session, uploads, supplied):
+    def _identity_validations(self, session, uploads, supplied, *, draft=None):
         return ()
 
     def drafts(self, identity, account_id):
@@ -92,7 +92,7 @@ class AccountImportPreviewService:
             with TemporaryDirectory(prefix='campaigniq-account-preview-') as directory:
                 root = Path(directory)
                 supplied = stage_monthly_uploads(upload_dir=root, uploads=uploads)
-                identity_checks = self._identity_validations(session, uploads, supplied)
+                identity_checks = self._identity_validations(session, uploads, supplied, draft=draft)
                 result = prepare_monthly_import(draft.year, draft.month,
                     authoritative_state_root=root / 'unused-authoritative-state',
                     supplied_inputs=supplied, artifact_storage=session.artifacts,
@@ -129,7 +129,7 @@ class BoundAccountImportPreviewService(AccountImportPreviewService):
             supplied=stage_monthly_uploads(upload_dir=Path(directory),uploads={role:upload})
             verify_document(self._known(session),role,self._path(role,supplied).read_text(encoding='utf-8-sig'))
 
-    def _identity_validations(self,session,uploads,supplied):
+    def _identity_validations(self,session,uploads,supplied,*,draft=None):
         from campaigniq.broker_account_binding import verify_document
         known=self._known(session)
         checks=[]

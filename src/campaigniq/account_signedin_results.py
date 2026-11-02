@@ -66,6 +66,9 @@ def _results_session(service,session,draft,account_id,revision,*,receipt_format=
         for role,upload in uploads.items()}
     if receipt.get('original_documents')!=originals:
         raise ValueError('Retained originals differ from the publication receipt')
+    from campaigniq.account_gain_loss_association import load_receipt
+    if receipt.get('gain_loss_account_confirmation')!=load_receipt(session,draft):
+        raise ValueError('Report confirmation differs from the publication receipt')
     if any(type(receipt.get(flag)) is not bool for flag in ('forex_applicable','crypto_applicable')):
         raise ValueError('Published market choices are missing or invalid')
     markets=json.loads(session.artifacts.read_text(prefix+'market-applicability.json'))

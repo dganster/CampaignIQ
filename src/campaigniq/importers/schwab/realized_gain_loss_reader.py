@@ -57,6 +57,9 @@ def read_realized_gain_loss_section(
     rows, such as the February 2 LIN assignment settlement in the January
     report, must not be silently discarded.
     """
+    from campaigniq.importers.schwab.realized_csv import is_csv, read
+    text='\n'.join(lines)
+    if is_csv(text):return read(text)
     records: list[RealizedGainLossRecord] = []
     for index, line in enumerate(lines):
         disallowed_loss = _disallowed_loss_for_row(

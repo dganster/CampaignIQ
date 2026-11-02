@@ -87,7 +87,7 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
     with TemporaryDirectory(prefix='campaigniq-local-publication-') as directory_name:
         root=Path(directory_name)
         supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
-        checks=service._identity_validations(session,uploads,supplied)
+        checks=service._identity_validations(session,uploads,supplied,draft=draft)
         if any(not row.valid for row in checks):raise ValueError('Document account identity is unverified')
         preflight=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
             supplied_inputs=supplied,artifact_storage=session.artifacts,
@@ -107,6 +107,9 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
             draft_id=str(draft.id),draft_revision=draft.revision,period_end=end.isoformat(),
             original_documents=originals,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
                 production_publication_authorized=False)
+        from campaigniq.account_gain_loss_association import load_receipt
+        association=load_receipt(session,draft)
+        if association is not None:receipt['gain_loss_account_confirmation']=association
         text=json.dumps(receipt,sort_keys=True,indent=2)+'\n'
         session.artifacts.write_text(prefix+'account-publication-receipt.json',text)
         lot_key=prefix+'lot-book.json'

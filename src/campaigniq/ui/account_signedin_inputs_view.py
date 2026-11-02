@@ -83,12 +83,18 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     role = st.selectbox('Document role', UPLOAD_ROLES, key=key + ':role')
                     upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file')
                     replace = st.checkbox('Confirm replacement of this role; preserve the previous original', key=key + ':replace')
+                    associated = st.checkbox('I confirm this Gain/Loss report belongs to the selected account and month', key=key + ':associate') if deployment else False
                     if st.form_submit_button('Save document'):
                         if upload is None:
                             st.error('Choose a document first.')
                         else:
-                            service.save(server_user, account_id, draft.id, draft.revision, role,
-                                RestoredUpload(upload.name, upload.type, upload.getvalue()), replace=replace)
+                            restored=RestoredUpload(upload.name, upload.type, upload.getvalue())
+                            if associated:
+                                if role!='schwab_realized_gain_loss':raise ValueError('Same-account confirmation applies only to the Gain/Loss report')
+                                service.save_associated_gain_loss(server_user,account_id,draft.id,draft.revision,restored,
+                                    confirm_same_account=True,replace=replace)
+                            else:
+                                service.save(server_user, account_id, draft.id, draft.revision, role,restored,replace=replace)
                             st.rerun()
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')

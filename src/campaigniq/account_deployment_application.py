@@ -55,6 +55,7 @@ class DeploymentMonthlyApplication:
     def drafts(self,*args,**kwargs):return self._inputs.drafts(*args,**kwargs)
     def create(self,*args,**kwargs):return self._inputs.create(*args,**kwargs)
     def save(self,*args,**kwargs):return self._inputs.save(*args,**kwargs)
+    def save_associated_gain_loss(self,*args,**kwargs):return self._inputs.save_associated_gain_loss(*args,**kwargs)
     def preview(self,*args,**kwargs):return self._inputs.preview(*args,**kwargs)
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)

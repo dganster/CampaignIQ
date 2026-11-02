@@ -56,7 +56,7 @@ def _reconcile_session(service,session,draft,*,forex_applicable,crypto_applicabl
     with TemporaryDirectory(prefix='campaigniq-account-reconciliation-') as directory:
         root=Path(directory)
         supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
-        identity_checks=service._identity_validations(session,uploads,supplied)
+        identity_checks=service._identity_validations(session,uploads,supplied,draft=draft)
         if any(not check.valid for check in identity_checks):
             raise ValueError('Document account identity is unverified; review Preview saved inputs first')
         storage=ReadOnlyArtifacts(session.artifacts)

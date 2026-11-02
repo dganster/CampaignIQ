@@ -52,6 +52,8 @@ _REPORTING_PERIOD_RE = re.compile(
 
 
 def _realized_report_period(text: str) -> tuple[date, date] | None:
+    from campaigniq.importers.schwab.realized_csv import is_csv, period
+    if is_csv(text):return period(text)
     # Use declared report periods, never transaction dates or the update date.
     matches = [*_DATE_RANGE_RE.finditer(text), *_REPORTING_PERIOD_RE.finditer(text)]
     periods = {
@@ -232,7 +234,8 @@ def validate_monthly_input(
             )
 
         if role is MonthlyInputRole.SCHWAB_REALIZED_GAIN_LOSS:
-            if "Realized Gain / Loss" not in text:
+            from campaigniq.importers.schwab.realized_csv import is_csv
+            if "Realized Gain / Loss" not in text and not is_csv(text):
                 return MonthlyInputValidation(
                     role, False, "Not a recognized Schwab realized gain/loss report."
                 )
