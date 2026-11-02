@@ -91,7 +91,7 @@ def test_dashboard_snapshot_feeds_existing_loader_and_rejects_mutation(deploymen
     assert {a.id for a in choices.accounts}=={c.account,c.second}
     result=c.dashboard.snapshot(c.user,c.account)
     assert result.namespace==c.directory.authorize(c.admin,c.account).storage_scope
-    expected={k:v for k,v in c.artifacts[c.account].rows.items() if k.startswith('2025-01-')}
+    expected={k:v for k,v in c.artifacts[c.account].rows.items() if k.startswith('2025-01-') or k=='.campaigniq-monthly-publication-v1.json'}
     assert {k:result.read_text(k) for k in result.list_keys()}==expected
     assert load_dashboard_sources(result)==load_dashboard_sources(c.artifacts[c.account])
     for method in ('write_text','delete','initialize'):

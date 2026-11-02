@@ -22,7 +22,7 @@ from campaigniq.account_data_backend_rehearsal import save
 PREFIX='CAMPAIGNIQ_LOCAL_ROLE_REPORT '
 DISTRIBUTIONS=('psycopg','psycopg-binary','psycopg-pool','typing_extensions')
 MAX_BUNDLE=128*1024*1024
-JOBS={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal','committed':'account_committed_publication_rehearsal','dashboard':'account_committed_publication_rehearsal','preferences':'account_committed_publication_rehearsal','application':'account_committed_publication_rehearsal'}
+JOBS={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal','committed':'account_committed_publication_rehearsal','dashboard':'account_committed_publication_rehearsal','preferences':'account_committed_publication_rehearsal','application':'account_committed_publication_rehearsal','futures':'account_committed_publication_rehearsal'}
 
 # Isolated stdlib bootstrap: no dependency imports until the verified private
 # bundle is extracted. All elevated work runs as postgres, never as root.
@@ -60,7 +60,7 @@ try:
     sys.path[:0]=[str(root/'code'),str(root/'deps')]
     import importlib
     job=manifest.get('job','roles')
-    jobs={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal','committed':'account_committed_publication_rehearsal','dashboard':'account_committed_publication_rehearsal','preferences':'account_committed_publication_rehearsal','application':'account_committed_publication_rehearsal'}
+    jobs={'roles':'account_runtime_roles_rehearsal','publication':'account_deployment_publication_rehearsal','committed':'account_committed_publication_rehearsal','dashboard':'account_committed_publication_rehearsal','preferences':'account_committed_publication_rehearsal','application':'account_committed_publication_rehearsal','futures':'account_committed_publication_rehearsal'}
     if job not in jobs:raise ValueError('Unknown fixed local rehearsal')
     runner=importlib.import_module('campaigniq.'+jobs[job])
     original_save=runner.save
@@ -68,7 +68,8 @@ try:
         original_save(path,value)
         print(PREFIX+json.dumps(dict(name=path.name,data=base64.b64encode(path.read_bytes()).decode())),flush=True)
     runner.save=export
-    if job=='application':runner.run_rehearsal(root/'reports',development_only=True,verify_application=True)
+    if job=='futures':runner.run_rehearsal(root/'reports',development_only=True,verify_futures=True)
+    elif job=='application':runner.run_rehearsal(root/'reports',development_only=True,verify_application=True)
     elif job=='preferences':runner.run_rehearsal(root/'reports',development_only=True,verify_preferences=True)
     elif job=='dashboard':runner.run_rehearsal(root/'reports',development_only=True,verify_dashboard=True)
     else:runner.run_rehearsal(root/'reports',development_only=True)
@@ -106,7 +107,7 @@ def build_bundle(destination,*,job='roles'):
                 if '..' in relative.parts or '__pycache__' in relative.parts:continue
                 path=Path(dist.locate_file(relative))
                 _add_file(archive,hashes,path,'deps/'+relative.as_posix())
-        if job in ('publication','committed','dashboard','preferences','application'):
+        if job in ('publication','committed','dashboard','preferences','application','futures'):
             from campaigniq.account_reconciliation_rehearsal import ROLES
             for name in sorted(ROLES.values()):
                 _add_file(archive,hashes,source.parents[1]/'tests/fixtures'/name,'tests/fixtures/'+name)
@@ -127,7 +128,7 @@ def administrator_command():
 def receive_report(output,line):
     value=json.loads(line[len(PREFIX):])
     name=value['name']
-    if name not in ('prewrite-recovery-receipt.json','reviewed-grant-plan.json','account-runtime-roles-report.json','reviewed-publication-grant-plan.json','account-deployment-publication-report.json','committed-publication-resources.json','committed-publication-report.json','deployment-dashboard-report.json','reviewed-preference-grant-plan.json','deployment-preferences-report.json','deployment-application-report.json'):
+    if name not in ('prewrite-recovery-receipt.json','reviewed-grant-plan.json','account-runtime-roles-report.json','reviewed-publication-grant-plan.json','account-deployment-publication-report.json','committed-publication-resources.json','committed-publication-report.json','deployment-dashboard-report.json','reviewed-preference-grant-plan.json','deployment-preferences-report.json','deployment-application-report.json','futures-publication-report.json'):
         raise ValueError('Unexpected administrator receipt name')
     data=base64.b64decode(value['data'],validate=True)
     if len(data)>1024*1024:raise ValueError('Oversize administrator receipt')
@@ -136,8 +137,8 @@ def receive_report(output,line):
     return name,parsed
 
 
-def run_admin_rehearsal(output,*,development_only,publication=False,committed=False,dashboard=False,preferences=False,application=False):
-    if any(type(flag) is not bool for flag in (publication,committed,dashboard,preferences,application)) or sum((publication,committed,dashboard,preferences,application))>1:raise ValueError('Select one explicit rehearsal mode')
+def run_admin_rehearsal(output,*,development_only,publication=False,committed=False,dashboard=False,preferences=False,application=False,futures=False):
+    if any(type(flag) is not bool for flag in (publication,committed,dashboard,preferences,application,futures)) or sum((publication,committed,dashboard,preferences,application,futures))>1:raise ValueError('Select one explicit rehearsal mode')
     # Retain the ordinary local target/override guard before any sudo process.
     restore_conninfo(development_only=development_only)
     command=administrator_command()
@@ -145,11 +146,11 @@ def run_admin_rehearsal(output,*,development_only,publication=False,committed=Fa
     received={}
     with tempfile.TemporaryDirectory(prefix='campaigniq-role-stage-') as staging:
         bundle=Path(staging)/'rehearsal.zip'
-        bundle_sha=build_bundle(bundle,job='application') if application else build_bundle(bundle,job='preferences') if preferences else build_bundle(bundle,job='dashboard') if dashboard else build_bundle(bundle,job='committed') if committed else build_bundle(bundle,job='publication') if publication else build_bundle(bundle)
+        bundle_sha=build_bundle(bundle,job='futures') if futures else build_bundle(bundle,job='application') if application else build_bundle(bundle,job='preferences') if preferences else build_bundle(bundle,job='dashboard') if dashboard else build_bundle(bundle,job='committed') if committed else build_bundle(bundle,job='publication') if publication else build_bundle(bundle)
         save(output/'administrator-rehearsal-request.json',dict(database=DATABASE,os_account='postgres',
-            bundle_sha256=bundle_sha,normal_user_privileges_changed=False,transaction_policy='disposable clone with exact identity cleanup' if committed or dashboard or preferences or application else 'forced rollback',
+            bundle_sha256=bundle_sha,normal_user_privileges_changed=False,transaction_policy='disposable clone with exact identity cleanup' if committed or dashboard or preferences or application or futures else 'forced rollback',
             production_connection_made=False))
-        print('Running LOCAL '+('committed publication on a disposable clone' if committed or dashboard or preferences or application else 'rollback rehearsal')+' as postgres; sudo may request your computer password.',flush=True)
+        print('Running LOCAL '+('committed publication on a disposable clone' if committed or dashboard or preferences or application or futures else 'rollback rehearsal')+' as postgres; sudo may request your computer password.',flush=True)
         with bundle.open('rb') as packed:
             process=subprocess.Popen(command,stdin=packed,stdout=subprocess.PIPE,text=True)
             try:
@@ -160,13 +161,13 @@ def run_admin_rehearsal(output,*,development_only,publication=False,committed=Fa
                 status=process.wait()
             except BaseException:
                 process.terminate();process.wait();raise
-    report_name='deployment-application-report.json' if application else 'deployment-preferences-report.json' if preferences else 'deployment-dashboard-report.json' if dashboard else 'committed-publication-report.json' if committed else 'account-deployment-publication-report.json' if publication else 'account-runtime-roles-report.json'
+    report_name='futures-publication-report.json' if futures else 'deployment-application-report.json' if application else 'deployment-preferences-report.json' if preferences else 'deployment-dashboard-report.json' if dashboard else 'committed-publication-report.json' if committed else 'account-deployment-publication-report.json' if publication else 'account-runtime-roles-report.json'
     report=received.get(report_name)
     if status!=0 or report is None or report.get('passed') is not True:
         raise RuntimeError('Administrator rehearsal did not complete; preserve saved reports. No role elevation was applied to your user.')
     expected={'prewrite-recovery-receipt.json','reviewed-grant-plan.json',report_name}
-    if publication or committed or dashboard or preferences or application:expected.add('reviewed-publication-grant-plan.json')
-    if committed or dashboard or preferences or application:expected.add('committed-publication-resources.json')
+    if publication or committed or dashboard or preferences or application or futures:expected.add('reviewed-publication-grant-plan.json')
+    if committed or dashboard or preferences or application or futures:expected.add('committed-publication-resources.json')
     if preferences or application:expected.add('reviewed-preference-grant-plan.json')
     if set(received)!=expected:
         raise RuntimeError('Required administrator receipts incomplete')
@@ -182,9 +183,10 @@ def main():
     parser.add_argument('--dashboard-parity',action='store_true')
     parser.add_argument('--personal-preferences',action='store_true')
     parser.add_argument('--application-integration',action='store_true')
+    parser.add_argument('--futures-publication',action='store_true')
     args=parser.parse_args()
     stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid4().hex[:8]
-    try:run_admin_rehearsal(Path.home()/'CampaignIQ-Records/Development-Rehearsals'/('Account-runtime-roles-admin-'+stamp),development_only=args.development_only,publication=args.publication,committed=args.committed_publication,dashboard=args.dashboard_parity,preferences=args.personal_preferences,application=args.application_integration)
+    try:run_admin_rehearsal(Path.home()/'CampaignIQ-Records/Development-Rehearsals'/('Account-runtime-roles-admin-'+stamp),development_only=args.development_only,publication=args.publication,committed=args.committed_publication,dashboard=args.dashboard_parity,preferences=args.personal_preferences,application=args.application_integration,futures=args.futures_publication)
     except (ValueError,RuntimeError,OSError,metadata.PackageNotFoundError) as error:
         parser.exit(1,str(error)+'\n')
 

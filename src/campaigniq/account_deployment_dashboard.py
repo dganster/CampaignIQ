@@ -50,7 +50,7 @@ class DeploymentAccountDashboard:
             retained_keys={k for k,v in retained}
             if set(session.artifacts.list_keys(suffix='-finalized.json'))-retained_keys!={p+'finalized.json' for p in visible}:
                 raise ValueError('Published generation has no matching saved source draft')
-            rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or (retained and k=='.campaigniq-monthly-publication-v1.json')]
+            rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or k=='.campaigniq-monthly-publication-v1.json']
             result=ReportSnapshot(session.account.storage_scope,rows)
             if include_history:
                 conn=session._connection;directory=DirectoryTransaction(conn,self.store.settings)._load()

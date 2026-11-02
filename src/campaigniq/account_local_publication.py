@@ -64,7 +64,7 @@ def publish_synthetic_month(service,identity,account_id,draft_id,revision,*,
 
 
 def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
-                        forex_applicable,crypto_applicable,receipt_format):
+                        forex_applicable,crypto_applicable,receipt_format,_futures_projection=None):
     """Shared engine. Caller must establish authorized, serialized SQL transaction."""
     draft=service._lock(session,draft_id,write=True)
     if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
@@ -89,6 +89,14 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
         supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
         checks=service._identity_validations(session,uploads,supplied,draft=draft)
         if any(not row.valid for row in checks):raise ValueError('Document account identity is unverified')
+        original_provenance=None
+        if _futures_projection is not None:
+            from campaigniq.futures_monthly_preview import project_history
+            from campaigniq.import_contract import MonthlyInputRole
+            from campaigniq.persistence.import_provenance import capture_monthly_input_provenance
+            original_provenance=capture_monthly_input_provenance(supplied)
+            project_history(uploads['thinkorswim_trade_history'].content,_futures_projection,root/'derived-securities-history.csv')
+            supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'derived-securities-history.csv'
         preflight=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
             supplied_inputs=supplied,artifact_storage=session.artifacts,
             forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
@@ -102,6 +110,10 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
             raise ValueError('Closing inventory does not reconcile; local publication rejected')
         if outcome.closing_reconciliation.forex_source_findings:
             raise ValueError('Forex source controls remain unresolved')
+        if original_provenance is not None:
+            from campaigniq.persistence.import_provenance import serialize_monthly_import_provenance
+            session.artifacts.write_text(prefix+'import-provenance.json',serialize_monthly_import_provenance(
+                period_start=start,period_end=end,inputs=original_provenance))
         receipt=dict(format=receipt_format,version=1,
             registry_id=service.gateway._directory.registry_id,account_id=account_id,actor_id=actor_id,
             draft_id=str(draft.id),draft_revision=draft.revision,period_end=end.isoformat(),
