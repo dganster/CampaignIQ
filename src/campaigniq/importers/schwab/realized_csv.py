@@ -17,7 +17,14 @@ def csv_rows(text):
     try:return list(csv.reader(io.StringIO(text.lstrip('\ufeff')),strict=True))
     except csv.Error as error:raise ValueError('Malformed realized CSV quoting') from error
 
-def is_csv(text):return text.lstrip('\ufeff').startswith(PREFIX)
+def is_csv(text):
+    # Schwab quotes the title field as well as the detail fields. Detect the
+    # decoded CSV field, not raw bytes; a quoted header is still the same format.
+    try:
+        first=next(csv.reader(io.StringIO(text.lstrip('\ufeff')),strict=True),[])
+    except csv.Error:
+        return False
+    return bool(first) and first[0].startswith(PREFIX)
 
 def period(text):
     rows=csv_rows(text)
