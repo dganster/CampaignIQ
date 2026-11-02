@@ -80,6 +80,9 @@ def document_identity(role,text):
     elif role=='thinkorswim_trade_history':
         kind='securities'
         values=re.findall(r'(?im)^\s*"?Account Statement for\s+(?:Account\s+)?(.+?)\s+(?:since|from)\b',text)
+        # Accept the explicit ToS Schwab suffix without discarding arbitrary text.
+        values=[re.sub(r'(?i)^([0-9]{8}|[0-9]{4}-[0-9]{4})SCHW(?:[ \t]+\([^()\r\n]*\))?$',
+                       r'\1',value) for value in values]
     elif role in {'schwab_brokerage_statement','schwab_opening_position_snapshot',
                   'schwab_next_month_assignment_evidence','schwab_realized_gain_loss'}:
         kind='securities';values=[]
