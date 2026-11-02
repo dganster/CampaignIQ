@@ -38,6 +38,9 @@ class PublishedResults:
     crypto_warnings: tuple[str, ...]
     original_documents: int
     publication_receipt_sha256: str
+    futures_applicable: bool=False
+    futures_realized_usd: str="0"
+    futures_evidence_status: str="Not applicable"
 
 
 def _instrument(value):

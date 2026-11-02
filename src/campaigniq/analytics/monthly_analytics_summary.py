@@ -27,6 +27,8 @@ class MonthlyAnalyticsSummary:
     realized_pnl: RealizedPnlSummary
     campaign_performance: CampaignPerformanceSummary
     forex_settled_pnl: Decimal = Decimal("0")
+    futures_realized_pnl: Decimal = Decimal("0")
+    futures_applicable: bool = False
 
     @property
     def equity_options_realized_pnl(self) -> Decimal:
@@ -34,7 +36,7 @@ class MonthlyAnalyticsSummary:
 
     @property
     def combined_realized_pnl(self) -> Decimal:
-        return self.equity_options_realized_pnl + self.forex_settled_pnl
+        return self.equity_options_realized_pnl + self.forex_settled_pnl + self.futures_realized_pnl
 
 
 def summarize_monthly_analytics(

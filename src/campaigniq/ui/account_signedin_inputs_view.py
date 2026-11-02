@@ -233,6 +233,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
                     st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=row[2], Campaign=row[3])
                         for row in result.forex_settlements], hide_index=True)
+                if getattr(result,'futures_applicable',False):
+                    st.write('Futures/options net realized P/L, USD: ' + result.futures_realized_usd)
+                    st.caption(result.futures_evidence_status)
                 if result.crypto_applicable:
                     st.write('Crypto evidence status: ' + result.crypto_status)
                     st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)

@@ -216,3 +216,11 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             draft=self._lock(session,draft_id)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before monthly futures preview')
             return monthly_preview(self,session,draft,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+
+    def futures_generation_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_futures_generation import generation_preview
+        if type(revision) is not int or revision<0:raise ValueError('Displayed revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before generation preview')
+            return generation_preview(self,session,draft)

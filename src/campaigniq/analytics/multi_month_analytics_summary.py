@@ -24,11 +24,16 @@ def summarize_multi_month_analytics(
         tuple[date, date],
         Iterable[ForexSettlementAttribution],
     ] | None = None,
+    monthly_futures_pnl: Mapping[tuple[date,date],Decimal] | None = None,
 ) -> tuple[MonthlyAnalyticsSummary, ...]:
     """Summarize monthly analytics in chronological order."""
 
     summaries: list[MonthlyAnalyticsSummary] = []
     forex_by_period = monthly_forex_attributions or {}
+    futures_by_period = monthly_futures_pnl or {}
+    if set(futures_by_period)-set(monthly_attributions):raise ValueError("Futures period has no matching published analytics month")
+    if any(not isinstance(v,Decimal) or not v.is_finite() for v in futures_by_period.values()):
+        raise ValueError("Finite Decimal futures totals required")
 
     for period_start, period_end in sorted(monthly_attributions):
         period = (period_start, period_end)
@@ -48,6 +53,8 @@ def summarize_multi_month_analytics(
                 realized_pnl=summary.realized_pnl,
                 campaign_performance=summary.campaign_performance,
                 forex_settled_pnl=forex_settled_pnl,
+                futures_realized_pnl=futures_by_period.get(period,Decimal("0")),
+                futures_applicable=period in futures_by_period,
             )
         )
 

@@ -24,4 +24,11 @@ def _deployment_results_session(service,session,draft,account_id,revision):
         supplied=stage_monthly_uploads(upload_dir=Path(root),uploads=uploads)
         if any(not item.valid for item in service._identity_validations(session,uploads,supplied,draft=draft)):
             raise ValueError('Current broker identity differs from retained publication sources')
-    return _results_session(service,session,draft,account_id,revision,receipt_format='campaigniq.deployment_account_publication')
+    result=_results_session(service,session,draft,account_id,revision,receipt_format='campaigniq.deployment_account_publication')
+    from campaigniq.account_futures_generation import verify_published
+    record=verify_published(service,session,draft)
+    if record is not None:
+        from dataclasses import replace
+        result=replace(result,futures_applicable=True,futures_realized_usd=str(record.net_realized_usd),
+            futures_evidence_status='Owner-confirmed empty opening/ending positions; statement association owner-confirmed')
+    return result

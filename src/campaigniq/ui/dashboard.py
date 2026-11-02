@@ -1867,6 +1867,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 "month": summary.period_start.strftime("%b %Y"),
                 "equity_options_realized_pnl": float(summary.equity_options_realized_pnl),
                 "forex_settled_pnl": float(summary.forex_settled_pnl),
+                **({"futures_realized_pnl":float(summary.futures_realized_pnl)} if any(item.futures_applicable for item in summaries) else {}),
                 "realized_pnl": float(summary.combined_realized_pnl),
                 "campaigns": performance.campaign_count,
                 "wins": performance.winning_campaign_count,
@@ -1932,7 +1933,11 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         (summary.equity_options_realized_pnl for summary in summaries),
         Decimal("0"),
     )
-    combined_realized_pnl = equity_options_realized_pnl + forex_settled_pnl
+    futures_applicable = any(summary.futures_applicable for summary in summaries)
+    futures_realized_pnl = sum((summary.futures_realized_pnl for summary in summaries),Decimal("0"))
+    combined_realized_pnl = equity_options_realized_pnl + forex_settled_pnl + futures_realized_pnl
+    if futures_applicable:
+        st.caption("Monthly realized totals include futures/options net P&L. Futures are not yet included in campaign counts, campaign win rates or campaign drawdown. Crypto remains separate.")
 
 
     if view == "Overview":
@@ -2020,6 +2025,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
             st.metric("Month realized P&L", money(monthly_summary.combined_realized_pnl))
             month_campaign_total = sum((item.realized_pnl for item in campaign_drilldowns if campaign_month(item) == selected_month), Decimal("0"))
+            if monthly_summary.futures_applicable:
+                st.caption("The month total includes separately reported futures/options P&L; those trades are not counted as campaign rows yet.")
             if month_campaign_total != monthly_summary.combined_realized_pnl:
                 st.caption("The month total includes broker records without an unambiguous campaign attribution. Those records do not appear as campaign rows.")
         st.caption("Click a campaign row to inspect its details below.")
@@ -2437,13 +2444,16 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             f"{total_records:,}",
         )
 
-        pnl1, pnl2, pnl3 = st.columns(3)
+        pnl_columns = st.columns(4 if futures_applicable else 3)
+        pnl1,pnl2,pnl3 = pnl_columns[0],pnl_columns[1],pnl_columns[-1]
+        if futures_applicable:pnl_columns[2].metric("Futures/options Net P&L",money(futures_realized_pnl))
         pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
         pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
         pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
         st.caption(
-            "Combined realized P&L includes equity/options realized P&L and FOREX settled P&L. "
-            "FOREX financing/interest is excluded."
+            ("Combined realized P&L includes equity/options, FOREX settlements and futures/options net P&L. Crypto remains separate. "
+             "FOREX financing/interest is excluded." if futures_applicable else
+             "Combined realized P&L includes equity/options realized P&L and FOREX settled P&L. FOREX financing/interest is excluded.")
         )
 
         perf1, perf2, perf3, perf4 = st.columns(4)

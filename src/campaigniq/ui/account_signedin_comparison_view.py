@@ -61,6 +61,9 @@ def render(st,service,server_user,*,deployment=False):
                     st.dataframe([dict(Instrument=name,Quantity=quantity) for name,quantity in row.positions],hide_index=True)
                     if row.forex_applicable:
                         st.caption('Forex settled P/L, USD: '+row.forex_settled_usd+' (excludes financing and other cash activity)')
+                    if getattr(row,'futures_applicable',False):
+                        st.caption('Futures/options net P/L, USD: '+row.futures_realized_usd)
+                        st.caption(row.futures_evidence_status)
                     if row.crypto_applicable:
                         st.caption('Crypto evidence status: '+row.crypto_status)
                         st.dataframe([dict(Crypto=name,Quantity=quantity) for name,quantity in row.crypto_positions],hide_index=True)

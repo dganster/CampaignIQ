@@ -62,6 +62,7 @@ class DeploymentMonthlyApplication:
     def futures_preview(self,*args,**kwargs):return self._inputs.futures_preview(*args,**kwargs)
     def confirm_empty_futures_closing(self,*args,**kwargs):return self._inputs.confirm_empty_futures_closing(*args,**kwargs)
     def futures_monthly_preview(self,*args,**kwargs):return self._inputs.futures_monthly_preview(*args,**kwargs)
+    def futures_generation_preview(self,*args,**kwargs):return self._inputs.futures_generation_preview(*args,**kwargs)
     def preview(self,*args,**kwargs):return self._inputs.preview(*args,**kwargs)
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)

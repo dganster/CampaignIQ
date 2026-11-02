@@ -1,5 +1,6 @@
 """Pure published report loading; no authentication, runtime construction or UI."""
 from datetime import date
+import re
 
 from campaigniq.analytics.multi_month_analytics_summary import summarize_multi_month_analytics
 from campaigniq.persistence.monthly_publication import publication_cutover_from_storage, finalized_month_marker_key
@@ -44,5 +45,16 @@ def load_dashboard_sources(storage,*,source_description='selected account'):
     if not realized_keys:raise FileNotFoundError(f'No persisted attribution files found in {source_description}')
     monthly,forex=load_persisted_monthly_campaign_attributions_from_storage(storage,
         realized_keys=realized_keys,forex_keys=forex_keys)
-    summaries=summarize_multi_month_analytics(monthly_attributions=monthly,monthly_forex_attributions=forex)
+    from campaigniq.persistence.futures_month import load_published
+    for key in storage.list_keys(suffix='-futures.json'):
+        if not re.fullmatch(r'[0-9]{4}-[0-9]{2}-futures.json',key):raise ValueError('Unexpected futures artifact key')
+    futures={}
+    periods_by_month={start.strftime('%Y-%m'):(start,end) for start,end in monthly}
+    for key in published_artifact_keys(storage,suffix='-futures.json'):
+        if key.removesuffix('-futures.json') not in periods_by_month:
+            raise ValueError('Published futures record has no matching ordinary monthly generation')
+    for start,end in monthly:
+        record=load_published(storage,period_start=start,period_end=end)
+        if record is not None:futures[start,end]=record.net_realized_usd
+    summaries=summarize_multi_month_analytics(monthly_attributions=monthly,monthly_forex_attributions=forex,monthly_futures_pnl=futures)
     return summaries,monthly,forex
