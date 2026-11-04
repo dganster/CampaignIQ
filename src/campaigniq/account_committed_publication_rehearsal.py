@@ -60,8 +60,8 @@ def cleanup_clone(control,name,oid,role_oids,before):
         for role in role_oids:control.execute(sql.SQL('DROP ROLE {}').format(sql.Identifier(role)))
 
 
-def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_preferences=False,verify_application=False,verify_futures=False):
-    if any(type(x) is not bool for x in (verify_dashboard,verify_preferences,verify_application,verify_futures)) or sum((verify_dashboard,verify_preferences,verify_application,verify_futures))>1:raise ValueError('One explicit rehearsal mode required')
+def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_preferences=False,verify_application=False,verify_futures=False,verify_crypto=False):
+    if any(type(x) is not bool for x in (verify_dashboard,verify_preferences,verify_application,verify_futures,verify_crypto)) or sum((verify_dashboard,verify_preferences,verify_application,verify_futures,verify_crypto))>1:raise ValueError('One explicit rehearsal mode required')
     import psycopg
     from psycopg import sql
     from psycopg.conninfo import make_conninfo
@@ -71,8 +71,8 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
     roles=['ciq_commit_input_'+token[:16],'ciq_commit_publish_'+token[:16]]
     if verify_preferences or verify_application:roles.append('ciq_commit_prefs_'+token[:16])
     role_oids={};roles_committed=False;clone_oid=None;before=None;before_acl=None
-    report_name='futures-publication-report.json' if verify_futures else 'deployment-application-report.json' if verify_application else 'deployment-preferences-report.json' if verify_preferences else 'deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
-    report=dict(format='campaigniq.futures-publication-rehearsal' if verify_futures else 'campaigniq.deployment-application-rehearsal' if verify_application else 'campaigniq.deployment-preferences-rehearsal' if verify_preferences else 'campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
+    report_name='crypto-source-receipts-report.json' if verify_crypto else 'futures-publication-report.json' if verify_futures else 'deployment-application-report.json' if verify_application else 'deployment-preferences-report.json' if verify_preferences else 'deployment-dashboard-report.json' if verify_dashboard else 'committed-publication-report.json'
+    report=dict(format='campaigniq.crypto-source-receipts-rehearsal' if verify_crypto else 'campaigniq.futures-publication-rehearsal' if verify_futures else 'campaigniq.deployment-application-rehearsal' if verify_application else 'campaigniq.deployment-preferences-rehearsal' if verify_preferences else 'campaigniq.deployment-dashboard-rehearsal' if verify_dashboard else 'campaigniq.committed-publication-rehearsal',version=1,checks={},passed=False,
         source_database=DATABASE,disposable_database=database,production_connection_made=False,account_mode_activated=False)
     def passed(name):report['checks'][name]=True;print(name.replace('_',' ')+': PASS',flush=True)
     @contextmanager
@@ -289,6 +289,11 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                 from types import SimpleNamespace
                 from campaigniq.account_futures_publication_rehearsal import verify_futures as check_futures
                 check_futures(SimpleNamespace(reader=reader,inputs=service,publisher=publisher,user=user,foreign=foreign,
+                    identities=identities,owner=owner,snapshot=snapshot),passed)
+            if verify_crypto:
+                from types import SimpleNamespace
+                from campaigniq.account_crypto_sources_rehearsal import verify_crypto_sources
+                verify_crypto_sources(SimpleNamespace(reader=reader,inputs=service,user=user,foreign=foreign,
                     identities=identities,owner=owner,snapshot=snapshot),passed)
             with owner() as conn:assert {k:v for k,v in inventory(conn).items() if not k.startswith(m.SCHEMA+'.')}==before
             passed('every_copied_existing_financial_document_preference_and_directory_row_unchanged')
