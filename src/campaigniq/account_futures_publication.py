@@ -44,16 +44,22 @@ def _publish_futures_in_session(service,session,actor_id,account_id,draft_id,rev
     record=build_candidate(service,session,draft)
     if record.to_dict()['source_lineage']!=checked['source_lineage']:
         raise ValueError('Futures calculation and monthly source partition differ')
+    crypto_candidate=None
+    from campaigniq.account_crypto_statement_sources import load_receipt
+    if load_receipt(session,draft) is not None:
+        from campaigniq.account_crypto_generation import build_candidate as build_crypto
+        if not crypto_applicable:raise ValueError('Approved crypto cannot be omitted')
+        crypto_candidate=build_crypto(service,session,draft)
     target=session.artifacts;buffer=GenerationBuffer(target)
     prefix=record.period_start.strftime('%Y-%m')+'-'
     try:
         session.artifacts=buffer
         result=_publish_in_session(service,session,actor_id,account_id,draft_id,revision,
             forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
-            receipt_format='campaigniq.deployment_account_publication',_futures_projection=checked['futures'])
+            receipt_format='campaigniq.deployment_account_publication',_futures_projection=checked['futures'],_crypto_candidate=crypto_candidate)
         # Crypto record source row IDs must refer to the complete original export,
         # never the reindexed temporary securities projection.
-        if crypto_applicable:
+        if crypto_applicable and crypto_candidate is None:
             from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
             from campaigniq.persistence.crypto_month import build_crypto_month,load_preceding_crypto,serialize_crypto_month
             from campaigniq.importers.schwab.crypto_statement_reader import read_crypto_statement,attach_crypto_statement
@@ -74,6 +80,9 @@ def _publish_futures_in_session(service,session,actor_id,account_id,draft_id,rev
         buffer.write_text(prefix+'futures.json',record.record_json)
         receipt_key=prefix+'account-publication-receipt.json'
         receipt=json.loads(buffer.read_text(receipt_key));receipt['futures_generation']=reference(record)
+        if crypto_candidate is not None:
+            from campaigniq.account_crypto_publication import reference as crypto_reference
+            receipt['approved_crypto_generation']=crypto_reference(crypto_candidate,buffer.read_text(prefix+'crypto.json'))
         text=json.dumps(receipt,sort_keys=True,indent=2)+'\n';buffer.write_text(receipt_key,text)
         # Verify the whole candidate through the actual account result and analytics
         # loaders before sending any artifact INSERT to the restricted writer.
@@ -93,5 +102,8 @@ def _publish_futures_in_session(service,session,actor_id,account_id,draft_id,rev
     if marker not in keys:raise ValueError('Generation visibility marker missing')
     for key in (*[k for k in keys if k!=marker],marker):target.write_text(key,buffer.rows[key])
     verify_published(service,session,draft)
+    if crypto_candidate is not None:
+        from campaigniq.account_crypto_publication import verify_published as verify_crypto
+        verify_crypto(service,session,draft)
     session._check()
     return replace(result,artifact_keys=target.list_keys(prefix=prefix),receipt_sha256=sha256(text.encode()).hexdigest())

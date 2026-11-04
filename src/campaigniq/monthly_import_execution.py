@@ -146,6 +146,7 @@ def execute_monthly_import(
     preview_only: bool = False,
     development_continuity: bool = False,
     development_opening_origins=None,
+    _approved_crypto_report=None,
 ) -> MonthlyImportExecution:
     """Run and finalize after reconciliation or an exact reviewed exception."""
     if type(development_continuity) is not bool:
@@ -399,8 +400,12 @@ def execute_monthly_import(
         build_crypto_month(result.crypto_report, load_preceding_crypto(storage, contract.period_start))
         if crypto_applicable and result.crypto_report is not None else None
     )
+    if _approved_crypto_report is not None:
+        if not crypto_applicable:raise ValueError('Approved crypto cannot be omitted')
+        from copy import deepcopy
+        crypto_report=deepcopy(_approved_crypto_report)
     statement_path = supplied_inputs.get(MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT)
-    if statement_path is not None:
+    if statement_path is not None and _approved_crypto_report is None:
         from campaigniq.importers.schwab.crypto_statement_reader import read_crypto_statement, attach_crypto_statement
         crypto_report = attach_crypto_statement(crypto_report, read_crypto_statement(statement_path,
             period_start=contract.period_start, period_end=contract.period_end))

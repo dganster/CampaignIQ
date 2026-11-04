@@ -123,7 +123,16 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
         crypto_status=dict(activity_present=active,statement_supplied=MonthlyInputRole.SCHWAB_CRYPTO_STATEMENT in supplied,
             fill_control_reconciled=bool(crypto and crypto['fill_control_reconciled']),
             cash_control_reconciled=bool(crypto and crypto['cash_control_reconciled']),month_end_reconciled=False)
-        if active:
+        approved=None
+        from campaigniq.account_crypto_statement_sources import load_receipt
+        if load_receipt(session,draft) is not None:
+            from campaigniq.account_crypto_generation import build_candidate
+            approved=build_candidate(service,session,draft)
+            crypto_status['approved_source_candidate_sha256']=approved.sha256
+            crypto_status['original_discrepancies_resolved']=False
+            crypto_ready=crypto_applicable
+            if not crypto_applicable:findings.append('Approved crypto cannot be omitted from this month.')
+        if active and approved is None:
             if not crypto_applicable:findings.append('Crypto activity is present and cannot be omitted from this month.')
             if not crypto_status['statement_supplied']:findings.append('The separate crypto account statement is still required.')
             if not crypto_status['fill_control_reconciled']:findings.append('Crypto execution and ledger fills do not match.')

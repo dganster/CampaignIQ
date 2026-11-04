@@ -64,12 +64,19 @@ def publish_synthetic_month(service,identity,account_id,draft_id,revision,*,
 
 
 def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
-                        forex_applicable,crypto_applicable,receipt_format,_futures_projection=None):
+                        forex_applicable,crypto_applicable,receipt_format,_futures_projection=None,_crypto_candidate=None):
     """Shared engine. Caller must establish authorized, serialized SQL transaction."""
     draft=service._lock(session,draft_id,write=True)
     if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
     start=date(draft.year,draft.month,1)
     end=date(draft.year,draft.month,monthrange(draft.year,draft.month)[1])
+    approved_crypto=None
+    if _crypto_candidate is not None:
+        if not crypto_applicable:raise ValueError('Approved crypto cannot be omitted')
+        from campaigniq.account_crypto_publication import financial_report
+        from campaigniq.account_crypto_generation import verify_candidate
+        verified=verify_candidate(service,session,draft,_crypto_candidate.record_json)
+        approved_crypto=financial_report(service,session,draft,verified)
     existing=_periods(session.artifacts)
     if not existing and session.artifacts.list_keys():
         raise ValueError('Account storage has unreviewed artifacts; publication stopped')
@@ -105,7 +112,7 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
         # No reconciliation exception, history reseeding or filesystem archive.
         # Every canonical artifact and visibility marker use one SQL connection.
         outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
-            supplied_inputs=supplied,artifact_storage=session.artifacts)
+            supplied_inputs=supplied,artifact_storage=session.artifacts,_approved_crypto_report=approved_crypto)
         if not outcome.finalized or not outcome.closing_reconciliation.reconciled:
             raise ValueError('Closing inventory does not reconcile; local publication rejected')
         if outcome.closing_reconciliation.forex_source_findings:

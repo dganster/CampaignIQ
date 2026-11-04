@@ -34,6 +34,8 @@ def sources(number='97531864'):
     raw=EXPORT.replace('Account Statement for synthetic account since 8/31/26 through 9/29/26',
         'Account Statement for '+number+' since 9/30/26 through 10/31/26').replace('SYNTHETIC','TEST000099')
     raw=raw.replace('9/28/26','10/28/26').replace('9/27/26','10/27/26').replace('9/29/26','10/31/26')
+    header=',Exec Time,Spread,Side,Qty,Pos Effect,Symbol,Exp,Strike,Type,Price,Net Price,Order Type\n'
+    raw=raw.replace(header,header+',10/15/26 10:00:00,STOCK,BUY,+10,TO OPEN,SPY,,,STOCK,100,100,LMT\n')
     uploads['thinkorswim_trade_history']=RestoredUpload('history.csv','text/csv',raw.encode())
     previous='Schwab CryptoTM Account of\n****-******0099 September 1-30, 2026\nCASH 0.00 0.00\nPosition Details - Crypto 1\nTransaction Details\nDisclosures\n'
     current=STATEMENT.replace('September 1-30','October 1-31').replace('09/28','10/28').replace('0841','0099')

@@ -91,6 +91,9 @@ class DeploymentAccountPublisher:
             if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
             if has_futures(session,draft):
                 raise PermissionError('Futures monthly publication is disabled pending complete generation/report integration; use the read-only monthly preview. No rows changed.')
+            from campaigniq.account_crypto_statement_sources import load_receipt as crypto_receipt
+            if crypto_receipt(session,draft) is not None:
+                raise PermissionError('Approved crypto publication is disabled pending complete application integration and release review. No rows changed.')
             result=_publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,
                 forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
                 receipt_format='campaigniq.deployment_account_publication')

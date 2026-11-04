@@ -1,6 +1,6 @@
 """Actual restricted input-role crypto receipts inside the fixed disposable clone."""
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from threading import Barrier,Event
 from unittest.mock import patch
 from decimal import Decimal
 import json
@@ -130,3 +130,117 @@ def verify_crypto_sources(c,passed):
         with c.owner() as conn:conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',(row[1],row[2],row[0]))
     assert c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
     passed('changed_crypto_original_withholds_preview_without_repair_and_all_existing_financial_artifacts_are_unchanged')
+
+    verify_crypto_publication(c,passed,account,draft,saved_revision)
+    verify_combined_publication(c,passed)
+
+
+def verify_crypto_publication(c,passed,account,draft,revision,*,combined=False):
+    from campaigniq.account_crypto_publication import _publish_crypto_in_session
+    from campaigniq.account_deployment_publication import AppendOnlyArtifacts
+    from campaigniq.account_deployment_results import load_deployment_results
+    from campaigniq.account_deployment_dashboard import DeploymentAccountDashboard
+    from campaigniq.persistence.crypto_month import load_preceding_crypto
+    from datetime import date
+    service,user=c.inputs,c.user
+    if combined:
+        from campaigniq.account_futures_publication import _publish_futures_in_session
+        writer=_publish_futures_in_session
+    else:writer=_publish_crypto_in_session
+    def publish():
+        with c.publisher._transaction(user,account) as (session,actor):
+            return writer(service,session,actor,account,draft.id,revision,
+                forex_applicable=False,crypto_applicable=True)
+    def reject(kind,call):
+        try:call()
+        except kind:return
+        raise AssertionError('Expected rejection '+kind.__name__)
+    before=c.snapshot();real=AppendOnlyArtifacts.write_text
+    for suffix in ('crypto.json','account-publication-receipt.json','finalized.json'):
+        def fail(storage,key,text):
+            real(storage,key,text)
+            if key.endswith(suffix):raise RuntimeError('injected crypto generation failure')
+        with patch.object(AppendOnlyArtifacts,'write_text',new=fail):reject(RuntimeError,publish)
+        assert c.snapshot()==before
+    passed('restricted_crypto_writer_rolls_back_complete_month_after_component_receipt_and_marker_failures')
+    def caught(storage,key,text):
+        real(storage,key,text)
+        if key.endswith('crypto.json'):
+            import psycopg
+            try:
+                with storage._session._operation() as conn:conn.execute('UPDATE public.artifact_storage_dev SET content=content WHERE false')
+            except psycopg.Error:pass
+    with patch.object(AppendOnlyArtifacts,'write_text',new=caught):reject(RuntimeError,publish)
+    assert c.snapshot()==before
+    passed('caught_forbidden_sql_cannot_commit_partial_crypto_generation')
+    barrier=Barrier(3);marker=Event();release=Event()
+    def paused(storage,key,text):
+        real(storage,key,text)
+        if key.endswith('finalized.json'):
+            marker.set()
+            if not release.wait(20):raise RuntimeError('Crypto reader coordination timed out')
+    def attempt():
+        barrier.wait(timeout=15)
+        try:publish();return 'winner'
+        except ValueError:return 'blocked'
+    with patch.object(AppendOnlyArtifacts,'write_text',new=paused),ThreadPoolExecutor(max_workers=2) as pool:
+        jobs=[pool.submit(attempt) for _ in range(2)]
+        try:
+            barrier.wait(timeout=15)
+            if not marker.wait(20):raise RuntimeError('Crypto marker not reached')
+            reject(ValueError,lambda:load_deployment_results(service,user,account,draft.id,revision))
+        finally:release.set()
+        assert sorted(j.result(timeout=30) for j in jobs)==['blocked','winner']
+    after=c.snapshot();out=load_deployment_results(service,user,account,draft.id,revision)
+    if combined:assert out.futures_applicable and Decimal(out.futures_realized_usd)==-816
+    assert sum(Decimal(q) for _,q in out.positions)==110
+    assert Decimal(dict(out.crypto_positions)['BTC/USD'])==Decimal('.005929')
+    snapshot=DeploymentAccountDashboard(c.reader).snapshot(user,account,include_history=True)
+    assert snapshot.history and not snapshot.history.gaps
+    with service.gateway.transaction(user,account) as session:
+        crypto_next=load_preceding_crypto(session.artifacts,date(2026,11,1))
+        assert sum(Decimal(l['cost_usd']) for l in crypto_next['ending_lots']['BTC/USD'])==500
+    assert c.snapshot()==after
+    passed('committed_crypto_has_one_winner_and_independent_results_history_and_following_opening_preserve_exact_lots')
+    scope=c.reader.authorize(user,account).storage_scope
+    with c.owner() as conn:
+        original=conn.execute('SELECT content FROM campaigniq_accounts.artifact_storage_dev WHERE namespace=%s AND artifact_key=%s',
+            (scope,'2026-10-crypto.json')).fetchone()[0]
+        changed=json.loads(original);changed['ending_quantities']['BTC/USD']='999'
+        conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+            (json.dumps(changed),scope,'2026-10-crypto.json'))
+    try:
+        reject(ValueError,lambda:load_deployment_results(service,user,account,draft.id,revision))
+        reject(ValueError,lambda:DeploymentAccountDashboard(c.reader).snapshot(user,account))
+    finally:
+        with c.owner() as conn:conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+            (original,scope,'2026-10-crypto.json'))
+    assert c.snapshot()==after
+    passed('committed_crypto_conflict_withholds_entire_account_result_and_dashboard_without_repair')
+
+
+def verify_combined_publication(c,passed):
+    import csv,io
+    from campaigniq.futures_rehearsal_sources import FILLS,LEDGER,CASH_HEADER,statement_pdf
+    from campaigniq.import_draft_bridge import RestoredUpload
+    reader,service,user=c.reader,c.inputs,c.user
+    owner=reader.snapshot(user).user(c.identities[0]).id
+    reader.execute(user,reader.snapshot(user).revision,'add_account',owner_id=owner,name='Synthetic combined monthly generation',broker='schwab')
+    account=next(a.id for a in reader.snapshot(user).accounts if a.name=='Synthetic combined monthly generation')
+    service.gateway.bind(user,account,'securities','97531865',expected_revision=reader.snapshot(user).revision)
+    uploads,previous,current=sources('97531865')
+    history=uploads['thinkorswim_trade_history']
+    def rows(items):
+        out=io.StringIO();csv.writer(out,lineterminator='\n').writerows(items);return out.getvalue().encode()
+    raw=history.content.replace(b',10/15/26 10:00:00,STOCK',rows(FILLS)+b',10/15/26 10:00:00,STOCK')
+    raw=raw.replace(b'Forex Statements\n',b'Futures Statements\n'+rows([CASH_HEADER,*LEDGER])+b'\nForex Statements\n')
+    uploads['thinkorswim_trade_history']=RestoredUpload(history.name,history.media_type,raw)
+    draft=service.create(user,account,2026,10);revision=0
+    for role,upload in uploads.items():revision=service.save(user,account,draft.id,revision,role,upload)
+    revision=service.confirm_empty_futures_opening(user,account,draft.id,revision,confirm_empty_opening=True)
+    revision=service.save_futures_statement(user,account,draft.id,revision,RestoredUpload('future.pdf','application/pdf',statement_pdf()),confirm_same_account=True)
+    revision=service.confirm_empty_futures_closing(user,account,draft.id,revision,confirm_empty_closing=True)
+    review=service.review_crypto_statements(user,account,draft.id,revision,previous,current)
+    revision=service.save_crypto_statement_sources(user,account,draft.id,revision,previous,current,
+        reviewed_preview_sha256=review['reviewed_preview_sha256'],confirm_same_crypto_account=True,confirm_source_choices=True)
+    verify_crypto_publication(c,lambda name:passed('combined_futures_'+name),account,draft,revision,combined=True)

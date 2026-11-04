@@ -79,6 +79,12 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
         from campaigniq.account_import_preview import InputStatus
         from campaigniq.account_gain_loss_association import ROLE,load_receipt,validate_receipt
         checks=super()._identity_validations(session,uploads,supplied,draft=draft)
+        if draft is not None:
+            from campaigniq.account_crypto_statement_sources import CURRENT,load_receipt as crypto_receipt,saved_preview
+            if crypto_receipt(session,draft) is not None:
+                saved_preview(self,session,draft)
+                checks=tuple(InputStatus('account:'+CURRENT,True,'Crypto account association confirmed by owner against exact approved originals; not broker verified.')
+                    if item.role=='account:'+CURRENT else item for item in checks)
         if draft is None or ROLE not in uploads:return checks
         try:
             receipt=load_receipt(session,draft)

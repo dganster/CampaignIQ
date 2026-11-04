@@ -293,7 +293,7 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             if verify_crypto:
                 from types import SimpleNamespace
                 from campaigniq.account_crypto_sources_rehearsal import verify_crypto_sources
-                verify_crypto_sources(SimpleNamespace(reader=reader,inputs=service,user=user,foreign=foreign,
+                verify_crypto_sources(SimpleNamespace(reader=reader,inputs=service,publisher=publisher,user=user,foreign=foreign,
                     identities=identities,owner=owner,snapshot=snapshot),passed)
             with owner() as conn:assert {k:v for k,v in inventory(conn).items() if not k.startswith(m.SCHEMA+'.')}==before
             passed('every_copied_existing_financial_document_preference_and_directory_row_unchanged')

@@ -31,4 +31,6 @@ def _deployment_results_session(service,session,draft,account_id,revision):
         from dataclasses import replace
         result=replace(result,futures_applicable=True,futures_realized_usd=str(record.net_realized_usd),
             futures_evidence_status='Owner-confirmed empty opening/ending positions; statement association owner-confirmed')
+    from campaigniq.account_crypto_publication import verify_published as verify_crypto
+    verify_crypto(service,session,draft)
     return result
