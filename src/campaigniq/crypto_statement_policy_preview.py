@@ -20,7 +20,7 @@ from campaigniq.importers.thinkorswim.crypto_reader import read_crypto_report
 from campaigniq.pdf_text import extract_pdf_text
 
 ZERO=Decimal(0)
-POLICY='statement_trade_cash_and_preceding_closing_balances_v1'
+POLICY='statement_cash_and_documented_opening_acquisitions_v1'
 SOURCE_ROLES={'trade_history','previous_crypto_statement','current_crypto_statement'}
 
 
@@ -46,6 +46,47 @@ class CryptoPolicyPreview:
     def to_dict(self):return json.loads(self.text)
 
 
+def documented_opening_lots(previous):
+    """Link closing units to their actual acquisition rows, never to market value.
+
+    A pair qualifies only when all its preceding-month trading rows are buys,
+    positive purchase amounts/fees are consistent and their exact quantity sum
+    equals the closing holding. Transfers of units or sales leave basis unknown.
+    No prior published financial record is read, updated or replaced.
+    """
+    lots={};evidence={}
+    for pair,holding in sorted(previous['holdings'].items()):
+        quantity=_money(holding['quantity'])
+        if quantity<ZERO:raise ValueError('Negative crypto opening holdings unsupported')
+        if not quantity:
+            lots[pair]=[];evidence[pair]=dict(status='empty',quantity='0',documented_cost_usd='0',statement_transactions=[])
+            continue
+        rows=[(i,t) for i,t in enumerate(previous['transactions']) if t['pair']==pair]
+        qualified=bool(rows) and all(t['action']=='BUY' for i,t in rows)
+        candidate=[];quantity_sum=ZERO;cost_sum=ZERO
+        if qualified:
+            for index,row in rows:
+                units=_money(row['quantity']);cost=-_usd(row['amount_usd']);fee=_usd(row['fee_usd'])
+                if units<=ZERO or cost<=ZERO or fee<ZERO or cost<fee:
+                    raise ValueError('Invalid preceding statement acquisition cost evidence')
+                if not previous['period_start']<=row['date']<=previous['period_end']:
+                    raise ValueError('Preceding acquisition outside statement period')
+                quantity_sum+=units;cost_sum+=cost
+                candidate.append(dict(quantity=str(units),cost_usd=str(cost),
+                    source='previous-statement-transaction-'+str(index),statement_transaction_index=index,
+                    opened_on=row['date'],fees_included_usd=str(fee),
+                    basis_status='documented preceding statement acquisition cash including fees'))
+        if qualified and quantity_sum==quantity:
+            lots[pair]=candidate
+            evidence[pair]=dict(status='documented_acquisition_rows',quantity=str(quantity),documented_cost_usd=str(cost_sum),
+                statement_transactions=[i for i,t in rows],acquisitions=deepcopy(candidate),quantity_matches_closing_holding_exactly=True)
+        else:
+            lots[pair]=[dict(quantity=str(quantity),cost_usd=None,source='previous_crypto_statement_holdings',
+                basis_status='unknown; complete matching acquisition evidence unavailable')]
+            evidence[pair]=dict(status='unknown',quantity=str(quantity),documented_cost_usd=None,statement_transactions=[])
+    return lots,evidence
+
+
 def build_preview(export,previous,current,*,source_sha256):
     """Calculate a proposed source choice; never accepts/waives the differences."""
     if (not isinstance(source_sha256,dict) or set(source_sha256)!=SOURCE_ROLES or
@@ -54,15 +95,14 @@ def build_preview(export,previous,current,*,source_sha256):
     review=compare_sources(export,previous,current)
     if not review['all_matched_evidence_checks_pass']:
         raise ValueError('Conflicting or incomplete evidence cannot produce a statement-backed candidate')
-    # A summary value is never an opening cost basis. Preserve carried units with
-    # unknown cost until separate retained basis evidence can be verified.
-    lots={};opening_quantities={}
-    for pair,holding in sorted(previous['holdings'].items()):
-        quantity=_money(holding['quantity'])
-        if quantity<ZERO:raise ValueError('Negative crypto opening holdings unsupported')
-        opening_quantities[pair]=str(quantity)
-        lots[pair]=[dict(quantity=str(quantity),cost_usd=None,source='previous_crypto_statement_holdings',
-            basis_status='unknown; market value is not cost basis')] if quantity else []
+    # Closing quantities and acquisition cash serve different purposes. Link all
+    # exact acquisition rows where available; a summary valuation is never basis.
+    lots,opening_basis=documented_opening_lots(previous)
+    opening_quantities={p:str(_money(h['quantity'])) for p,h in sorted(previous['holdings'].items())}
+    opening_basis_complete=all(l['cost_usd'] is not None for rows in lots.values() for l in rows)
+    opening_known_cost=sum((_money(l['cost_usd']) for rows in lots.values() for l in rows if l['cost_usd'] is not None),ZERO)
+    review['opening_cost_basis_established']=opening_basis_complete
+    review['opening_basis_proof']=deepcopy(opening_basis)
     fills_by_id={f['fill_id']:f for f in export['fills']}
     if len(fills_by_id)!=len(export['fills']):raise ValueError('Duplicate export fill identity')
     allocations=[];sales=[];purchases=ZERO;sale_cash=ZERO;fees=ZERO
@@ -126,23 +166,26 @@ def build_preview(export,previous,current,*,source_sha256):
         period_start=current['period_start'],period_end=current['period_end'],account_suffix=current['account_suffix'],
         source_sha256=deepcopy(source_sha256),review_sha256=sha256(_json(review).encode()).hexdigest(),review=review,
         proposed_source_choices=dict(opening_cash='preceding statement closing cash',opening_units='preceding statement closing holdings',
+            opening_cost='exact matching preceding statement acquisition rows including fees; otherwise unknown',
             trade_cash_and_fees='current statement; fees already included in trade cash',
             quantities_and_execution_times='exact matched export executions',
             full_precision_prices='retained from export; not used to overwrite statement cash',
             displayed_ending_values='current dated statement; not the undated export snapshot'),
-        source_choice_rows=source_choice_rows,opening_quantities=opening_quantities,ending_quantities=ending,
+        source_choice_rows=source_choice_rows,opening_quantities=opening_quantities,opening_basis=opening_basis,ending_quantities=ending,
         ending_lots=lots,fifo_allocations=allocations,realized_sales=sales,
-        totals=dict(proposed_opening_cash_usd=str(opening_cash),net_external_funding_usd=str(funding),
+        totals=dict(proposed_opening_cash_usd=str(opening_cash),
+            documented_opening_cost_usd=str(opening_known_cost) if opening_basis_complete else None,
+            net_external_funding_usd=str(funding),
             purchases_including_fees_usd=str(purchases),net_sale_proceeds_usd=str(sale_cash),
             fees_already_in_trade_cash_usd=str(fees),proposed_ending_cash_usd=str(ending_cash),
             proposed_realized_sales_pnl_usd=str(realized) if realized is not None else None,
             known_ending_lot_cost_usd=str(known_cost),full_ending_cost_basis_usd=str(known_cost) if all_basis else None,
             preceding_holdings_plus_cash_usd=str(opening_value),current_holdings_plus_cash_usd=str(closing_value),
             proposed_value_change_after_external_funding_usd=str(closing_value-opening_value-funding)),
-        ending_cost_basis_complete=all_basis,realized_sales_basis_complete=realized is not None,
+        opening_cost_basis_complete=opening_basis_complete,ending_cost_basis_complete=all_basis,realized_sales_basis_complete=realized is not None,
         intraday_statement_cash_order_established=False,policy_approved=False,account_association_confirmed=False,
         original_discrepancies_resolved=False,financial_state_written=False,publication_authorized=False,
-        blockers=['Accounting source policy and exact discrepancies require review.',
+        blockers=['Exact source choices and discrepancies require a saved account-scoped review receipt.',
             'Current owner account association and saved-source receipt integration are pending.',
             'Publication integration and restricted database verification are pending.'])
     return CryptoPolicyPreview(_json(body))

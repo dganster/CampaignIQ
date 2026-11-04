@@ -26,9 +26,14 @@ exact source amount and its difference, even when the monthly sums balance.
 
 ## Cost and performance limits
 
-Carried units begin with unknown cost basis. The prior statement's market value
-never supplies cost. A separately verified retained lot state could establish
-opening basis in a later integration; this tool neither assumes nor changes it.
+Carried units are linked to the preceding statement's acquisition rows when all
+trading rows for that instrument are buys, their exact quantities sum to its closing
+holding and their cash amounts and fees are valid. Each acquisition remains a
+separate lot with its printed cost including fees, original date and source row.
+Sales, unit transfers or incomplete matching quantities leave opening basis unknown.
+The prior statement's market value never supplies cost. A separately verified
+retained lot state could establish other opening basis in a later integration.
+No preceding published state is changed by this calculation.
 Current-month buys create proposed lots from current statement cash. FIFO sales
 consuming unknown opening basis retain unknown realized profit. Same-month buys
 and sales can have known proposed costs. Each source execution remains separate.
@@ -41,8 +46,9 @@ intraday order for statement cash transactions listed without execution times.
 
 ## Review and activation boundary
 
-The three exact original hashes and a digest of the complete discrepancy review
-bind the proposal. Any source change produces a different review and preview hash.
+The three exact original hashes and a digest of the complete discrepancy review,
+including the opening acquisition proof, bind the proposal. Any source change
+produces a different review and preview hash.
 policy_approved, account_association_confirmed, original_discrepancies_resolved,
 financial_state_written and publication_authorized are always false. The full review
 continues to report unresolved original controls. There is no approval switch here.
@@ -52,6 +58,11 @@ account-scoped receipt integration, current-source revalidation, full financial
 generation and restricted database verification are still necessary. Matching masked
 suffixes alone does not establish account ownership. No published September history
 is replaced, no original is changed and no production or database connection is made.
+
+The user's accounting-source approval was given in the development conversation.
+That approval must still be bound to the current signed-in account and exact saved
+source documents in the eventual account workflow. The pure preview does not turn
+a conversation-level approval into a database receipt or publication permission.
 
 ## Local command
 
