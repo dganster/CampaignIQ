@@ -51,7 +51,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     number = st.text_input('Full broker account identifier', autocomplete='off', key=form_key + ':number')
                     confirm = st.checkbox('Confirm replacement of the existing identifier', key=form_key + ':confirm')
                     st.caption('Schwab securities and Forex identifiers are separate. Only the final four digits are displayed. '
-                               'Masked-only crypto evidence is not supported yet.')
+                               'Crypto statements use a separate owner source review below.')
                     if st.form_submit_button('Save broker binding'):
                         service.gateway.bind(server_user, account_id, kind, number,
                             expected_revision=st.session_state[revision_key], confirm_replace=confirm)
@@ -82,7 +82,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if published:
                 st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
             if account.writable and not published:
-                role = st.selectbox('Document role', UPLOAD_ROLES, index=None,
+                roles=tuple(r for r in UPLOAD_ROLES if r!='schwab_crypto_statement') if deployment and getattr(service,'multi_asset_enabled',False) else UPLOAD_ROLES
+                role = st.selectbox('Document role', roles, index=None,
                     placeholder='Select a document type…', key=key + ':role')
                 if role == 'schwab_forex_transaction_report':
                     start = date(draft.year, draft.month, 1) - timedelta(days=1)
@@ -169,11 +170,14 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         for finding in futures['blockers']:
                             st.warning(finding)
                         st.info('Read-only futures preview. No month was published.')
+            if deployment and getattr(service,'multi_asset_enabled',False):
+                from campaigniq.ui.account_crypto_sources_view import render as render_crypto_sources
+                render_crypto_sources(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
             if deployment and hasattr(service, 'futures_monthly_preview'):
                 with st.expander('Monthly preview including futures'):
-                    st.caption('Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
+                    st.caption('Check securities/Forex inventory, futures accounting and approved crypto sources together. No month is published by this check.' if getattr(service,'multi_asset_enabled',False) else 'Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
                     if st.button('Check monthly sources including futures', key=key + ':monthly-futures'):
                         monthly = service.futures_monthly_preview(server_user,account_id,draft.id,draft.revision,
                             forex_applicable=forex,crypto_applicable=crypto)
@@ -185,7 +189,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                             st.warning(finding)
                         if monthly['inventory_mismatches']:
                             st.dataframe(monthly['inventory_mismatches'],hide_index=True)
-                        st.info(monthly['publication_blocker'])
+                        if getattr(service,'multi_asset_enabled',False) and monthly['all_source_controls_ready']:
+                            st.success('Monthly source and inventory checks passed. Use the separate month confirmation to publish.')
+                        else:st.info(monthly['publication_blocker'])
             if st.button('Preview saved inputs', key=key + ':preview'):
                 result = service.preview(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)

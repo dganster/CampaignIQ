@@ -31,7 +31,7 @@ def compose_release(config,connections,auth,*,repo):
         if not isinstance(dsn,str) or not dsn:raise ValueError('Three explicit account role connections required')
         try:stores.append(PostgresAccountDirectory(dsn,config.settings,config.target(role)))
         except Exception:raise ValueError('Account role connection does not match the reviewed release') from None
-    return DeploymentApplication(*stores,publication_enabled=config.publication_enabled,continue_existing=config.continue_existing)
+    return DeploymentApplication(*stores,publication_enabled=config.publication_enabled,continue_existing=config.continue_existing,multi_asset_enabled=config.multi_asset_enabled)
 
 
 def verify_startup(application):

@@ -143,14 +143,16 @@ def verify_crypto_publication(c,passed,account,draft,revision,*,combined=False):
     from campaigniq.persistence.crypto_month import load_preceding_crypto
     from datetime import date
     service,user=c.inputs,c.user
-    if combined:
-        from campaigniq.account_futures_publication import _publish_futures_in_session
-        writer=_publish_futures_in_session
-    else:writer=_publish_crypto_in_session
+    from campaigniq.account_deployment_application import DeploymentMonthlyApplication
+    disabled=DeploymentMonthlyApplication(service,c.publisher,publication_enabled=True)
+    try:disabled.publish(user,account,draft.id,revision,confirm_publication=True,forex_applicable=False,crypto_applicable=True)
+    except PermissionError:pass
+    else:raise AssertionError('Default multi-asset publication must remain disabled')
+    c.publisher.multi_asset_enabled=True
+    application=DeploymentMonthlyApplication(service,c.publisher,publication_enabled=True)
     def publish():
-        with c.publisher._transaction(user,account) as (session,actor):
-            return writer(service,session,actor,account,draft.id,revision,
-                forex_applicable=False,crypto_applicable=True)
+        return application.publish(user,account,draft.id,revision,confirm_publication=True,
+            forex_applicable=False,crypto_applicable=True)
     def reject(kind,call):
         try:call()
         except kind:return
@@ -217,6 +219,7 @@ def verify_crypto_publication(c,passed,account,draft,revision,*,combined=False):
             (original,scope,'2026-10-crypto.json'))
     assert c.snapshot()==after
     passed('committed_crypto_conflict_withholds_entire_account_result_and_dashboard_without_repair')
+    c.publisher.multi_asset_enabled=False
 
 
 def verify_combined_publication(c,passed):

@@ -51,6 +51,7 @@ class DeploymentMonthlyApplication:
     def __init__(self,inputs,publisher,*,publication_enabled):
         self._inputs=inputs;self._publisher=publisher
         self.publication_enabled=publication_enabled
+        self.multi_asset_enabled=getattr(publisher,'multi_asset_enabled',False)
         self.gateway=DeploymentInputViewGateway(inputs.gateway)
     def drafts(self,*args,**kwargs):return self._inputs.drafts(*args,**kwargs)
     def create(self,*args,**kwargs):return self._inputs.create(*args,**kwargs)
@@ -93,7 +94,8 @@ class DeploymentLegacyView:
 
 
 class DeploymentApplication:
-    def __init__(self,input_store,publication_store,preference_store,*,publication_enabled=False,continue_existing=False):
+    def __init__(self,input_store,publication_store,preference_store,*,publication_enabled=False,continue_existing=False,multi_asset_enabled=False):
+        if type(multi_asset_enabled) is not bool:raise ValueError('Explicit multi-asset availability required')
         stores=(input_store,publication_store,preference_store)
         if any(type(store) is not PostgresAccountDirectory for store in stores):raise ValueError('Three explicit deployment directory services required')
         if type(publication_enabled) is not bool:raise ValueError('Explicit publication availability required')
@@ -106,7 +108,7 @@ class DeploymentApplication:
         self._dashboard=DeploymentAccountDashboard(input_store,continue_existing=continue_existing)
         self.administration=DeploymentAdministration(input_store)
         inputs=self._dashboard.inputs
-        self.inputs=DeploymentMonthlyApplication(inputs,DeploymentAccountPublisher(inputs,publication_store),publication_enabled=publication_enabled)
+        self.inputs=DeploymentMonthlyApplication(inputs,DeploymentAccountPublisher(inputs,publication_store,multi_asset_enabled=multi_asset_enabled),publication_enabled=publication_enabled)
         self.preferences=DeploymentAccountPreferences(preference_store)
         self.legacy=DeploymentLegacyView(input_store,inputs.gateway)
     def choices(self,*args,**kwargs):return self._dashboard.choices(*args,**kwargs)

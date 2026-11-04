@@ -44,7 +44,9 @@ class AppendOnlyArtifacts:
 
 
 class DeploymentAccountPublisher:
-    def __init__(self,inputs,writer):
+    def __init__(self,inputs,writer,*,multi_asset_enabled=False):
+        if type(multi_asset_enabled) is not bool:raise ValueError('Explicit multi-asset availability required')
+        self.multi_asset_enabled=multi_asset_enabled
         if type(inputs) is not DeploymentMonthlyInputs or type(writer) is not PostgresAccountDirectory:
             raise ValueError('Explicit deployment input service and publication directory required')
         reader=inputs.gateway._directory
@@ -89,12 +91,22 @@ class DeploymentAccountPublisher:
             from campaigniq.futures_monthly_preview import has_futures
             draft=self.inputs._lock(session,draft_id,write=True)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
-            if has_futures(session,draft):
+            if has_futures(session,draft) and not self.multi_asset_enabled:
                 raise PermissionError('Futures monthly publication is disabled pending complete generation/report integration; use the read-only monthly preview. No rows changed.')
             from campaigniq.account_crypto_statement_sources import load_receipt as crypto_receipt
-            if crypto_receipt(session,draft) is not None:
+            approved_crypto=crypto_receipt(session,draft) is not None
+            if approved_crypto and not self.multi_asset_enabled:
                 raise PermissionError('Approved crypto publication is disabled pending complete application integration and release review. No rows changed.')
-            result=_publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,
+            if has_futures(session,draft):
+                from campaigniq.account_futures_publication import _publish_futures_in_session
+                result=_publish_futures_in_session(self.inputs,session,actor,account_id,draft_id,revision,
+                    forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+            elif approved_crypto:
+                from campaigniq.account_crypto_publication import _publish_crypto_in_session
+                result=_publish_crypto_in_session(self.inputs,session,actor,account_id,draft_id,revision,
+                    forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+            else:
+                result=_publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,
                 forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,
                 receipt_format='campaigniq.deployment_account_publication')
             return DeploymentPublication(result.account_id,result.year,result.month,result.draft_id,result.revision,result.artifact_keys,result.receipt_sha256)

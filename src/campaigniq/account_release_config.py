@@ -52,6 +52,7 @@ class AccountReleaseConfig:
     sha256:str
     transport:str = "verified-tls"
     continue_existing:bool = False
+    multi_asset_enabled:bool = False
     def __repr__(self):return 'AccountReleaseConfig(<private reviewed settings>)'
     def target(self,role):return AccountDatabaseTarget(self.host,self.database,dict(self.roles)[role],self.port,self.transport)
 
@@ -59,15 +60,18 @@ class AccountReleaseConfig:
 def parse_release(raw,*,reviewed_sha256):
     value=strict_json(raw)
     keys=('format','version','schema_version','registry_id','trusted_issuer','legacy_authorization','target','roles','source_files','auth','publication_enabled')
-    if type(value) is dict and value.get('version')==3:keys+=('continue_existing',)
+    if type(value) is dict and value.get('version') in (3,4):keys+=('continue_existing',)
+    if type(value) is dict and value.get('version')==4:keys+=('multi_asset_enabled',)
     exact(value,keys)
-    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version'] not in (1,2,3)
+    if (value['format']!='campaigniq.account_release' or type(value['version']) is not int or value['version'] not in (1,2,3,4)
         or type(value['schema_version']) is not int or value['schema_version']!=4 or type(value['publication_enabled']) is not bool):
         raise ValueError('Unsupported account release configuration')
     if not isinstance(reviewed_sha256,str) or not re.fullmatch('[0-9a-f]{64}',reviewed_sha256) or digest(value)!=reviewed_sha256:
         raise ValueError('Reviewed release checksum differs')
     continuation=value.get('continue_existing',False)
     if type(continuation) is not bool:raise ValueError('Explicit continuation availability required')
+    multi_asset=value.get('multi_asset_enabled',False)
+    if type(multi_asset) is not bool:raise ValueError('Explicit multi-asset availability required')
     mapping=value['legacy_authorization']
     if type(mapping) is not dict:raise ValueError('Explicit legacy owner mapping required')
     if continuation and set(mapping.values())!={'workspace-dennis','workspace-andrew'}:
@@ -75,7 +79,7 @@ def parse_release(raw,*,reviewed_sha256):
     settings=AccountDirectorySettings(value['registry_id'],value['trusted_issuer'],tuple(sorted(mapping.items())))
     issuer=https(settings.trusted_issuer)
     if issuer.path not in ('','/'):raise ValueError('Account release requires the reviewed root issuer')
-    target_keys=('host','port','database','transport') if value['version'] in (2,3) else ('host','port','database')
+    target_keys=('host','port','database','transport') if value['version'] in (2,3,4) else ('host','port','database')
     exact(value['target'],target_keys);exact(value['roles'],('inputs','publication','preferences'))
     transport=value['target'].get('transport','verified-tls')
     if any(type(role) is not str for role in value['roles'].values()) or len(set(value['roles'].values()))!=3:raise ValueError('Three distinct runtime roles required')
@@ -97,7 +101,7 @@ def parse_release(raw,*,reviewed_sha256):
     if not isinstance(auth['client_id'],str) or not auth['client_id'] or auth['client_id']!=auth['client_id'].strip():
         raise ValueError('Explicit reviewed sign-in client required')
     return AccountReleaseConfig(settings,value['target']['host'],value['target']['port'],value['target']['database'],
-        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value),transport,continuation)
+        tuple(sorted(value['roles'].items())),tuple(sorted(files.items())),auth['redirect_uri'],auth['client_id'],auth['server_metadata_url'],value['publication_enabled'],digest(value),transport,continuation,multi_asset)
 
 
 def source_inventory(repo):
