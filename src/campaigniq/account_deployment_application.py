@@ -66,6 +66,7 @@ class DeploymentMonthlyApplication:
     def review_crypto_statements(self,*args,**kwargs):return self._inputs.review_crypto_statements(*args,**kwargs)
     def save_crypto_statement_sources(self,*args,**kwargs):return self._inputs.save_crypto_statement_sources(*args,**kwargs)
     def crypto_statement_preview(self,*args,**kwargs):return self._inputs.crypto_statement_preview(*args,**kwargs)
+    def crypto_generation_preview(self,*args,**kwargs):return self._inputs.crypto_generation_preview(*args,**kwargs)
     def preview(self,*args,**kwargs):return self._inputs.preview(*args,**kwargs)
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)

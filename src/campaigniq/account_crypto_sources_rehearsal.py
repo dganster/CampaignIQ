@@ -78,6 +78,20 @@ def verify_crypto_sources(c,passed):
         assert receipt['confirmed_by']==owner and receipt['broker_verified_account_link'] is False
     assert c.snapshot()==after
     passed('independent_reader_rebuilds_crypto_calculation_from_exact_saved_pdfs_and_owner_attributed_receipt_without_writes')
+    from campaigniq.account_crypto_generation import verify_candidate
+    candidate=service.crypto_generation_preview(user,account,draft.id,saved_revision)
+    assert candidate==service.crypto_generation_preview(user,account,draft.id,saved_revision)
+    assert candidate['candidate_only'] and candidate['publication_authorized'] is False
+    assert Decimal(candidate['artifact']['calculation']['totals']['full_ending_cost_basis_usd'])==500
+    with service.gateway.transaction(user,account) as session:
+        record=verify_candidate(service,session,session.drafts.get(draft.id),candidate['artifact_text'])
+        assert record.sha256==candidate['artifact_sha256']
+        forged=json.loads(record.record_json);forged['source_receipt_sha256']='0'*64
+        rejected(ValueError,lambda:verify_candidate(service,session,session.drafts.get(draft.id),json.dumps(forged)))
+    rejected(ValueError,lambda:service.crypto_generation_preview(user,account,draft.id,saved_revision-1))
+    rejected(PermissionError,lambda:service.crypto_generation_preview(c.foreign,account,draft.id,saved_revision))
+    assert c.snapshot()==after
+    passed('crypto_financial_candidate_rebuilds_exact_approved_sources_and_rejects_forged_foreign_stale_results_without_writes')
     foreign=reader.snapshot(user).user(c.identities[1]).id
     def command(name,**kwargs):return reader.execute(user,reader.snapshot(user).revision,name,**kwargs)
     command('set_grant',user_id=foreign,account_id=account,permission=Permission.EDIT)
@@ -100,6 +114,7 @@ def verify_crypto_sources(c,passed):
     import psycopg
     with patch.object(crypto,'evaluate',new=readonly_sql):
         rejected(psycopg.errors.ReadOnlySqlTransaction,lambda:service.crypto_statement_preview(user,account,draft.id,saved_revision))
+        rejected(psycopg.errors.ReadOnlySqlTransaction,lambda:service.crypto_generation_preview(user,account,draft.id,saved_revision))
     passed('crypto_preview_database_transaction_rejects_raw_sql_writes')
     with c.owner() as conn:
         row=conn.execute('SELECT id,sha256,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s',
@@ -108,7 +123,9 @@ def verify_crypto_sources(c,passed):
         changed=bytes(row[2])+b'\n'
         conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',
             (sha256(changed).hexdigest(),changed,row[0]))
-    try:rejected(ValueError,lambda:service.crypto_statement_preview(user,account,draft.id,saved_revision))
+    try:
+        rejected(ValueError,lambda:service.crypto_statement_preview(user,account,draft.id,saved_revision))
+        rejected(ValueError,lambda:service.crypto_generation_preview(user,account,draft.id,saved_revision))
     finally:
         with c.owner() as conn:conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',(row[1],row[2],row[0]))
     assert c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
