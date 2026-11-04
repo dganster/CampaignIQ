@@ -59,11 +59,18 @@ def _book(text, expected):
         instrument = lot["instrument"]
         if not isinstance(instrument, dict):
             raise ValueError("invalid instrument")
-        identity = "symbol" if instrument.get("type") == "instrument" else "underlying"
+        instrument_type = instrument.get("type")
+        field_sets = {
+            "instrument": {"type", "symbol"},
+            "forex_pair": {"type", "symbol", "base_currency", "quote_currency"},
+            "option": {"type", "underlying", "expiration", "strike", "option_type"},
+        }
+        if instrument_type not in field_sets:
+            raise ValueError("invalid instrument type")
+        identity = "underlying" if instrument_type == "option" else "symbol"
         if not isinstance(instrument.get(identity), str) or not instrument[identity]:
             raise ValueError("invalid instrument identity")
-        fields = ({"type", "symbol"} if instrument.get("type") == "instrument"
-                  else {"type", "underlying", "expiration", "strike", "option_type"})
+        fields = field_sets[instrument_type]
         if set(instrument) != fields:
             raise ValueError("invalid instrument fields")
         if "strike" in instrument and not Decimal(instrument["strike"]).is_finite():

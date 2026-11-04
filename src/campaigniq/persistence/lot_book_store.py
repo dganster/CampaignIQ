@@ -11,10 +11,15 @@ from campaigniq.domain.lot_book import LotBook
 from campaigniq.domain.option_contract import OptionContract
 from campaigniq.domain.option_type import OptionType
 from campaigniq.domain.value_objects.instrument import Instrument
+from campaigniq.domain.value_objects.forex_pair import ForexPair
 from campaigniq.persistence.artifact_storage import ArtifactStorage
 
 _FORMAT = "campaigniq.lot_book"
 _VERSION = 1
+
+# Conservative compatibility for older files which lost the Forex subtype.
+# Crypto symbols and arbitrary slash-separated security names are not promoted.
+_LEGACY_FIAT_CODES = frozenset('AUD CAD CHF CNH CNY CZK DKK EUR GBP HKD HUF ILS JPY MXN NOK NZD PLN SEK SGD THB TRY USD ZAR'.split())
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +135,9 @@ def _serialize_instrument(instrument: Instrument | OptionContract) -> dict[str, 
             "strike": str(instrument.strike),
             "option_type": instrument.option_type.value,
         }
+    if isinstance(instrument, ForexPair):
+        return {"type": "forex_pair", "symbol": instrument.symbol,
+                "base_currency": instrument.base_currency, "quote_currency": instrument.quote_currency}
     if isinstance(instrument, Instrument):
         return {"type": "instrument", "symbol": instrument.symbol}
     raise TypeError(
@@ -143,7 +151,20 @@ def _deserialize_instrument(payload: object) -> Instrument | OptionContract:
         raise ValueError("Persisted lot instrument must be an object.")
     instrument_type = payload["type"]
     if instrument_type == "instrument":
-        return Instrument(symbol=str(payload["symbol"]))
+        symbol=str(payload["symbol"])
+        parts=symbol.split('/')
+        if len(parts)==2 and all(part in _LEGACY_FIAT_CODES for part in parts) and parts[0]!=parts[1]:
+            return ForexPair(parts[0],parts[1])
+        return Instrument(symbol=symbol)
+    if instrument_type == "forex_pair":
+        if set(payload)!={"type","symbol","base_currency","quote_currency"} or any(
+            not isinstance(payload[key],str) for key in ('symbol','base_currency','quote_currency')):
+            raise ValueError('Invalid persisted Forex pair fields')
+        pair=ForexPair(payload['base_currency'],payload['quote_currency'])
+        if (pair.symbol!=payload['symbol'] or pair.base_currency!=payload['base_currency']
+            or pair.quote_currency!=payload['quote_currency']):
+            raise ValueError('Persisted Forex pair symbol and currencies differ')
+        return pair
     if instrument_type == "option":
         return OptionContract(
             underlying=str(payload["underlying"]),
