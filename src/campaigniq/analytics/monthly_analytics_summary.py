@@ -29,6 +29,12 @@ class MonthlyAnalyticsSummary:
     forex_settled_pnl: Decimal = Decimal("0")
     futures_realized_pnl: Decimal = Decimal("0")
     futures_applicable: bool = False
+    forex_financing_pnl: Decimal = Decimal("0")
+    forex_policy_approved: bool = False
+
+    @property
+    def combined_with_forex_financing(self) -> Decimal:
+        return self.combined_realized_pnl + self.forex_financing_pnl
 
     @property
     def equity_options_realized_pnl(self) -> Decimal:

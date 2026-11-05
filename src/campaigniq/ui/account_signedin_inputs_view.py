@@ -187,6 +187,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.dataframe(monthly['validations'],hide_index=True)
                         st.write('Securities/Forex closing inventory reconciled:',monthly['securities_inventory_reconciled'])
                         st.write('Futures/options result after fees, USD:',monthly['futures']['realized_net_usd'])
+                        if monthly.get('approved_forex_policy'):
+                            st.caption('Forex uses the verified owner-approved daily-session basis. Original CSV differences and daily coverage limits remain retained.')
                         st.caption('Full original Trade History preserved. A labelled temporary projection separates already-verified futures rows for the securities checks.')
                         for finding in monthly['source_findings']:
                             st.warning(finding)
@@ -240,6 +242,11 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 if result.forex_applicable:
                     st.write('Forex settled P/L, USD: ' + result.forex_settled_usd)
                     st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
+                    if getattr(result,'forex_policy_approved',False):
+                        st.write('Approved daily-session Forex financing, USD: '+result.forex_financing_usd)
+                        st.write('Forex cash: '+result.forex_opening_cash_usd+' → '+result.forex_ending_cash_usd+
+                            ' USD; net change '+result.forex_net_cash_change_usd+' USD')
+                        st.caption('Owner-approved daily-session basis. Original CSV differences and daily coverage limits remain retained.')
                     st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=row[2], Campaign=row[3])
                         for row in result.forex_settlements], hide_index=True)
                 if getattr(result,'futures_applicable',False):

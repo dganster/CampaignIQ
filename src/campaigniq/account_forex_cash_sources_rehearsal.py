@@ -656,3 +656,6 @@ def verify_financial_policy(c, passed, account, draft, revision):
     assert c.snapshot()==before_read
     assert c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
     passed('corrupt_monetary_approval_is_withheld_without_repair_and_every_financial_artifact_remains_unchanged')
+
+    from campaigniq.account_forex_publication_rehearsal import verify_forex_publication
+    verify_forex_publication(c, passed)

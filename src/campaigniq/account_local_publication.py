@@ -71,6 +71,10 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
     start=date(draft.year,draft.month,1)
     end=date(draft.year,draft.month,monthrange(draft.year,draft.month)[1])
     approved_crypto=None
+    from campaigniq.account_forex_financial_policy import load_receipt as forex_policy_receipt
+    approved_forex_present=forex_policy_receipt(session,draft) is not None
+    if approved_forex_present and (not forex_applicable or receipt_format!='campaigniq.deployment_account_publication'):
+        raise ValueError('Approved Forex requires the complete deployment publication path and cannot be omitted')
     if _crypto_candidate is not None:
         if not crypto_applicable:raise ValueError('Approved crypto cannot be omitted')
         from campaigniq.account_crypto_publication import financial_report
@@ -97,6 +101,10 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
         checks=service._identity_validations(session,uploads,supplied,draft=draft)
         if any(not row.valid for row in checks):raise ValueError('Document account identity is unverified')
         original_provenance=None
+        approved_forex=None
+        if approved_forex_present:
+            from campaigniq.persistence.import_provenance import capture_monthly_input_provenance
+            original_provenance=capture_monthly_input_provenance(supplied)
         if _futures_projection is not None:
             from campaigniq.futures_monthly_preview import project_history
             from campaigniq.import_contract import MonthlyInputRole
@@ -104,6 +112,12 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
             original_provenance=capture_monthly_input_provenance(supplied)
             project_history(uploads['thinkorswim_trade_history'].content,_futures_projection,root/'derived-securities-history.csv')
             supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'derived-securities-history.csv'
+        if approved_forex_present:
+            from campaigniq.account_forex_generation import prepare as prepare_forex
+            from campaigniq.import_contract import MonthlyInputRole
+            history=Path(supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]).read_bytes()
+            approved_forex=prepare_forex(service,session,draft,history,root/'approved-forex-history.csv')
+            supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'approved-forex-history.csv'
         preflight=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
             supplied_inputs=supplied,artifact_storage=session.artifacts,
             forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
@@ -112,7 +126,8 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
         # No reconciliation exception, history reseeding or filesystem archive.
         # Every canonical artifact and visibility marker use one SQL connection.
         outcome=execute_monthly_import(preflight,authoritative_state_root=root/'state',
-            supplied_inputs=supplied,artifact_storage=session.artifacts,_approved_crypto_report=approved_crypto)
+            supplied_inputs=supplied,artifact_storage=session.artifacts,_approved_crypto_report=approved_crypto,
+            _approved_forex=approved_forex)
         if not outcome.finalized or not outcome.closing_reconciliation.reconciled:
             raise ValueError('Closing inventory does not reconcile; local publication rejected')
         if outcome.closing_reconciliation.forex_source_findings:
@@ -129,6 +144,9 @@ def _publish_in_session(service,session,actor_id,account_id,draft_id,revision,*,
         from campaigniq.account_gain_loss_association import load_receipt
         association=load_receipt(session,draft)
         if association is not None:receipt['gain_loss_account_confirmation']=association
+        if approved_forex is not None:
+            from campaigniq.account_forex_publication import write_record
+            receipt['approved_forex_generation']=write_record(session,draft,approved_forex)
         text=json.dumps(receipt,sort_keys=True,indent=2)+'\n'
         session.artifacts.write_text(prefix+'account-publication-receipt.json',text)
         lot_key=prefix+'lot-book.json'

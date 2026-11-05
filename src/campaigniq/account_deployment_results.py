@@ -33,4 +33,12 @@ def _deployment_results_session(service,session,draft,account_id,revision):
             futures_evidence_status='Owner-confirmed empty opening/ending positions; statement association owner-confirmed')
     from campaigniq.account_crypto_publication import verify_published as verify_crypto
     verify_crypto(service,session,draft)
+    from campaigniq.account_forex_publication import verify_published as verify_forex
+    forex=verify_forex(service,session,draft)
+    if forex is not None:
+        from dataclasses import replace
+        totals=forex['financials']
+        result=replace(result,forex_policy_approved=True,forex_financing_usd=totals['financing_usd'],
+            forex_opening_cash_usd=totals['opening_cash_usd'],forex_ending_cash_usd=totals['ending_cash_usd'],
+            forex_net_cash_change_usd=totals['net_cash_change_usd'])
     return result

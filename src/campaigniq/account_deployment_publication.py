@@ -95,6 +95,11 @@ class DeploymentAccountPublisher:
                 raise PermissionError('Futures monthly publication is disabled pending complete generation/report integration; use the read-only monthly preview. No rows changed.')
             from campaigniq.account_crypto_statement_sources import load_receipt as crypto_receipt
             approved_crypto=crypto_receipt(session,draft) is not None
+            from campaigniq.account_forex_financial_policy import load_receipt as forex_receipt
+            approved_forex=forex_receipt(session,draft) is not None
+            if approved_forex and not self.multi_asset_enabled:
+                raise PermissionError('Approved Forex publication requires the reviewed multi-asset capability')
+            if approved_forex and not forex_applicable:raise ValueError('Approved Forex cannot be omitted')
             if approved_crypto and not self.multi_asset_enabled:
                 raise PermissionError('Approved crypto publication is disabled pending complete application integration and release review. No rows changed.')
             if has_futures(session,draft):
@@ -104,6 +109,10 @@ class DeploymentAccountPublisher:
             elif approved_crypto:
                 from campaigniq.account_crypto_publication import _publish_crypto_in_session
                 result=_publish_crypto_in_session(self.inputs,session,actor,account_id,draft_id,revision,
+                    forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+            elif approved_forex:
+                from campaigniq.account_forex_publication import publish_in_session
+                result=publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,
                     forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
             else:
                 result=_publish_in_session(self.inputs,session,actor,account_id,draft_id,revision,

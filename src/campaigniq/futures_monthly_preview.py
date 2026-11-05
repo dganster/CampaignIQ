@@ -103,6 +103,13 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
         # Identity checks use original source bytes. This derivative is explicitly
         # labelled and is not saved as an original or sent to publication.
         supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'derived-securities-history.csv'
+        approved_forex=None
+        from campaigniq.account_forex_financial_policy import load_receipt as forex_receipt
+        if forex_receipt(session,draft) is not None:
+            if not forex_applicable:raise ValueError('Approved Forex cannot be omitted')
+            from campaigniq.account_forex_generation import prepare as prepare_forex
+            approved_forex=prepare_forex(service,session,draft,(root/'derived-securities-history.csv').read_bytes(),root/'approved-forex-history.csv')
+            supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'approved-forex-history.csv'
         storage=ReadOnlyArtifacts(session.artifacts)
         prepared=prepare_monthly_import(draft.year,draft.month,authoritative_state_root=root/'state',
             supplied_inputs=supplied,artifact_storage=storage,
@@ -153,7 +160,7 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
         if prepared.ready and all(v.valid for v in identities):
             from campaigniq.monthly_import_execution import execute_monthly_import
             outcome=execute_monthly_import(prepared,authoritative_state_root=root/'state',supplied_inputs=supplied,
-                artifact_storage=storage,preview_only=True)
+                artifact_storage=storage,preview_only=True,_approved_forex=approved_forex)
             if outcome.finalized:raise ValueError('Unexpected finalization in monthly read-only preview')
             control=outcome.closing_reconciliation
             inventory=control.reconciled and not control.forex_source_findings
@@ -161,7 +168,7 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
             forex_csv_control=MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT not in supplied
             mismatches=[dict(instrument=repr(row.instrument),computed=str(row.computed_quantity),
                 statement=str(row.snapshot_quantity),difference=str(row.difference),
-                control_source=('Forex Transaction Report CSV' if forex_csv_control else 'Verified Forex monthly evidence')
+                control_source=('Owner-approved daily Forex policy' if approved_forex is not None else 'Forex Transaction Report CSV' if forex_csv_control else 'Verified Forex monthly evidence')
                     if isinstance(row.instrument,ForexPair) else 'Brokerage closing snapshot')
                 for row in control.mismatches]
             if forex_csv_control and any(isinstance(row.instrument,ForexPair) for row in control.mismatches):
@@ -177,6 +184,8 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
         return dict(format='campaigniq.futures_monthly_readonly_preview',version=1,account_id=session.account.account_id,
             draft_id=str(draft.id),revision=draft.revision,period=f'{draft.year:04d}-{draft.month:02d}',
             futures=futures,source_lineage=lineage,validations=validations,crypto=crypto_status,
+            approved_forex_policy=approved_forex is not None,
+            approved_forex_financials=approved_forex.calculation['totals'] if approved_forex is not None else None,
             securities_inventory_reconciled=inventory,inventory_mismatches=mismatches,
             all_source_controls_ready=ready,source_findings=list(dict.fromkeys(findings)),
             publication_authorized=False,publication_integration_ready=False,

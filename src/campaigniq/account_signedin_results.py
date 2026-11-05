@@ -41,6 +41,11 @@ class PublishedResults:
     futures_applicable: bool=False
     futures_realized_usd: str="0"
     futures_evidence_status: str="Not applicable"
+    forex_policy_approved: bool=False
+    forex_financing_usd: str="0"
+    forex_opening_cash_usd: str|None=None
+    forex_ending_cash_usd: str|None=None
+    forex_net_cash_change_usd: str|None=None
 
 
 def _instrument(value):

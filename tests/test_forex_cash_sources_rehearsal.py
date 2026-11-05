@@ -44,6 +44,9 @@ def test_bundle_imports_without_site_packages_and_only_named_fixtures(tmp_path):
         'from campaigniq.account_forex_cash_sources_rehearsal import verify_forex_cash_sources;'
         'from campaigniq.account_forex_financial_candidate import preview;'
         'from campaigniq.account_forex_financial_policy import saved_preview;'
+        'from campaigniq.account_forex_publication_rehearsal import verify_forex_publication;'
+        'from campaigniq.forex_publication_rehearsal_sources import sources as publication_sources;'
+        'u,c,s,d,p,n,f=publication_sources();assert len(u)==4;'
         'from campaigniq.forex_cash_rehearsal_sources import sources;'
         'u,c,s=sources();assert len(u)==2 and c.content==s.content')
     result = subprocess.run([sys._base_executable, '-I', '-S', '-c', code,
@@ -97,3 +100,7 @@ def test_actual_restricted_forex_source_save_on_disposable_database(tmp_path):
     assert report['passed'] and report['disposable_database_and_roles_removed']
     assert report['checks']['caught_forbidden_sql_cannot_commit_partial_forex_sources']
     assert report['checks']['explicit_forex_replacement_preserves_prior_original_and_receipt_and_financial_artifacts_are_unchanged']
+
+    assert report['checks']['approved_forex_independent_reader_rebuilds_exact_money_original_sources_fifo_identity_and_dashboard_without_writes']
+    assert report['checks']['combined_forex_futures_crypto_concurrent_publications_have_one_winner_and_repeatable_reader_sees_no_partial_generation']
+    assert report['checks']['approved_forex_following_month_commits_from_published_opening_and_previous_generation_is_identical']

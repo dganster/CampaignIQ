@@ -57,4 +57,13 @@ def load_dashboard_sources(storage,*,source_description='selected account'):
         record=load_published(storage,period_start=start,period_end=end)
         if record is not None:futures[start,end]=record.net_realized_usd
     summaries=summarize_multi_month_analytics(monthly_attributions=monthly,monthly_forex_attributions=forex,monthly_futures_pnl=futures)
+    from campaigniq.persistence.approved_forex_month import load_published as approved_forex
+    from dataclasses import replace
+    from decimal import Decimal
+    approved=[]
+    for summary in summaries:
+        record=approved_forex(storage,period_start=summary.period_start,period_end=summary.period_end)
+        approved.append(replace(summary,forex_policy_approved=True,
+            forex_financing_pnl=Decimal(record['financials']['financing_usd'])) if record is not None else summary)
+    summaries=tuple(approved)
     return summaries,monthly,forex

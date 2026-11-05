@@ -1867,6 +1867,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 "month": summary.period_start.strftime("%b %Y"),
                 "equity_options_realized_pnl": float(summary.equity_options_realized_pnl),
                 "forex_settled_pnl": float(summary.forex_settled_pnl),
+                **({"approved_forex_financing":float(summary.forex_financing_pnl)}
+                   if any(getattr(item,'forex_policy_approved',False) for item in summaries) else {}),
                 **({"futures_realized_pnl":float(summary.futures_realized_pnl)} if any(item.futures_applicable for item in summaries) else {}),
                 "realized_pnl": float(summary.combined_realized_pnl),
                 "campaigns": performance.campaign_count,
@@ -2024,6 +2026,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         if selected_month != "All months":
             monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
             st.metric("Month realized P&L", money(monthly_summary.combined_realized_pnl))
+            if getattr(monthly_summary,'forex_policy_approved',False):
+                st.metric('Approved Forex financing',money(monthly_summary.forex_financing_pnl))
+                st.metric('Month P&L including approved Forex financing',money(monthly_summary.combined_with_forex_financing))
             month_campaign_total = sum((item.realized_pnl for item in campaign_drilldowns if campaign_month(item) == selected_month), Decimal("0"))
             if monthly_summary.futures_applicable:
                 st.caption("The month total includes separately reported futures/options P&L; those trades are not counted as campaign rows yet.")
@@ -2450,6 +2455,10 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
         pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
         pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
+        if any(getattr(item,'forex_policy_approved',False) for item in summaries):
+            approved_financing=sum((item.forex_financing_pnl for item in summaries),Decimal('0'))
+            st.metric('Approved Forex financing',money(approved_financing))
+            st.metric('Combined P&L including approved Forex financing',money(combined_realized_pnl+approved_financing))
         st.caption(
             ("Combined realized P&L includes equity/options, FOREX settlements and futures/options net P&L. Crypto remains separate. "
              "FOREX financing/interest is excluded." if futures_applicable else

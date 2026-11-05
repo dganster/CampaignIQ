@@ -147,6 +147,7 @@ def execute_monthly_import(
     development_continuity: bool = False,
     development_opening_origins=None,
     _approved_crypto_report=None,
+    _approved_forex=None,
 ) -> MonthlyImportExecution:
     """Run and finalize after reconciliation or an exact reviewed exception."""
     if type(development_continuity) is not bool:
@@ -220,6 +221,14 @@ def execute_monthly_import(
         Path(closing_path).read_text(encoding="utf-8").splitlines()
         if Path(closing_path).is_file() else []
     )
+    approved_forex_opening = opening_lot_book.clone() if _approved_forex is not None else None
+    if _approved_forex is not None:
+        from campaigniq.account_forex_generation import ApprovedForex,START,END
+        if (type(_approved_forex) is not ApprovedForex or not forex_applicable or
+            (contract.period_start,contract.period_end)!=(START,END) or
+            reconciliation_decision is not None or development_continuity or historical_source_root is not None or
+            supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT) is not None):
+            raise ValueError('Exact owner-approved Forex generation profile required')
     result = PeriodImportPipeline().run(
         campaign_namespace=f"{contract.period_start:%Y-%m}",
         previously_applied_deliveries=previously_applied_deliveries,
@@ -239,6 +248,8 @@ def execute_monthly_import(
     resolution_audit = None
     financial_resolution_failure = None
     evidence = None
+    if _approved_forex is not None:
+        result,resolution_audit=_approved_forex.apply(result,approved_forex_opening,tos_path)
     monthly_forex = supplied_inputs.get(MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT)
     if monthly_forex is not None:
         from campaigniq.forex_opening_statement import read_forex_opening_statement, verify_forex_ending
