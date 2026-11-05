@@ -279,6 +279,47 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             sources.saved_preview(self,session,current)
             return saved_revision
 
+    def save_forex_financial_policy(self,user,account_id,draft_id,revision,*,reviewed_candidate_sha256,
+            confirm_daily_basis=False,confirm_retained_differences=False,confirm_coverage_limits=False):
+        from campaigniq import account_forex_financial_policy as policy
+        from campaigniq import account_forex_financial_candidate as financial
+        from campaigniq.forex_daily_financial_candidate import canonical
+        import re
+        if (any(v is not True for v in (confirm_daily_basis,confirm_retained_differences,confirm_coverage_limits)) or
+            type(revision) is not int or revision<0 or not isinstance(reviewed_candidate_sha256,str) or
+            re.fullmatch('[0-9a-f]{64}',reviewed_candidate_sha256) is None):
+            raise ValueError('Current financial review, revision and explicit monetary/coverage choices required')
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before approving monetary basis')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month monetary approvals are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can approve the Forex monetary basis')
+            prior=policy.load_receipt(session,draft)
+            reviewed=policy.saved_preview(self,session,draft)['candidate'] if prior is not None else financial.preview(self,session,draft)
+            if reviewed['artifact_sha256']!=reviewed_candidate_sha256:
+                raise ValueError('Financial review differs from current sources or revision')
+            policy.context(reviewed['artifact'])
+            if prior is not None:return draft.revision
+            receipt=policy.make_receipt(session,draft,actor.user_id,reviewed)
+            saved_revision=session.drafts.upload(draft.id,policy.ROLE,policy.FILENAME,'text/plain',
+                (canonical(receipt)+'\n').encode())
+            current=session.drafts.get(draft.id)
+            if policy.load_receipt(session,current)!=receipt:raise ValueError('Monetary approval post-write verification failed')
+            policy.saved_preview(self,session,current)
+            return saved_revision
+
+    def forex_financial_policy_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_forex_financial_policy import saved_preview
+        if type(revision) is not int or revision<0:raise ValueError('Displayed draft revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saved monetary review')
+            return saved_preview(self,session,draft)
+
     def forex_financial_candidate_preview(self,user,account_id,draft_id,revision):
         from campaigniq.account_forex_financial_candidate import preview
         if type(revision) is not int or revision<0:raise ValueError('Displayed draft revision required')

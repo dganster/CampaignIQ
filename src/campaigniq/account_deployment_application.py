@@ -66,6 +66,8 @@ class DeploymentMonthlyApplication:
     def futures_generation_preview(self,*args,**kwargs):return self._inputs.futures_generation_preview(*args,**kwargs)
     def save_forex_daily_sources(self,*args,**kwargs):return self._inputs.save_forex_daily_sources(*args,**kwargs)
     def forex_financial_candidate_preview(self,*args,**kwargs):return self._inputs.forex_financial_candidate_preview(*args,**kwargs)
+    def save_forex_financial_policy(self,*args,**kwargs):return self._inputs.save_forex_financial_policy(*args,**kwargs)
+    def forex_financial_policy_preview(self,*args,**kwargs):return self._inputs.forex_financial_policy_preview(*args,**kwargs)
     def forex_daily_source_preview(self,*args,**kwargs):return self._inputs.forex_daily_source_preview(*args,**kwargs)
     def forex_daily_inventory_preview(self,*args,**kwargs):return self._inputs.forex_daily_inventory_preview(*args,**kwargs)
     def forex_inventory_preview(self,*args,**kwargs):return self._inputs.forex_inventory_preview(*args,**kwargs)

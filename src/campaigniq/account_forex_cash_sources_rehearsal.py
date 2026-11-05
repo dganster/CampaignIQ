@@ -530,3 +530,129 @@ def verify_daily_financial_candidate(c, passed, account, draft, revision):
         rejected(psycopg.errors.ReadOnlySqlTransaction,read)
     assert c.snapshot()==before_read
     passed('forex_financial_candidate_database_transaction_rejects_raw_sql_writes')
+    verify_financial_policy(c,passed,account,draft,revision)
+
+
+def _monetary_approval_fault_upload(real, failure, reached):
+    """Exercise application integrity and DB permissions as distinct failures."""
+    from campaigniq.account_forex_financial_policy import ROLE
+    if failure not in ('after_receipt','changed_receipt','forbidden_sql'):
+        raise ValueError('Unknown monetary approval fault')
+    def upload(repository,did,role,*args,**kwargs):
+        result=real(repository,did,role,*args,**kwargs)
+        if role!=ROLE:return result
+        reached.append(failure)
+        if failure=='after_receipt':raise RuntimeError('Injected monetary approval failure')
+        with repository._session._operation() as conn:
+            if failure=='changed_receipt':
+                # UPDATE on draft documents is part of the reviewed input role.
+                # Deliberate corruption must be caught by post-write verification.
+                row=conn.execute('SELECT id,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND NOT superseded',
+                    (did,role)).fetchone()
+                body=json.loads(row[1]);body['stable_candidate_sha256']='0'*64;changed=cash.canonical(body)
+                conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',
+                    (sha256(changed).hexdigest(),changed,row[0]))
+            else:
+                import psycopg
+                try:
+                    conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=content WHERE false')
+                except psycopg.errors.InsufficientPrivilege:pass
+                else:raise AssertionError('Input role unexpectedly permits financial artifact writes')
+        return result
+    return upload
+
+
+def verify_financial_policy(c, passed, account, draft, revision):
+    from campaigniq import account_forex_financial_policy as policy
+    service,user=c.inputs,c.user
+    digest=service.forex_financial_candidate_preview(user,account,draft.id,revision)['artifact_sha256']
+    def approve(actor=user,rev=revision,review=digest):
+        return service.save_forex_financial_policy(actor,account,draft.id,rev,
+            reviewed_candidate_sha256=review,confirm_daily_basis=True,
+            confirm_retained_differences=True,confirm_coverage_limits=True)
+    before=c.snapshot();real=_Drafts.upload
+    rejected(ValueError,lambda:approve(rev=revision-1))
+    rejected(ValueError,lambda:approve(review='0'*64))
+    rejected(PermissionError,lambda:approve(c.foreign))
+    for failure,expected in (('after_receipt',RuntimeError),('changed_receipt',ValueError),('forbidden_sql',RuntimeError)):
+        reached=[]
+        with patch.object(_Drafts,'upload',new=_monetary_approval_fault_upload(real,failure,reached)):
+            rejected(expected,approve)
+        assert reached==[failure]
+        assert c.snapshot()==before
+    with patch.object(policy,'saved_preview',side_effect=ValueError('Injected post-write monetary verification failure')):
+        rejected(ValueError,approve)
+    assert c.snapshot()==before
+    passed('monetary_approval_stale_foreign_wrong_review_and_failed_or_forbidden_writes_preserve_all_rows')
+    barrier,ready,release=Barrier(3),Event(),Event()
+    def paused(repository,did,role,*args,**kwargs):
+        value=real(repository,did,role,*args,**kwargs)
+        if role==policy.ROLE:
+            ready.set()
+            if not release.wait(20):raise RuntimeError('Monetary approval visibility coordination timed out')
+        return value
+    def attempt():
+        barrier.wait(timeout=15)
+        try:return 'winner',approve()
+        except ValueError:return 'blocked',None
+    with patch.object(_Drafts,'upload',new=paused),ThreadPoolExecutor(max_workers=2) as pool:
+        jobs=[pool.submit(attempt) for _ in range(2)]
+        try:
+            barrier.wait(timeout=15)
+            if not ready.wait(20):raise RuntimeError('Monetary approval not reached')
+            with service.gateway.transaction(user,account) as old:
+                assert old.drafts.get(draft.id).revision==revision
+                rejected(FileNotFoundError,lambda:old.drafts.document(draft.id,policy.ROLE))
+                release.set();results=[job.result(timeout=30) for job in jobs]
+                assert old.drafts.get(draft.id).revision==revision
+                rejected(FileNotFoundError,lambda:old.drafts.document(draft.id,policy.ROLE))
+        finally:release.set()
+    assert sorted(item[0] for item in results)==['blocked','winner']
+    current=next(item[1] for item in results if item[0]=='winner')
+    assert current==revision+1
+    def read(actor=user,rev=current):return service.forex_financial_policy_preview(actor,account,draft.id,rev)
+    result=read();after=c.snapshot()
+    assert result['financial_policy_approved'] and result['publication_authorized'] is False
+    assert result['receipt']['confirmed_source_revision']==revision
+    assert result['receipt']['reviewed_candidate_sha256']==digest
+    fresh=service.forex_financial_candidate_preview(user,account,draft.id,current)['artifact_sha256']
+    assert approve(rev=current,review=fresh)==current and c.snapshot()==after
+    assert read()==result and c.snapshot()==after
+    passed('concurrent_monetary_approvals_have_one_winner_no_overwrite_and_no_partial_reader_visibility_repeat_is_noop')
+    foreign=c.reader.snapshot(user).user(c.identities[1]).id
+    c.reader.execute(user,c.reader.snapshot(user).revision,'set_grant',user_id=foreign,account_id=account,permission=Permission.VIEW)
+    assert read(c.foreign)==result
+    c.reader.execute(user,c.reader.snapshot(user).revision,'set_grant',user_id=foreign,account_id=account,permission=Permission.EDIT)
+    rejected(PermissionError,lambda:approve(c.foreign,rev=current,review=fresh))
+    c.reader.execute(user,c.reader.snapshot(user).revision,'set_grant',user_id=foreign,account_id=account,permission=None)
+    rejected(PermissionError,lambda:read(c.foreign))
+    rejected(ValueError,lambda:read(rev=current-1))
+    passed('saved_monetary_approval_rechecks_current_view_edit_revoked_and_stale_access_owner_alone_approves')
+    import psycopg
+    original=policy.saved_preview
+    def forbidden(service,session,*args):
+        with session._operation() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+        return original(service,session,*args)
+    before_read=c.snapshot()
+    with patch.object(policy,'saved_preview',new=forbidden):
+        rejected(psycopg.errors.ReadOnlySqlTransaction,read)
+    assert c.snapshot()==before_read
+    passed('saved_monetary_approval_reader_database_transaction_rejects_raw_sql_writes')
+    with c.owner() as conn:
+        row=conn.execute('SELECT id,sha256,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND NOT superseded',
+            (draft.id,policy.ROLE)).fetchone()
+        body=json.loads(row[2]);body['reviewed_candidate_sha256']='0'*64;changed=cash.canonical(body)
+        conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',
+            (sha256(changed).hexdigest(),changed,row[0]))
+    try:
+        corrupt=c.snapshot()
+        rejected(ValueError,read)
+        rejected(ValueError,lambda:approve(rev=current,review=fresh))
+        assert c.snapshot()==corrupt
+    finally:
+        with c.owner() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',(row[1],row[2],row[0]))
+    assert c.snapshot()==before_read
+    assert c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
+    passed('corrupt_monetary_approval_is_withheld_without_repair_and_every_financial_artifact_remains_unchanged')

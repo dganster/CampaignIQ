@@ -43,6 +43,7 @@ def test_bundle_imports_without_site_packages_and_only_named_fixtures(tmp_path):
     code = ('import sys;sys.path[:0]=sys.argv[1:];'
         'from campaigniq.account_forex_cash_sources_rehearsal import verify_forex_cash_sources;'
         'from campaigniq.account_forex_financial_candidate import preview;'
+        'from campaigniq.account_forex_financial_policy import saved_preview;'
         'from campaigniq.forex_cash_rehearsal_sources import sources;'
         'u,c,s=sources();assert len(u)==2 and c.content==s.content')
     result = subprocess.run([sys._base_executable, '-I', '-S', '-c', code,
