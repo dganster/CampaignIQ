@@ -286,3 +286,57 @@ def verify_forex_inventory(c, passed, account, draft, revision):
                 (fixtures[key], scope, key))
     assert c.snapshot() == after
     passed('forex_inventory_enforces_readonly_sql_and_conflicting_predecessor_withholds_result_without_repair')
+    verify_daily_forex_inventory(c, passed, account, draft, revision)
+
+
+def verify_daily_forex_inventory(c, passed, account, draft, revision):
+    from campaigniq import account_forex_daily_inventory as daily
+    from campaigniq.forex_daily_rehearsal_sources import upload
+    service, user = c.inputs, c.user
+    partial = upload(); complete = upload(complete=True)
+    def review(actor=user, rev=revision, archive=partial):
+        return service.forex_daily_inventory_preview(actor, account, draft.id, rev, archive)
+    before = c.snapshot()
+    result = review()
+    assert result['combined_inventory_evidence_reconciled'] and result['saved_execution_facts_verified']
+    assert result['authoritative_opening_matches'] and result['ledger_tail_no_activity_recorded']
+    assert result['full_independent_daily_coverage'] is False
+    assert result['independent_month_end_positions_verified'] is False
+    assert result['last_independent_daily_boundary'] == '2026-10-07'
+    assert result['export_supported_ending_quantities'] == {}
+    assert result['preview_close_allocations'] == [dict(reference='1001', lot_id='synthetic-forex-opening',
+        campaign_id='synthetic-existing-forex-campaign', quantity='50000')]
+    assert result['daily_pdfs_saved'] is False and result['publication_authorized'] is False
+    assert result['original_csv_mtd_minus_daily_settled_usd'] == '1.00'
+    finished = review(archive=complete)
+    assert finished['full_independent_daily_coverage'] and finished['independent_month_end_positions_verified']
+    assert c.snapshot() == before and review() == result
+    rejected(PermissionError, lambda: review(c.foreign))
+    rejected(ValueError, lambda: review(rev=revision-1))
+    rejected(ValueError, lambda: review(archive=upload('8642098')))
+    assert c.snapshot() == before
+    passed('daily_forex_archive_reconciles_actual_pdfs_exact_lots_and_export_tail_without_monthly_statement_or_writes')
+    original = daily.evaluate
+    def forbidden(service, session, *args):
+        with session._operation() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+        return original(service, session, *args)
+    import psycopg
+    with patch.object(daily, 'evaluate', new=forbidden):
+        rejected(psycopg.errors.ReadOnlySqlTransaction, review)
+    assert c.snapshot() == before
+    scope = c.reader.authorize(user, account).storage_scope
+    with c.owner() as conn:
+        old = conn.execute('SELECT content FROM campaigniq_accounts.artifact_storage_dev WHERE namespace=%s AND artifact_key=%s',
+            (scope, '2026-09-lot-book.json')).fetchone()[0]
+        changed = json.loads(old); changed['lots'][0]['quantity'] = '-40000'
+        conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+            (json.dumps(changed), scope, '2026-09-lot-book.json'))
+    try:
+        corrupt = c.snapshot(); rejected(ValueError, review); assert c.snapshot() == corrupt
+    finally:
+        with c.owner() as conn:
+            conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+                (old, scope, '2026-09-lot-book.json'))
+    assert c.snapshot() == before
+    passed('daily_forex_review_enforces_readonly_sql_and_rejects_conflicting_published_opening_without_repair')

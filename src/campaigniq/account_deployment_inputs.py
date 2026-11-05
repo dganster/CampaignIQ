@@ -231,6 +231,17 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             if draft.revision!=revision:raise ValueError('Draft changed; reload before generation preview')
             return generation_preview(self,session,draft)
 
+    def forex_daily_inventory_preview(self,user,account_id,draft_id,revision,daily_reports):
+        from campaigniq import account_forex_daily_inventory as daily
+        if type(revision) is not int or revision<0:
+            raise ValueError('Displayed draft revision required')
+        raw=daily.archive_bytes(daily_reports)
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:
+                raise ValueError('Draft changed; reload before daily Forex review')
+            return daily.evaluate(self,session,draft,raw)
+
     def forex_inventory_preview(self,user,account_id,draft_id,revision,monthly_statement):
         from campaigniq import account_forex_inventory_preview as inventory
         if type(revision) is not int or revision<0:
