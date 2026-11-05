@@ -18,6 +18,7 @@ from campaigniq.import_contract import MonthlyInputRole
 from campaigniq.import_draft_bridge import restore_uploads
 from campaigniq.import_preflight import prepare_monthly_import
 from campaigniq.monthly_upload_staging import stage_monthly_uploads
+from campaigniq.domain.value_objects.forex_pair import ForexPair
 
 HISTORY='thinkorswim_trade_history'
 
@@ -157,14 +158,27 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
             control=outcome.closing_reconciliation
             inventory=control.reconciled and not control.forex_source_findings
             findings.extend(control.forex_source_findings)
+            forex_csv_control=MonthlyInputRole.SCHWAB_FOREX_MONTHLY_STATEMENT not in supplied
             mismatches=[dict(instrument=repr(row.instrument),computed=str(row.computed_quantity),
-                statement=str(row.snapshot_quantity),difference=str(row.difference)) for row in control.mismatches]
-            if mismatches:findings.append('Securities closing inventory does not reconcile.')
+                statement=str(row.snapshot_quantity),difference=str(row.difference),
+                control_source=('Forex Transaction Report CSV' if forex_csv_control else 'Verified Forex monthly evidence')
+                    if isinstance(row.instrument,ForexPair) else 'Brokerage closing snapshot')
+                for row in control.mismatches]
+            if forex_csv_control and any(isinstance(row.instrument,ForexPair) for row in control.mismatches):
+                findings.append('Forex closing quantities disagree with the Forex Transaction Report CSV. '
+                    'Pairs absent from that CSV retain their published opening quantity; this is not a brokerage closing-snapshot position. '
+                    'Saved daily Forex source review does not yet replace this financial control.')
+            elif any(isinstance(row.instrument,ForexPair) for row in control.mismatches):
+                findings.append('Forex closing inventory does not reconcile with verified monthly evidence.')
+            if any(not isinstance(row.instrument,ForexPair) for row in control.mismatches):
+                findings.append('Securities closing inventory does not reconcile.')
+        ready=bool(prepared.ready and all(v.valid for v in identities) and inventory and crypto_ready
+            and futures['closing_positions_confirmed_by_owner'] and not findings)
         return dict(format='campaigniq.futures_monthly_readonly_preview',version=1,account_id=session.account.account_id,
             draft_id=str(draft.id),revision=draft.revision,period=f'{draft.year:04d}-{draft.month:02d}',
             futures=futures,source_lineage=lineage,validations=validations,crypto=crypto_status,
             securities_inventory_reconciled=inventory,inventory_mismatches=mismatches,
-            all_source_controls_ready=bool(prepared.ready and all(v.valid for v in identities) and inventory and crypto_ready
-                and futures['closing_positions_confirmed_by_owner'] and not findings),source_findings=list(dict.fromkeys(findings)),
+            all_source_controls_ready=ready,source_findings=list(dict.fromkeys(findings)),
             publication_authorized=False,publication_integration_ready=False,
-            publication_blocker='Futures monthly publication remains disabled pending complete generation/report integration and database rehearsal.')
+            publication_blocker=('Monthly source checks passed. Publication requires the enabled application workflow and separate month confirmation.'
+                if ready else 'Month is not ready to publish. Resolve the source and inventory findings shown above; the original sources have been retained.'))

@@ -185,7 +185,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         monthly = service.futures_monthly_preview(server_user,account_id,draft.id,draft.revision,
                             forex_applicable=forex,crypto_applicable=crypto)
                         st.dataframe(monthly['validations'],hide_index=True)
-                        st.write('Securities closing inventory reconciled:',monthly['securities_inventory_reconciled'])
+                        st.write('Securities/Forex closing inventory reconciled:',monthly['securities_inventory_reconciled'])
                         st.write('Futures/options result after fees, USD:',monthly['futures']['realized_net_usd'])
                         st.caption('Full original Trade History preserved. A labelled temporary projection separates already-verified futures rows for the securities checks.')
                         for finding in monthly['source_findings']:

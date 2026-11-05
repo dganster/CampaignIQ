@@ -124,7 +124,8 @@ def test_projection_preserves_original_and_all_nonfuture_rows(flat,tmp_path):
     with pytest.raises(ValueError):monthly.project_history(raw+b'changed',result,path)
 
 
-def test_monthly_source_projection_drives_real_securities_pipeline_without_writes(flat):
+@pytest.mark.parametrize('forex_disagreement',[False,True])
+def test_monthly_source_projection_drives_real_securities_pipeline_without_writes(flat,monkeypatch,forex_disagreement):
     c=flat;repo=c.repositories[c.account]
     raw=repo.document(c.selected.id,'thinkorswim_trade_history')[2].decode()
     raw=raw.replace('\nFutures Statements\n',',10/15/26 10:00:00,STOCK,BUY,+10,TO OPEN,SPY,,,STOCK,100,100,LMT\n\nFutures Statements\n')
@@ -139,9 +140,31 @@ def test_monthly_source_projection_drives_real_securities_pipeline_without_write
     confirm(c);save(c);end_confirm(c)
     repo=c.repositories[c.account];before=deepcopy(repo.__dict__)
     revision=repo.get(c.selected.id).revision
+    if forex_disagreement:
+        from dataclasses import replace
+        from decimal import Decimal
+        from campaigniq.domain.value_objects.forex_pair import ForexPair
+        from campaigniq.closing_inventory_reconciliation import ClosingInventoryMismatch,ClosingInventoryReconciliation
+        import campaigniq.monthly_import_execution as execution
+        execute=execution.execute_monthly_import
+        def disagree(*args,**kwargs):
+            outcome=execute(*args,**kwargs)
+            return replace(outcome,closing_reconciliation=ClosingInventoryReconciliation((
+                ClosingInventoryMismatch(ForexPair.from_symbol('USD/JPY'),Decimal('0'),Decimal('-50000')),)))
+        monkeypatch.setattr(execution,'execute_monthly_import',disagree)
     result=c.associated.futures_monthly_preview(c.admin,c.account,c.selected.id,revision,forex_applicable=False,crypto_applicable=False)
-    assert result['securities_inventory_reconciled'],result['source_findings']
-    assert result['all_source_controls_ready'],result['source_findings']
+    assert result['securities_inventory_reconciled'] is (not forex_disagreement)
+    assert result['all_source_controls_ready'] is (not forex_disagreement)
+    if forex_disagreement:
+        row=result['inventory_mismatches'][0]
+        assert (row['computed'],row['statement'],row['difference'])==('0','-50000','50000')
+        assert row['control_source']=='Forex Transaction Report CSV'
+        assert any('published opening quantity' in text for text in result['source_findings'])
+        assert not any('Securities closing inventory does not reconcile' in text for text in result['source_findings'])
+        assert 'Resolve the source and inventory findings' in result['publication_blocker']
+    else:
+        assert 'Monthly source checks passed' in result['publication_blocker']
+    assert 'integration and database rehearsal' not in result['publication_blocker']
     assert result['futures']['closing_positions_confirmed_by_owner'] is True
     assert result['publication_authorized'] is result['publication_integration_ready'] is False
     assert repo.__dict__==before
