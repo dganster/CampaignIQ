@@ -242,6 +242,53 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
                 raise ValueError('Draft changed; reload before Forex cash review')
             return cash.evaluate(self,session,draft,ledger,supplement)
 
+    def save_forex_cash_sources(self,user,account_id,draft_id,revision,cash_upload,supplemental_upload,*,
+            reviewed_preview_sha256,confirm_same_account=False,confirm_source_choices=False,replace=False):
+        from campaigniq import account_forex_cash_review as cash
+        import re
+        if (confirm_same_account is not True or confirm_source_choices is not True or type(replace) is not bool
+            or type(revision) is not int or revision<0 or not isinstance(reviewed_preview_sha256,str)
+            or re.fullmatch('[0-9a-f]{64}',reviewed_preview_sha256) is None):
+            raise ValueError('Current Forex review, revision and explicit source choices required')
+        ledger=cash.upload_bytes(cash_upload);supplement=cash.upload_bytes(supplemental_upload)
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saving Forex sources')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month Forex sources are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can confirm Forex sources')
+            prior=cash.load_receipt(session,draft);docs=cash.originals(session,draft,prior)
+            result=cash.evaluate(self,session,draft,ledger,supplement)
+            ctx=cash.context(self,session,result)
+            if ctx['review_sha256']!=reviewed_preview_sha256:
+                raise ValueError('Forex review differs from current exact sources')
+            if prior is not None:
+                if prior['binding_sha256']!=ctx['binding_sha256']:
+                    raise ValueError('Broker binding changed; separate account review required')
+                if all(prior[k]==v for k,v in ctx.items()):return draft.revision
+                if not replace:raise ValueError('Confirm replacement; prior Forex originals remain preserved')
+            receipt=cash.make_receipt(session,draft,actor.user_id,ctx)
+            for role,upload,raw in ((cash.CASH,cash_upload,ledger),(cash.SUPPLEMENT,supplemental_upload,supplement)):
+                if docs.get(role)!=raw:
+                    session.drafts.upload(draft.id,role,upload.name,'text/csv',raw,replace=role in docs)
+            revision=session.drafts.upload(draft.id,cash.RECEIPT,'forex-cash-source-receipt.json','text/plain',
+                cash.canonical(receipt)+b'\n',replace=prior is not None)
+            saved=session.drafts.get(draft.id)
+            if cash.load_receipt(session,saved)!=receipt:raise ValueError('Forex receipt verification failed')
+            cash.saved_preview(self,session,saved)
+            return revision
+
+    def forex_cash_source_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_forex_cash_review import saved_preview
+        if type(revision) is not int or revision<0:raise ValueError('Displayed draft revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saved Forex review')
+            return saved_preview(self,session,draft)
+
     def review_crypto_statements(self,user,account_id,draft_id,revision,previous_upload,current_upload):
         from campaigniq import account_crypto_statement_sources as crypto
         if type(revision) is not int or revision<0:raise ValueError('Displayed revision required')
