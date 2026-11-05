@@ -231,6 +231,17 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             if draft.revision!=revision:raise ValueError('Draft changed; reload before generation preview')
             return generation_preview(self,session,draft)
 
+    def review_forex_cash_sources(self,user,account_id,draft_id,revision,cash_upload,supplemental_upload):
+        from campaigniq import account_forex_cash_review as cash
+        if type(revision) is not int or revision<0:
+            raise ValueError('Displayed draft revision required')
+        ledger=cash.upload_bytes(cash_upload);supplement=cash.upload_bytes(supplemental_upload)
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:
+                raise ValueError('Draft changed; reload before Forex cash review')
+            return cash.evaluate(self,session,draft,ledger,supplement)
+
     def review_crypto_statements(self,user,account_id,draft_id,revision,previous_upload,current_upload):
         from campaigniq import account_crypto_statement_sources as crypto
         if type(revision) is not int or revision<0:raise ValueError('Displayed revision required')

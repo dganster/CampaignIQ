@@ -173,6 +173,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if deployment and getattr(service,'multi_asset_enabled',False):
                 from campaigniq.ui.account_crypto_sources_view import render as render_crypto_sources
                 render_crypto_sources(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
+            if deployment and hasattr(service,'review_forex_cash_sources'):
+                from campaigniq.ui.account_forex_cash_review_view import render as render_forex_cash
+                render_forex_cash(st,service,server_user,account_id,draft,key=key)
             forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
             crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
             if deployment and hasattr(service, 'futures_monthly_preview'):
