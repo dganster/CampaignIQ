@@ -55,3 +55,7 @@ def render(st,service,user,account_id,draft,*,key):
                 show(st,result)
                 st.success('Exact saved Forex originals and owner confirmation verified. No month was published.')
             except errors as error:st.error(str(error))
+
+        if callable(getattr(service,'forex_inventory_preview',None)):
+            from campaigniq.ui.account_forex_inventory_view import render as render_inventory
+            render_inventory(st,service,user,account_id,draft,key=key)

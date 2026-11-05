@@ -212,3 +212,77 @@ def verify_forex_cash_sources(c, passed):
             'WHERE draft_id=%s AND role=%s AND superseded', (draft.id, cash.RECEIPT)).fetchone() == (1,)
     assert c.snapshot()['rows']['artifact_storage_dev'] == before['rows']['artifact_storage_dev']
     passed('explicit_forex_replacement_preserves_prior_original_and_receipt_and_financial_artifacts_are_unchanged')
+    verify_forex_inventory(c, passed, account, draft, replacement_revision)
+
+
+def verify_forex_inventory(c, passed, account, draft, revision):
+    """Synthetic predecessor fixtures only; inventory service stays SQL read only."""
+    from campaigniq import account_forex_inventory_preview as inventory
+    from campaigniq.forex_inventory_rehearsal_sources import monthly_upload, predecessor, statement
+    from campaigniq.crypto_account_rehearsal_sources import pdf
+    from campaigniq.persistence.monthly_publication import PROTOCOL_FILE, _serialize_publication_protocol, _serialize_finalized_month_marker
+    from datetime import date
+    service, user = c.inputs, c.user
+    monthly = monthly_upload()
+    def review(actor=user, rev=revision, upload=monthly):
+        return service.forex_inventory_preview(actor, account, draft.id, rev, upload)
+    before = c.snapshot()
+    incomplete = review()
+    assert incomplete['statement_inventory_equation_verified']
+    assert incomplete['authoritative_predecessor_available'] is False
+    assert incomplete['preview_close_allocations'] == []
+    assert c.snapshot() == before
+    passed('forex_inventory_missing_predecessor_is_explicit_and_does_not_seed_or_write_opening_lots')
+    scope = c.reader.authorize(user, account).storage_scope
+    fixtures = {PROTOCOL_FILE: _serialize_publication_protocol(first_period_end=date(2026, 9, 30)),
+        '2026-09-lot-book.json': predecessor(),
+        '2026-09-finalized.json': _serialize_finalized_month_marker(period_end=date(2026, 9, 30))}
+    # These are new synthetic clone-only test fixtures, never a source repair.
+    with c.owner() as conn:
+        for key, text in fixtures.items():
+            conn.execute('INSERT INTO campaigniq_accounts.artifact_storage_dev(namespace,artifact_key,content) VALUES(%s,%s,%s)',
+                (scope, key, text))
+    after = c.snapshot()
+    result = review()
+    assert result['authoritative_opening_matches'] and result['authoritative_replay_closing_matches']
+    assert result['preview_close_allocations'] == [dict(reference='1001', lot_id='synthetic-forex-opening',
+        campaign_id='synthetic-existing-forex-campaign', quantity='50000')]
+    assert result['publication_authorized'] is False and result['monthly_pdf_saved'] is False
+    assert result['original_cash_review']['calculation']['csv_mtd_minus_candidate_usd'] == Decimal('1')
+    assert c.snapshot() == after and review() == result
+    rejected(PermissionError, lambda: review(c.foreign))
+    rejected(ValueError, lambda: review(rev=revision-1))
+    rejected(ValueError, lambda: review(upload=RestoredUpload('wrong.pdf', 'application/pdf', pdf(statement('8642098')))))
+    assert c.snapshot() == after
+    passed('restricted_forex_inventory_reader_uses_actual_pdf_exact_predecessor_lots_and_saved_sources_without_writes')
+    foreign = c.reader.snapshot(user).user(c.identities[1]).id
+    c.reader.execute(user, c.reader.snapshot(user).revision, 'set_grant', user_id=foreign, account_id=account, permission=Permission.VIEW)
+    assert review(c.foreign)['authoritative_opening_matches']
+    c.reader.execute(user, c.reader.snapshot(user).revision, 'set_grant', user_id=foreign, account_id=account, permission=None)
+    rejected(PermissionError, lambda: review(c.foreign))
+    passed('forex_inventory_view_permission_and_revocation_are_rechecked')
+    after = c.snapshot()
+    original = inventory.evaluate
+    def forbidden(service, session, *args):
+        with session._operation() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+        return original(service, session, *args)
+    import psycopg
+    with patch.object(inventory, 'evaluate', new=forbidden):
+        rejected(psycopg.errors.ReadOnlySqlTransaction, review)
+    assert c.snapshot() == after
+    key = '2026-09-lot-book.json'
+    changed = json.loads(fixtures[key]); changed['lots'][0]['quantity'] = '-40000'
+    with c.owner() as conn:
+        conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+            (json.dumps(changed), scope, key))
+    try:
+        corrupt = c.snapshot()
+        rejected(ValueError, review)
+        assert c.snapshot() == corrupt
+    finally:
+        with c.owner() as conn:
+            conn.execute('UPDATE campaigniq_accounts.artifact_storage_dev SET content=%s WHERE namespace=%s AND artifact_key=%s',
+                (fixtures[key], scope, key))
+    assert c.snapshot() == after
+    passed('forex_inventory_enforces_readonly_sql_and_conflicting_predecessor_withholds_result_without_repair')
