@@ -25,14 +25,16 @@ def reports(number='8642097', *, complete=False):
             'Settled Profit/Loss '+('($10.00)' if close else '$0.00')+'\nUnrealized Profit/Loss $0.00\nFloating Profit/Loss $0.00\n'
             'Ending Cash Balance $'+after+'\nEnding Account Equity $'+after+'\n'
             'Account Account Currency\n'+number+' USD\nStatement From Statement To\n'
-            'Profit/Loss Summary\nOpen Position(s)\nCurrency Pair Buy/Sell Quantity Trade Price Floating Profit/Loss USD Margin Requirement USD\n')
+            'Profit/Loss Summary\nCurrency Pair Settled Profit/Loss Unrealized Profit/Loss Floating Profit/Loss\n'
+            'USD/JPY '+('($10.00)' if close else '$0.00')+' $0.00 $0.00\n'
+            'Open Position(s)\nCurrency Pair Buy/Sell Quantity Trade Price Floating Profit/Loss USD Margin Requirement USD\n')
         if open_position:
             text += ('USD/JPY\nTR Details: 9/25/2026 3:47:16 PM Sell (50,000) 157.2060000\n'
                      'USD/JPY - TOTAL POSITION: Sell (50,000) $0.00 $2500.00\n')
         text += 'Floating Profit/Loss Net USD :\nClosed Position(s)\nTrade Activity Detail\n'
         if close:text += '2026-10-06 21:04:08 USD/JPY STOP B CLOSE 50,000 158.505 1001 $0.00\n'
         text += 'Financing Report\n'
-        if close:text += '2026-10-06 17:00:00 USD/JPY (50,000) 158.505 2001 $0.01 ($1.00)\n'
+        if close:text += '2026-10-06 17:00:00 USD/JPY (50,000) 158.505 1002 $0.01 ($1.00)\n'
         text += 'Conversion Report\n'
         result.append(('daily-'+str(current)+'.pdf', text))
         cash, previous = after, current

@@ -69,3 +69,23 @@ def render(st, service, user, account_id, draft, *, key, writable=True, publishe
                 st.success('Saved original daily PDFs and owner receipt verified. No month was published.')
             except errors as error:
                 st.error(str(error))
+    if callable(getattr(service, 'forex_financial_candidate_preview', None)):
+        with st.expander('Forex financial candidate'):
+            st.caption('Calculate close-day profit/loss and financing from the saved daily PDFs and original cash sources. '
+                'This proposes a daily reporting-session basis; it does not approve a financial policy or publish October.')
+            if st.button('Calculate saved Forex financial candidate', key=key+':forex-financial-candidate'):
+                try:
+                    result = service.forex_financial_candidate_preview(user, account_id, draft.id, draft.revision)
+                    calculation = result['artifact']['calculation']
+                    st.table([dict(Measure=k, USD=v) for k,v in calculation['totals'].items()])
+                    st.table(calculation['closes'])
+                    st.caption('Last independent daily confirmation: '+calculation['last_independent_daily_boundary']+
+                        '. Later unchanged cash-export evidence remains separate.')
+                    st.success('Every daily/calendar monetary equation reconciles exactly. Original source differences remain retained.')
+                    if not calculation['all_original_financing_rows_classified']:
+                        st.warning('Some original CSV financing rows have no exact daily-Forex or securities-cash match; their treatment remains unresolved.')
+                    for limitation in calculation['limitations']:st.warning(limitation)
+                    with st.expander('Financial candidate, original controls and exact source fingerprints'):
+                        st.json(result)
+                except errors as error:
+                    st.error(str(error))

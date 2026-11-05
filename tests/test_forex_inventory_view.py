@@ -85,3 +85,18 @@ def test_saved_daily_review_does_not_require_reupload():
     st,s=source_setup();st.upload=None;st.button_name='View saved daily Forex source review';draw(st,s)
     s.forex_daily_source_preview.assert_called_once_with('owner','account','draft',5)
     s.forex_daily_inventory_preview.assert_not_called()
+
+
+def test_financial_candidate_uses_saved_sources_without_upload_or_save():
+    st=DailySourceScreen();st.upload=None;st.button_name='Calculate saved Forex financial candidate'
+    calc=dict(totals={'trading_usd':'-10.00'},closes=[{'reference':'1001','candidate_pl_usd':'-10.00'}],
+        last_independent_daily_boundary='2026-10-07',all_original_financing_rows_classified=True,
+        limitations=['Policy approval and writer integration remain pending.'])
+    s=SimpleNamespace(forex_financial_candidate_preview=Mock(return_value={'artifact':{'calculation':calc}}))
+    draw(st,s)
+    s.forex_financial_candidate_preview.assert_called_once_with('owner','account','draft',5)
+    assert len(st.tables)==2 and st.successes
+    assert st.warnings==['Policy approval and writer integration remain pending.']
+    st.tables=[];st.successes=[];s.forex_financial_candidate_preview.side_effect=ValueError('Changed receipt')
+    draw(st,s)
+    assert not st.tables and not st.successes and st.errors==['Changed receipt']

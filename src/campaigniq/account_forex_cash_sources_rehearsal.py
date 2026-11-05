@@ -479,6 +479,7 @@ def verify_daily_source_receipts(c, passed, account, draft, revision):
     try:
         corrupt=c.snapshot()
         rejected(ValueError,lambda:service.forex_daily_source_preview(user,account,draft.id,replaced))
+        rejected(ValueError,lambda:service.forex_financial_candidate_preview(user,account,draft.id,replaced))
         fresh=service.forex_daily_inventory_preview(user,account,draft.id,replaced,replacement)['review_sha256']
         rejected(ValueError,lambda:save(rev=replaced,item=replacement,digest=fresh,replace=True))
         assert c.snapshot()==corrupt
@@ -487,3 +488,45 @@ def verify_daily_source_receipts(c, passed, account, draft, revision):
             conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',(row[1],row[2],row[0]))
     assert c.snapshot()==after and c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
     passed('corrupt_daily_receipt_withholds_saved_review_and_cannot_be_replaced_as_repair_financial_artifacts_unchanged')
+    verify_daily_financial_candidate(c, passed, account, draft, replaced)
+
+
+def verify_daily_financial_candidate(c, passed, account, draft, revision):
+    from campaigniq import account_forex_financial_candidate as financial
+    service, user = c.inputs, c.user
+    def read(actor=user, rev=revision):
+        return service.forex_financial_candidate_preview(actor,account,draft.id,rev)
+    before = c.snapshot()
+    result = read(); artifact = result['artifact']; calculation = artifact['calculation']
+    assert calculation['totals']==dict(opening_cash_usd='1000.00',trading_usd='-10.00',
+        financing_usd='-1.00',ending_cash_usd='989.00',net_cash_change_usd='-11.00')
+    assert calculation['missing_csv_execution_references']==['1001']
+    assert calculation['closes'][0]['csv_settlement_at'] is None
+    assert calculation['raw_csv_controls']['mtd_settled_pl_usd']=='-9.00'
+    assert calculation['close_allocations'][0]['lot_id']=='synthetic-forex-opening'
+    assert artifact['source_receipts_verified'] and artifact['financial_policy_approved'] is False
+    assert result['candidate_only'] and result['publication_authorized'] is False
+    assert read()==result
+    with service.gateway.transaction(user,account) as session:
+        financial.verify_record(service,session,session.drafts.get(draft.id),result['artifact_text'])
+    assert c.snapshot()==before
+    passed('saved_daily_financial_candidate_rebuilds_exact_close_lots_receipts_and_money_without_writes')
+    rejected(ValueError,lambda:read(rev=revision-1))
+    rejected(PermissionError,lambda:read(c.foreign))
+    foreign = c.reader.snapshot(user).user(c.identities[1]).id
+    c.reader.execute(user,c.reader.snapshot(user).revision,'set_grant',user_id=foreign,account_id=account,permission=Permission.VIEW)
+    assert read(c.foreign)==result
+    c.reader.execute(user,c.reader.snapshot(user).revision,'set_grant',user_id=foreign,account_id=account,permission=None)
+    rejected(PermissionError,lambda:read(c.foreign))
+    passed('forex_financial_candidate_rechecks_foreign_stale_view_and_revoked_access')
+    import psycopg
+    real = financial.preview
+    def forbidden(service, session, *args):
+        with session._operation() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+        return real(service,session,*args)
+    before_read = c.snapshot()
+    with patch.object(financial,'preview',new=forbidden):
+        rejected(psycopg.errors.ReadOnlySqlTransaction,read)
+    assert c.snapshot()==before_read
+    passed('forex_financial_candidate_database_transaction_rejects_raw_sql_writes')
