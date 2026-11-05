@@ -13,7 +13,7 @@ def show(st,result):
     with st.expander('Source differences and exact review'):st.json(result)
 
 
-def render(st,service,user,account_id,draft,*,key):
+def render(st,service,user,account_id,draft,*,key,writable=True,published=False):
     if (draft.year,draft.month)!=(2026,10):return
     with st.expander('Forex cash source review'):
         st.caption('Review the Forex cash ledger and supplemental executions with this month’s saved sources. Saving preserves these exact originals and your source choice; it does not publish the month.')
@@ -58,4 +58,4 @@ def render(st,service,user,account_id,draft,*,key):
 
         if callable(getattr(service,'forex_inventory_preview',None)):
             from campaigniq.ui.account_forex_inventory_view import render as render_inventory
-            render_inventory(st,service,user,account_id,draft,key=key)
+            render_inventory(st,service,user,account_id,draft,key=key,writable=writable,published=published)

@@ -340,3 +340,150 @@ def verify_daily_forex_inventory(c, passed, account, draft, revision):
                 (old, scope, '2026-09-lot-book.json'))
     assert c.snapshot() == before
     passed('daily_forex_review_enforces_readonly_sql_and_rejects_conflicting_published_opening_without_repair')
+    verify_daily_source_receipts(c, passed, account, draft, revision)
+
+
+def verify_daily_source_receipts(c, passed, account, draft, revision):
+    from campaigniq import account_forex_daily_sources as daily
+    from campaigniq.forex_daily_rehearsal_sources import upload
+    from campaigniq.account_forex_daily_inventory import originals
+    import io, zipfile
+    service, user = c.inputs, c.user
+    archive = upload()
+    proof = service.forex_daily_inventory_preview(user, account, draft.id, revision, archive)['review_sha256']
+    def save(actor=user, rev=revision, item=archive, digest=proof, replace=False):
+        return service.save_forex_daily_sources(actor, account, draft.id, rev, item,
+            reviewed_preview_sha256=digest, confirm_same_account=True, confirm_coverage_limits=True, replace=replace)
+    before = c.snapshot(); real = _Drafts.upload
+    for failure_role in (daily.PREFIX+'2026-10-01', daily.PREFIX+'2026-10-07', daily.RECEIPT):
+        def fail(repository, did, role, *args, **kwargs):
+            value = real(repository, did, role, *args, **kwargs)
+            if role == failure_role: raise RuntimeError('Injected daily original/receipt failure')
+            return value
+        with patch.object(_Drafts, 'upload', new=fail): rejected(RuntimeError, save)
+        assert c.snapshot() == before
+    passed('daily_pdf_first_last_and_receipt_failures_roll_back_all_original_versions_and_revision')
+    def caught(repository, did, role, *args, **kwargs):
+        value = real(repository, did, role, *args, **kwargs)
+        if role == daily.PREFIX+'2026-10-07':
+            import psycopg
+            try:
+                with repository._session._operation() as conn:
+                    conn.execute('UPDATE public.artifact_storage_dev SET content=content WHERE false')
+            except psycopg.Error: pass
+        return value
+    with patch.object(_Drafts, 'upload', new=caught): rejected(RuntimeError, save)
+    assert c.snapshot() == before
+    passed('caught_forbidden_sql_during_daily_pdf_save_cannot_commit_partial_originals')
+    barrier, ready, release = Barrier(3), Event(), Event()
+    def paused(repository, did, role, *args, **kwargs):
+        value = real(repository, did, role, *args, **kwargs)
+        if role == daily.RECEIPT:
+            ready.set()
+            if not release.wait(20): raise RuntimeError('Daily receipt visibility coordination timed out')
+        return value
+    def attempt():
+        barrier.wait(timeout=15)
+        try: return 'winner', save()
+        except ValueError: return 'blocked', None
+    with patch.object(_Drafts, 'upload', new=paused), ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(attempt) for _ in range(2)]
+        try:
+            barrier.wait(timeout=15)
+            if not ready.wait(20): raise RuntimeError('Daily source receipt not reached')
+            with service.gateway.transaction(user, account) as old:
+                assert old.drafts.get(draft.id).revision == revision
+                rejected(FileNotFoundError, lambda: old.drafts.document(draft.id, daily.RECEIPT))
+                release.set(); results = [job.result(timeout=30) for job in jobs]
+                assert old.drafts.get(draft.id).revision == revision
+                rejected(FileNotFoundError, lambda: old.drafts.document(draft.id, daily.RECEIPT))
+        finally: release.set()
+    assert sorted(result[0] for result in results) == ['blocked', 'winner']
+    current = next(result[1] for result in results if result[0] == 'winner')
+    assert current == revision+6
+    after = c.snapshot()
+    digest = service.forex_daily_inventory_preview(user, account, draft.id, current, archive)['review_sha256']
+    assert save(rev=current, digest=digest) == current and c.snapshot() == after
+    result = service.forex_daily_source_preview(user, account, draft.id, current)
+    assert result['daily_pdfs_saved'] and result['source_receipt_verified'] and result['publication_authorized'] is False
+    assert result['full_independent_daily_coverage'] is False and result['archive_bytes_saved'] is False
+    with service.gateway.transaction(user, account) as session:
+        receipt = daily.load_receipt(session, session.drafts.get(draft.id))
+        owner = c.reader.snapshot(user).user(c.identities[0]).id
+        assert receipt['confirmed_by'] == owner and receipt['confirmed_source_revision'] == revision
+        hashes = {daily.digest(raw):raw for name,raw in originals(archive.content)}
+        for item in receipt['pdf_inventory']:
+            assert session.drafts.document(draft.id,item['role'])[2] == hashes[item['pdf_sha256']]
+    assert c.snapshot() == after
+    passed('concurrent_daily_source_saves_have_one_winner_exact_repeat_is_noop_and_independent_reader_rebuilds_original_pdfs')
+    rejected(ValueError, lambda: service.forex_daily_source_preview(user, account, draft.id, current-1))
+    rejected(PermissionError, lambda: save(c.foreign, rev=current, digest=digest))
+    foreign = c.reader.snapshot(user).user(c.identities[1]).id
+    c.reader.execute(user, c.reader.snapshot(user).revision, 'set_grant', user_id=foreign, account_id=account, permission=Permission.VIEW)
+    assert service.forex_daily_source_preview(c.foreign, account, draft.id, current)['source_receipt_verified']
+    rejected(PermissionError, lambda: save(c.foreign, rev=current, digest=digest))
+    c.reader.execute(user, c.reader.snapshot(user).revision, 'set_grant', user_id=foreign, account_id=account, permission=Permission.EDIT)
+    rejected(PermissionError, lambda: save(c.foreign, rev=current, digest=digest))
+    c.reader.execute(user, c.reader.snapshot(user).revision, 'set_grant', user_id=foreign, account_id=account, permission=None)
+    rejected(PermissionError, lambda: service.forex_daily_source_preview(c.foreign, account, draft.id, current))
+    passed('daily_saved_review_checks_view_edit_revoked_and_stale_access_and_only_owner_saves')
+
+    original_saved_preview = daily.saved_preview
+    def readonly_saved(service, session, *args):
+        with session._operation() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+        return original_saved_preview(service, session, *args)
+    import psycopg
+    prior_read = c.snapshot()
+    with patch.object(daily, 'saved_preview', new=readonly_saved):
+        rejected(psycopg.errors.ReadOnlySqlTransaction, lambda:service.forex_daily_source_preview(user,account,draft.id,current))
+    assert c.snapshot() == prior_read
+    passed('saved_daily_source_reader_database_transaction_rejects_raw_sql_writes')
+
+    after = c.snapshot()
+    scope = c.reader.authorize(user, account).storage_scope
+    with c.owner() as conn:
+        conn.execute('INSERT INTO campaigniq_accounts.artifact_storage_dev(namespace,artifact_key,content) VALUES(%s,%s,%s)',
+            (scope,'2026-10-synthetic-daily-preservation-guard.json','{}'))
+    try: rejected(ValueError, lambda: save(rev=current, digest=digest))
+    finally:
+        with c.owner() as conn:
+            conn.execute('DELETE FROM campaigniq_accounts.artifact_storage_dev WHERE namespace=%s AND artifact_key=%s',
+                (scope,'2026-10-synthetic-daily-preservation-guard.json'))
+    assert c.snapshot() == after
+    output = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(archive.content)) as old, zipfile.ZipFile(output,'w') as new:
+        for index, info in enumerate(old.infolist()): new.writestr(info, old.read(info)+(b'\n' if index==0 else b''))
+    replacement = RestoredUpload('replacement.zip','application/zip',output.getvalue())
+    new_digest = service.forex_daily_inventory_preview(user, account, draft.id, current, replacement)['review_sha256']
+    rejected(ValueError, lambda: save(rev=current,item=replacement,digest=new_digest))
+    for failure_role in (daily.PREFIX+'2026-10-01',daily.RECEIPT):
+        with patch.object(_Drafts,'upload',new=fail):
+            rejected(RuntimeError,lambda:save(rev=current,item=replacement,digest=new_digest,replace=True))
+        assert c.snapshot() == after
+    replaced = save(rev=current,item=replacement,digest=new_digest,replace=True)
+    assert replaced == current+2
+    assert service.forex_daily_source_preview(user,account,draft.id,replaced)['source_receipt_verified']
+    with c.owner() as conn:
+        for role in (daily.PREFIX+'2026-10-01',daily.RECEIPT):
+            assert conn.execute('SELECT count(*) FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND superseded',
+                (draft.id,role)).fetchone()==(1,)
+    passed('daily_published_month_guard_and_replacement_rollback_preserve_superseded_originals_and_owner_receipts')
+    after = c.snapshot()
+    with c.owner() as conn:
+        row = conn.execute('SELECT id,sha256,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND NOT superseded',
+            (draft.id,daily.RECEIPT)).fetchone()
+        body=json.loads(row[2]);body['calculation_sha256']='0'*64;changed=cash.canonical(body)
+        conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',
+            (sha256(changed).hexdigest(),changed,row[0]))
+    try:
+        corrupt=c.snapshot()
+        rejected(ValueError,lambda:service.forex_daily_source_preview(user,account,draft.id,replaced))
+        fresh=service.forex_daily_inventory_preview(user,account,draft.id,replaced,replacement)['review_sha256']
+        rejected(ValueError,lambda:save(rev=replaced,item=replacement,digest=fresh,replace=True))
+        assert c.snapshot()==corrupt
+    finally:
+        with c.owner() as conn:
+            conn.execute('UPDATE campaigniq_accounts.import_draft_documents SET sha256=%s,content=%s WHERE id=%s',(row[1],row[2],row[0]))
+    assert c.snapshot()==after and c.snapshot()['rows']['artifact_storage_dev']==before['rows']['artifact_storage_dev']
+    passed('corrupt_daily_receipt_withholds_saved_review_and_cannot_be_replaced_as_repair_financial_artifacts_unchanged')

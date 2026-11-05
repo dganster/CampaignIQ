@@ -57,6 +57,10 @@ def originals(raw):
 
 
 def evaluate(service, session, draft, archive):
+    return evaluate_originals(service, session, draft, originals(archive), archive_sha256=sha256(archive).hexdigest())
+
+
+def evaluate_originals(service, session, draft, pdfs, *, archive_sha256):
     saved = cash.saved_preview(service, session, draft)
     receipt = cash.load_receipt(session, draft)
     docs = cash.originals(session, draft, receipt)
@@ -65,7 +69,7 @@ def evaluate(service, session, draft, archive):
     with TemporaryDirectory(prefix='campaigniq-forex-daily-review-') as folder:
         root = Path(folder)
         reports = []
-        for index, (name, raw) in enumerate(originals(archive)):
+        for index, (name, raw) in enumerate(pdfs):
             # Archive paths are labels only, never extraction destinations.
             path = root/(str(index)+'.pdf'); path.write_bytes(raw)
             text = extract_pdf_text(path, root/(str(index)+'.txt')).read_text(encoding='utf-8')
@@ -82,7 +86,7 @@ def evaluate(service, session, draft, archive):
         and all(row[3].strip() != 'TRD' and money(row[8]) == 0 for row in tail))
     independent = result['full_independent_daily_coverage']
     result.update(account_id=session.account.account_id, draft_id=str(draft.id), revision=draft.revision,
-        archive_sha256=sha256(archive).hexdigest(), predecessor_artifact_sha256=predecessor_hashes,
+        archive_sha256=archive_sha256, predecessor_artifact_sha256=predecessor_hashes,
         original_cash_review=saved, ledger_tail_no_activity_recorded=tail_unchanged,
         export_month_end_cash_usd=str(monthly_cash['closing']), export_month_end_date=end.isoformat(),
         export_supported_ending_quantities=result['last_daily_closing_quantities'] if tail_unchanged else None,

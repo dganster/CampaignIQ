@@ -6,7 +6,7 @@ from campaigniq.forex_daily_rehearsal_sources import upload
 
 class Screen:
     def __init__(self):
-        self.upload=upload();self.click=True;self.tables=[];self.errors=[];self.warnings=[];self.successes=[]
+        self.session_state={};self.upload=upload();self.click=True;self.tables=[];self.errors=[];self.warnings=[];self.successes=[]
     def caption(self,*a,**k):pass
     def file_uploader(self,*a,**k):return self.upload
     def button(self,*a,**k):return self.click and not k.get('disabled')
@@ -46,3 +46,42 @@ def test_missing_predecessor_shows_incomplete_verification():
     st=Screen();r=result();r.update(combined_inventory_evidence_reconciled=False)
     draw(st,SimpleNamespace(forex_daily_inventory_preview=Mock(return_value=r)))
     assert not st.successes and 'incomplete' in st.warnings[0]
+
+class DailySourceScreen(Screen):
+    def __init__(self):
+        super().__init__();self.button_name='Validate Forex opening and closing positions';self.reruns=0
+    def button(self,label,**kwargs):return label==self.button_name and not kwargs.get('disabled',False)
+    def checkbox(self,*args,**kwargs):return True
+    def rerun(self):self.reruns+=1
+
+def source_setup():
+    st=DailySourceScreen();r=result();r['review_sha256']='a'*64
+    service=SimpleNamespace(forex_daily_inventory_preview=Mock(return_value=r),save_forex_daily_sources=Mock(),forex_daily_source_preview=Mock(return_value=r))
+    return st,service
+
+def test_daily_save_uses_exact_review_and_explicit_choices():
+    st,s=source_setup();draw(st,s);st.button_name='Save daily Forex source confirmation';draw(st,s)
+    assert s.save_forex_daily_sources.call_args.kwargs==dict(reviewed_preview_sha256='a'*64,confirm_same_account=True,confirm_coverage_limits=True,replace=True)
+    assert st.reruns==1 and not st.session_state
+
+def test_daily_changed_revision_account_or_archive_clears_confirmation():
+    for case in ('revision','account','archive'):
+        st,s=source_setup();draw(st,s);st.button_name='Save daily Forex source confirmation'
+        if case=='archive':st.upload=upload(complete=True)
+        draw(st,s,6 if case=='revision' else 5,'other' if case=='account' else 'account')
+        s.save_forex_daily_sources.assert_not_called();assert not st.session_state
+
+def test_failed_fresh_daily_review_discards_old_confirmation():
+    st,s=source_setup();draw(st,s);s.forex_daily_inventory_preview.side_effect=ValueError('Changed source')
+    draw(st,s);assert not st.session_state and st.errors==['Changed source']
+
+def test_view_only_and_published_daily_reviews_have_no_save_controls():
+    for flags in ({'writable':False},{'published':True}):
+        st,s=source_setup();draw(st,s);st.button_name='Save daily Forex source confirmation'
+        render(st,s,'owner','account',SimpleNamespace(id='draft',revision=5),key='scope',**flags)
+        s.save_forex_daily_sources.assert_not_called()
+
+def test_saved_daily_review_does_not_require_reupload():
+    st,s=source_setup();st.upload=None;st.button_name='View saved daily Forex source review';draw(st,s)
+    s.forex_daily_source_preview.assert_called_once_with('owner','account','draft',5)
+    s.forex_daily_inventory_preview.assert_not_called()

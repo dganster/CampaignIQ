@@ -231,6 +231,62 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             if draft.revision!=revision:raise ValueError('Draft changed; reload before generation preview')
             return generation_preview(self,session,draft)
 
+    def save_forex_daily_sources(self,user,account_id,draft_id,revision,daily_reports,*,
+            reviewed_preview_sha256,confirm_same_account=False,confirm_coverage_limits=False,replace=False):
+        from campaigniq import account_forex_daily_inventory as daily
+        from campaigniq import account_forex_daily_sources as sources
+        from campaigniq import account_forex_cash_review as cash
+        import re
+        if (confirm_same_account is not True or confirm_coverage_limits is not True or type(replace) is not bool
+            or type(revision) is not int or revision<0 or not isinstance(reviewed_preview_sha256,str)
+            or re.fullmatch('[0-9a-f]{64}',reviewed_preview_sha256) is None):
+            raise ValueError('Current daily review, revision and explicit association/coverage choices required')
+        raw=daily.archive_bytes(daily_reports)
+        pdfs=daily.originals(raw)
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saving daily originals')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Published month daily originals are preserved')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner can confirm daily Forex sources')
+            prior=sources.load_receipt(session,draft)
+            previous=sources.saved_originals(session,draft,prior)
+            if prior is not None:
+                sources.saved_preview(self,session,draft)
+            result=daily.evaluate(self,session,draft,raw)
+            if result['review_sha256']!=reviewed_preview_sha256:
+                raise ValueError('Daily review differs from current source bytes or revision')
+            ctx=sources.context(self,session,result,pdfs)
+            if prior is not None:
+                if all(prior[key]==value for key,value in ctx.items()):return draft.revision
+                if not replace:raise ValueError('Confirm daily source replacement; earlier originals remain preserved')
+                if not {item['date'] for item in prior['pdf_inventory']}<={item['date'] for item in ctx['pdf_inventory']}:
+                    raise ValueError('Replacement cannot remove previously saved daily report dates; separate source review required')
+            receipt=sources.make_receipt(session,draft,actor.user_id,ctx)
+            by_hash={sources.digest(content):content for name,content in pdfs}
+            prior_hash={item['role']:item['pdf_sha256'] for item in prior['pdf_inventory']} if prior else {}
+            for item in ctx['pdf_inventory']:
+                if prior_hash.get(item['role'])!=item['pdf_sha256']:
+                    session.drafts.upload(draft.id,item['role'],item['stored_filename'],'application/pdf',
+                        by_hash[item['pdf_sha256']],replace=item['role'] in prior_hash)
+            saved_revision=session.drafts.upload(draft.id,sources.RECEIPT,'forex-daily-owner-receipt.json','text/plain',
+                cash.canonical(receipt)+b'\n',replace=prior is not None)
+            current=session.drafts.get(draft.id)
+            if sources.load_receipt(session,current)!=receipt:raise ValueError('Daily source receipt post-write verification failed')
+            sources.saved_preview(self,session,current)
+            return saved_revision
+
+    def forex_daily_source_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_forex_daily_sources import saved_preview
+        if type(revision) is not int or revision<0:raise ValueError('Displayed draft revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before saved daily review')
+            return saved_preview(self,session,draft)
+
     def forex_daily_inventory_preview(self,user,account_id,draft_id,revision,daily_reports):
         from campaigniq import account_forex_daily_inventory as daily
         if type(revision) is not int or revision<0:
