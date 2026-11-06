@@ -54,7 +54,7 @@ class StatementIncome:
         if self.account_investment_result is None or self.deposits or self.withdrawals or self.beginning_value<=0:return None
         return self.account_investment_result/self.beginning_value
 
-DIVIDEND=r'(Qual\. Dividend|Cash Dividend|Non-Qual Dividend|Non-Qual Div|Reinvest Dividend|Special Dividend)'
+DIVIDEND=r'(Qual\. Dividend|Cash Dividend|Non-Qual Dividend|Non-Qual Div|Non-Qualified Div|Reinvest Dividend|Special Dividend)'
 INTEREST=r'(Credit Interest|Cash Interest)'
 EXPENSE=r'(Margin Interest|Interest Charged|Advisory Fee|Service Fee|Foreign Tax Paid|Tax Withholding)'
 

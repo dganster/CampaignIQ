@@ -64,3 +64,9 @@ def test_duplicate_real_payment_rows_are_not_deduplicated_or_silently_accepted()
 def test_offsetting_external_cash_flows_still_withhold_percentage_return():
     result=parse(text(deposits='200.00',withdrawals='-200.00'))
     assert result.account_investment_result==1000 and result.simple_return is None
+
+@pytest.mark.parametrize('label',['Non-Qualified Div','Non-Qual Dividend','Non-Qual Div'])
+def test_schwab_nonqualified_cash_dividend_labels_reconcile_without_tax_inference(label):
+    result=parse(text().replace('Qual. Dividend',label))
+    assert result.dividends==D('59.00') and result.net_income==D('56.75')
+    assert result.items[0].action==label and result.items[0].campaign_id is None
