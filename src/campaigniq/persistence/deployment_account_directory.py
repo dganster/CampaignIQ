@@ -32,13 +32,10 @@ def validate_runtime_role(conn,target):
 
     # Runtime can update the one audited directory, never bootstrap another one,
     # rewrite audit history, mutate the migration ledger or truncate metadata.
-    for table,allowed in (('directories',{'SELECT','UPDATE'}),('audit_events',{'SELECT','INSERT'}),
-                          ('schema_migrations',{'SELECT'})):
-        for privilege in ('SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'):
-            actual=conn.execute('SELECT has_table_privilege(current_user,%s,%s)',
-                                ('campaigniq_accounts.'+table,privilege)).fetchone()
-            if actual!=((privilege in allowed),):
-                raise PermissionError('Account runtime metadata grants differ')
+    from campaigniq.account_table_policy_checks import validate_tables
+    validate_tables(conn,tuple(('campaigniq_accounts',table,allowed) for table,allowed in (
+        ('directories',{'SELECT','UPDATE'}),('audit_events',{'SELECT','INSERT'}),('schema_migrations',{'SELECT'}))))
+
 
 
 class DirectoryTransaction:

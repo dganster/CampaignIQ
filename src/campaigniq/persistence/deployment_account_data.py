@@ -30,22 +30,31 @@ def new_schwab_account(directory,account_id,*,continue_existing=False):
 
 def validate_data_role(conn):
     """Ordinary input role can change drafts, never artifacts or retained tables."""
-    for schema,table,allowed in (
+    from campaigniq.account_table_policy_checks import validate_tables
+    policy=(
         ('campaigniq_accounts','artifact_storage_dev',{'SELECT'}),
         ('campaigniq_accounts','import_drafts',{'SELECT','INSERT','UPDATE'}),
         ('campaigniq_accounts','import_draft_documents',{'SELECT','INSERT','UPDATE'}),
         ('public','artifact_storage_dev',{'SELECT'}),
         ('public','import_drafts',{'SELECT'}),
-        ('public','import_draft_documents',{'SELECT'})):
-        for privilege in ('SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'):
-            row=conn.execute('SELECT has_table_privilege(current_user,%s,%s)',(schema+'.'+table,privilege)).fetchone()
-            if row!=((privilege in allowed),):raise PermissionError('Account input role grants differ')
-        owner=conn.execute('''SELECT pg_has_role(current_user,c.relowner,'MEMBER') FROM pg_class c
-            WHERE c.oid=to_regclass(%s)''',(schema+'.'+table,)).fetchone()
-        if owner!=(False,):raise PermissionError('Account input role cannot own storage tables')
+        ('public','import_draft_documents',{'SELECT'}))
+    validate_tables(conn,policy,check_ownership=True,grants_error='Account input role grants differ')
+
 
 
 class DeploymentDataSession(AccountDataSession):
+    def _read_snapshot_reusable(self):
+        # No cross-transaction cache or writable-session reuse. The gateway closes
+        # this session in finally; every cache hit still checks failure/expiry.
+        self._check()
+        if self._writable:return False
+        proof=getattr(self,'_readonly_repeatable_proof',None)
+        if proof is None:
+            row=self._connection.execute("SELECT current_setting('transaction_read_only'),current_setting('transaction_isolation')").fetchone()
+            proof=row==('on','repeatable read')
+            self._readonly_repeatable_proof=proof
+        return proof
+
     def _check(self,*,write=False):
         super()._check(write=write)
         require_transaction(self._connection)

@@ -38,17 +38,21 @@ def validate_protocol(content):
 class ContinuationArtifacts:
     def __init__(self,session,retained,reader):
         self._session=session;self._retained=MappingProxyType(dict(retained));self._reader=reader
+        self._snapshot_keys=None;self._snapshot_text={}
         self._validate()
     @property
     def namespace(self):
         self._session._check();return self._reader.namespace
     def _validate(self):
         self._session._check()
+        reusable=getattr(self._session,'_read_snapshot_reusable',lambda:False)()
+        if reusable and self._snapshot_keys is not None:return self._snapshot_keys
         keys=self._reader.list_keys()
         if set(keys)&self._retained.keys():raise ValueError('Retained and continuation sources overlap; no precedence or repair')
         for key in keys:
             future_key(key)
             if key=='.campaigniq-monthly-publication-v1.json':validate_protocol(self._reader.read_text(key))
+        if reusable:self._snapshot_keys=tuple(keys)
         return keys
     def list_keys(self,*,prefix='',suffix=''):
         keys=self._validate()
@@ -56,7 +60,12 @@ class ContinuationArtifacts:
     def exists(self,key):return key in self.list_keys()
     def read_text(self,key):
         self._validate()
-        return self._retained[key] if key in self._retained else self._reader.read_text(key)
+        if key in self._retained:return self._retained[key]
+        reusable=getattr(self._session,'_read_snapshot_reusable',lambda:False)()
+        if reusable and key in self._snapshot_text:return self._snapshot_text[key]
+        text=self._reader.read_text(key)
+        if reusable:self._snapshot_text[key]=text
+        return text
     def write_text(self,*args,**kwargs):raise PermissionError('Continuation sources are read-only outside publication')
     def delete(self,*args,**kwargs):raise PermissionError('Continuation sources cannot delete retained artifacts')
     def initialize(self):raise PermissionError('Continuation cannot initialize schemas')

@@ -27,7 +27,12 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
 
     def _known(self,session):
         from campaigniq.broker_account_binding import bindings
-        directory=DirectoryTransaction(session._connection,self.gateway._directory.settings)._load()
+        session._check()
+        reusable=getattr(session,'_read_snapshot_reusable',lambda:False)()
+        directory=getattr(session,'_known_directory_snapshot',None) if reusable else None
+        if directory is None:
+            directory=DirectoryTransaction(session._connection,self.gateway._directory.settings)._load()
+            if reusable:session._known_directory_snapshot=directory
         return bindings(directory,session.account.account_id)
 
     def save(self,user,account_id,draft_id,revision,role,upload,*,replace=False):

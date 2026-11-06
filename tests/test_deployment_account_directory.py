@@ -196,9 +196,10 @@ def test_exact_runtime_metadata_grants_required():
         bad=False
         def execute(self,query,args=None):
             if args is None:return Result(row=('accounts','account_runtime','account_runtime')+(False,)*8)
-            table,privilege=args
+            ownership,tables,privileges=args
             allowed={'directories':{'SELECT','UPDATE'},'audit_events':{'SELECT','INSERT'},'schema_migrations':{'SELECT'}}
-            return Result(row=(True if self.bad else privilege in allowed[table.split('.')[1]],))
+            return Result(rows=[(ordinal,privilege,True if self.bad else privilege in allowed[table.split('.')[1]],False)
+                for ordinal,table in enumerate(tables,1) for privilege in privileges])
     conn=RoleConnection();validate_runtime_role(conn,target())
     conn.bad=True
     with pytest.raises(PermissionError,match='grants differ'):validate_runtime_role(conn,target())

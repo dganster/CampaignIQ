@@ -162,10 +162,12 @@ def test_runtime_data_role_demands_draft_only_writes_and_no_table_ownership():
     class Role:
         broad=False;owner=False
         def execute(self,query,args):
-            if 'SELECT pg_has_role' in query:return Result(row=(self.owner,))
-            table,privilege=args
-            allowed={'SELECT','INSERT','UPDATE'} if table.startswith('campaigniq_accounts.import_draft') else {'SELECT'}
-            return Result(row=(True if self.broad else privilege in allowed,))
+            ownership,tables,privileges=args
+            rows=[]
+            for ordinal,table in enumerate(tables,1):
+                allowed={'SELECT','INSERT','UPDATE'} if table.startswith('campaigniq_accounts.import_draft') else {'SELECT'}
+                rows.extend((ordinal,privilege,True if self.broad else privilege in allowed,self.owner) for privilege in privileges)
+            return Result(rows=rows)
     role=Role();validate_data_role(role)
     role.broad=True
     with pytest.raises(PermissionError,match='grants differ'):validate_data_role(role)
