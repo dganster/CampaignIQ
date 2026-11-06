@@ -2,7 +2,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from campaigniq.pdf_text import PdfTextExtractionError, extract_pdf_text
+from campaigniq.pdf_text import PdfTextExtractionError, extract_pdf_text, clear_extraction_cache
+
+@pytest.fixture(autouse=True)
+def clear_pdf_cache():
+    clear_extraction_cache()
+    yield
+    clear_extraction_cache()
 
 
 def test_extract_pdf_text_uses_poppler_layout(monkeypatch, tmp_path) -> None:
@@ -22,7 +28,8 @@ def test_extract_pdf_text_uses_poppler_layout(monkeypatch, tmp_path) -> None:
         observed["check"] = check
         observed["capture_output"] = capture_output
         observed["text"] = text
-        destination.write_text("Positions - Summary\n", encoding="utf-8")
+        observed["source_bytes"]=__import__("pathlib").Path(args[-2]).read_bytes()
+        __import__("pathlib").Path(args[-1]).write_text("Positions - Summary\n", encoding="utf-8")
         return SimpleNamespace(returncode=0, stderr="")
 
     monkeypatch.setattr(
@@ -33,12 +40,10 @@ def test_extract_pdf_text_uses_poppler_layout(monkeypatch, tmp_path) -> None:
     result = extract_pdf_text(source, destination)
 
     assert result == destination
-    assert observed["args"] == [
-        "/usr/bin/pdftotext",
-        "-layout",
-        str(source),
-        str(destination),
-    ]
+    assert observed["args"][:2] == ["/usr/bin/pdftotext", "-layout"]
+    assert observed["source_bytes"]==source.read_bytes()
+    assert observed["args"][-2]!=str(source)
+    assert destination.read_text()=="Positions - Summary\n"
     assert observed["check"] is False
     assert observed["capture_output"] is True
     assert observed["text"] is True
@@ -103,7 +108,7 @@ def test_extract_pdf_text_rejects_empty_extraction(
     )
 
     def fake_run(*args, **kwargs):
-        destination.write_text("   \n", encoding="utf-8")
+        __import__("pathlib").Path(args[0][-1]).write_text("   \n", encoding="utf-8")
         return SimpleNamespace(returncode=0, stderr="")
 
     monkeypatch.setattr(

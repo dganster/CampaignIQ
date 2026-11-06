@@ -31,8 +31,11 @@ def statement_text(raw,media):
     raise ValueError('Unsupported original statement type')
 
 def read_bound_statement(month,raw,media,known,*,published_binding):
-    start=date.fromisoformat(month+'-01');end=start.replace(day=monthrange(start.year,start.month)[1])
     text=statement_text(raw,media)
+    return _read_bound_text(month,raw,text,known,published_binding=published_binding)
+
+def _read_bound_text(month,raw,text,known,*,published_binding):
+    start=date.fromisoformat(month+'-01');end=start.replace(day=monthrange(start.year,start.month)[1])
     verify_document(known,ROLE,text)
     value=parse_statement_income(text,period_start=start,period_end=end)
     return IncomeEvidence(month,'verified','Published-source-bound statement; cash-posting dates, not tax or ex-dividend dates.',value,
@@ -80,8 +83,8 @@ def legacy_statements(storage,rows,known,months):
             if not matched:raise ValueError('Matching published original statement is unavailable')
             # Identical extracted originals are one source, never extra income.
             if len({r[3] for r in matched})!=1:raise ValueError('Ambiguous statement originals')
-            _,raw,media,_=sorted(matched,key=lambda r:r[0])[0]
-            result.append(read_bound_statement(month,raw,media,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest()))
+            _,raw,media,text=sorted(matched,key=lambda r:r[0])[0]
+            result.append(_read_bound_text(month,raw,text,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest()))
         except (ValueError,KeyError,TypeError,UnicodeError,FileNotFoundError,PdfTextExtractionError):
             result.append(IncomeEvidence(month,'unverified','No supported published-source-bound statement income; not assumed zero.'))
     return tuple(result)

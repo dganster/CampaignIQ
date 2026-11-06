@@ -1,0 +1,11 @@
+# Navigation PDF reuse
+
+Baseline: 94688bd. The November 6 live read-only profile measured 19.94–21.81 seconds in shared report preparation. PDF extraction consumed about 12.97 seconds on both passes; SQL used 873 execute calls and about four seconds. Measurements are nested, not additive. One-month filtering happens after the full authorized snapshot is loaded.
+
+This checkpoint removes the second extraction of each legacy statement within income verification and reuses successful Poppler output for identical current input bytes. It does not cache account authorization, document/receipt checks, parsed financial candidates or report snapshots. These continue to run against current sources and directory permissions.
+
+The process-local cache is limited to 128 entries and 32 MiB of raw input plus UTF-8 output; oldest entries are evicted. Large documents still extract but are not retained. Nothing is persisted. Cache lookup requires exact input bytes (not only a digest), extraction mode and current executable file identity. Changed source bytes or extractor invalidate reuse. Failures, missing output, invalid UTF-8 and empty text are never cached. Each caller gets a new destination file. Poppler consumes a private immutable snapshot to avoid source-path changes between hashing and extraction. Cache dictionary operations are locked; concurrent misses may independently extract the same bytes safely.
+
+Tests cover repeated identical content under different paths, altered bytes at one path, altered extractor identity, source-path races, failed extraction, stale destination files, entry and byte limits, and continued account-identity verification. Existing changed-receipt, original-integrity and revocation checks remain applicable. No schema, configuration, source approval, published generation or original document changes.
+
+The local actual-statement sample used ten originals twice per pass: ten Poppler launches on the cold pass and none on the repeat pass. This is not a promise of server page-load time. Run the full suite and existing disposable PostgreSQL rehearsal, then measure the exact candidate through actual restricted roles before releasing. SQL and remaining report work are unchanged in this checkpoint.
