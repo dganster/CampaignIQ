@@ -39,6 +39,7 @@ def load_dashboard_sources(storage,*,source_description='selected account'):
     Caller owns authentication, account selection and snapshot lifetime. This
     function neither creates a runtime nor opens its own database connection.
     """
+    income_evidence=getattr(storage,'income',())
     storage=ReadOnlyReportStorage(storage)
     realized_keys=published_artifact_keys(storage,suffix='-realized-attributions.json')
     forex_keys=published_artifact_keys(storage,suffix='-forex-settlement-attributions.json')
@@ -70,5 +71,22 @@ def load_dashboard_sources(storage,*,source_description='selected account'):
     for summary in approved:
         income=load_income(storage,period_end=summary.period_end)
         summaries.append(replace(summary,no_trading_month=True,statement_cash_income=income) if income is not None else summary)
-    summaries=tuple(summaries)
+    from campaigniq.account_income_evidence import IncomeEvidence
+    from hashlib import sha256
+    evidence={}
+    for item in income_evidence:
+        if not isinstance(item,IncomeEvidence) or item.month in evidence:raise ValueError('Unique typed statement income per account month required')
+        evidence[item.month]=item
+    completed=[]
+    for summary in summaries:
+        item=evidence.get(summary.period_start.strftime('%Y-%m'))
+        if item is not None and item.status=='verified':
+            key=item.month+'-account-publication-receipt.json'
+            if not storage.exists(key):key=item.month+'-import-provenance.json'
+            if (item.income is None or (item.income.period_start,item.income.period_end)!=(summary.period_start,summary.period_end) or
+                not storage.exists(key) or sha256(storage.read_text(key).encode()).hexdigest()!=item.published_binding):
+                raise ValueError('Statement income metadata differs from this published snapshot')
+            completed.append(replace(summary,statement_income=item.income,statement_income_status='verified'))
+        else:completed.append(replace(summary,statement_income_status='unverified'))
+    summaries=tuple(completed)
     return summaries,monthly,forex

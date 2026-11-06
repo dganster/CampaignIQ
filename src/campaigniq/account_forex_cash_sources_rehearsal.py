@@ -661,3 +661,5 @@ def verify_financial_policy(c, passed, account, draft, revision):
     verify_forex_publication(c, passed)
     from campaigniq.account_no_trading_rehearsal import verify_no_trading
     verify_no_trading(c, passed)
+    from campaigniq.account_income_rehearsal import verify_income
+    verify_income(c, passed)

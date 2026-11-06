@@ -16,7 +16,8 @@ from campaigniq.dashboard_sources import published_artifact_keys
 
 class ReportSnapshot:
     """Detached immutable account bytes. Never a reusable database capability."""
-    def __init__(self, namespace, rows, *, history=None):
+    def __init__(self, namespace, rows, *, history=None, income=()):
+        self.income = tuple(income)
         self.history = history
         self.namespace = namespace
         self._rows = MappingProxyType(dict(rows))

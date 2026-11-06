@@ -33,6 +33,19 @@ class MonthlyAnalyticsSummary:
     forex_policy_approved: bool = False
     no_trading_month: bool = False
     statement_cash_income: Decimal = Decimal("0")
+    statement_income: object | None = None
+    statement_income_status: str = 'unverified'
+
+    @property
+    def realized_plus_statement_income(self) -> Decimal | None:
+        if self.statement_income_status!='verified' or self.statement_income is None:return None
+        return self.combined_realized_pnl + self.statement_income.net_income
+
+    @property
+    def realized_plus_income_and_known_financing(self) -> Decimal | None:
+        value=self.realized_plus_statement_income
+        return None if value is None else value+self.forex_financing_pnl
+
 
     @property
     def combined_with_forex_financing(self) -> Decimal:

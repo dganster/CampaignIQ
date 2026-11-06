@@ -46,4 +46,7 @@ def _deployment_results_session(service,session,draft,account_id,revision):
     if carry is not None:
         from dataclasses import replace
         result=replace(result,no_trading_month=True,cash_income_usd=carry['review']['financials']['income_usd'])
+    from campaigniq.account_income_evidence import current_statement
+    from dataclasses import replace
+    result=replace(result,income_evidence=current_statement(service,session,draft))
     return result

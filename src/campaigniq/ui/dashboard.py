@@ -1946,7 +1946,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         st.subheader("Portfolio Overview")
         st.caption(f"{first_period} – {last_period} · Published analytics through {latest_available_analytics_period:%B %Y}")
         o1, o2, o3, o4 = st.columns(4)
-        o1.metric("Realized P&L", money(combined_realized_pnl))
+        o1.metric("Trading realized P&L", money(combined_realized_pnl))
         o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
         win_rate = multi_month_campaign_performance.win_rate
         o3.metric("Campaign Win Rate", f"{float(win_rate):.1%}" if win_rate is not None else "—")
@@ -1974,6 +1974,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             st.metric("Data Through", f"{summaries[-1].period_end:%B %Y}")
 
         st.caption("Realized P&L combines equity/options realized results and settled FOREX; financing and interest are excluded. Campaign counts, win rate, and economics follow the existing campaign performance summary.")
+        from campaigniq.ui.income_performance import show_summary
+        with st.expander('Dividends, interest and income-inclusive performance',expanded=True):
+            show_summary(st,summaries)
         st.stop()
 
     if view == "Campaigns":
@@ -2026,6 +2029,13 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         if selected_month != "All months":
             monthly_summary = next(summary for summary in summaries if summary.period_start.strftime("%Y-%m") == selected_month)
             st.metric("Month realized P&L", money(monthly_summary.combined_realized_pnl))
+            if monthly_summary.statement_income_status=='verified':
+                st.metric('Month realized results + net statement income',money(monthly_summary.realized_plus_statement_income))
+                v=monthly_summary.statement_income
+                if v.account_investment_result is not None:
+                    st.metric('Brokerage statement investment result',money(v.account_investment_result))
+                    st.caption('Account value change less net deposits/withdrawals; includes income and market changes already. Separate from combined realized trading results.')
+                    if v.simple_return is not None:st.metric('Statement return · no external flows',f'{v.simple_return:.2%}')
             if getattr(monthly_summary,'forex_policy_approved',False):
                 st.metric('Approved Forex financing',money(monthly_summary.forex_financing_pnl))
                 st.metric('Month P&L including approved Forex financing',money(monthly_summary.combined_with_forex_financing))
@@ -2458,6 +2468,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
         pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
         pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
+        from campaigniq.ui.income_performance import show_summary
+        with st.expander('Dividends, interest and income-inclusive performance',expanded=True):
+            show_summary(st,summaries)
         if any(getattr(item,'no_trading_month',False) for item in summaries):
             st.metric('Cash income from no-trading months',money(sum((item.statement_cash_income for item in summaries),Decimal('0'))))
         if any(getattr(item,'forex_policy_approved',False) for item in summaries):

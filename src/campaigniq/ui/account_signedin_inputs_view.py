@@ -239,26 +239,34 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 else:
                     st.info('No open positions in the published lot state.')
                 with st.expander('Closing lots and source basis'):
-                    st.dataframe([dict(Instrument=row[0], Quantity=row[1], Lot=row[2], Basis=row[3],
+                    st.dataframe([dict(Instrument=row[0], Quantity=row[1], Lot=row[2], Basis=money(Decimal(row[3])) if row[3]!='Unknown' else row[3],
                         Source=row[4], Campaign=row[5]) for row in result.lots], hide_index=True)
-                st.write('Broker realized gain/loss, USD: ' + result.brokerage_realized_usd)
+                from campaigniq.ui.income_performance import money
+                from decimal import Decimal
+                st.write('Broker realized gain/loss: ' + money(Decimal(result.brokerage_realized_usd)))
                 if result.realized:
-                    st.dataframe([dict(Date=row[0], Instrument=row[1], Quantity=row[2], Proceeds=row[3],
-                        Basis=row[4], Gain_loss=row[5]) for row in result.realized], hide_index=True)
+                    st.dataframe([dict(Date=row[0], Instrument=row[1], Quantity=row[2], Proceeds=money(Decimal(row[3])),
+                        Basis=money(Decimal(row[4])), Gain_loss=money(Decimal(row[5]))) for row in result.realized], hide_index=True)
                 else:
                     st.caption('No broker realized records for this month.')
+                from campaigniq.ui.income_performance import show_statement
+                from decimal import Decimal
+                trading=Decimal(result.brokerage_realized_usd)+Decimal(result.forex_settled_usd)+Decimal(result.futures_realized_usd)
+                with st.expander('Dividends, interest and performance',expanded=True):
+                    show_statement(st,getattr(result,'income_evidence',None),realized=trading,
+                        known_forex_financing=result.forex_financing_usd if result.forex_policy_approved else None)
                 if result.forex_applicable:
-                    st.write('Forex settled P/L, USD: ' + result.forex_settled_usd)
+                    st.write('Forex settled P/L: ' + money(Decimal(result.forex_settled_usd)))
                     st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
                     if getattr(result,'forex_policy_approved',False):
-                        st.write('Approved daily-session Forex financing, USD: '+result.forex_financing_usd)
-                        st.write('Forex cash: '+result.forex_opening_cash_usd+' → '+result.forex_ending_cash_usd+
-                            ' USD; net change '+result.forex_net_cash_change_usd+' USD')
+                        st.write('Approved daily-session Forex financing: '+money(Decimal(result.forex_financing_usd)))
+                        st.write('Forex cash: '+money(Decimal(result.forex_opening_cash_usd))+' → '+money(Decimal(result.forex_ending_cash_usd))+
+                            '; net change '+money(Decimal(result.forex_net_cash_change_usd)))
                         st.caption('Owner-approved daily-session basis. Original CSV differences and daily coverage limits remain retained.')
-                    st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=row[2], Campaign=row[3])
+                    st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=money(Decimal(row[2])), Campaign=row[3])
                         for row in result.forex_settlements], hide_index=True)
                 if getattr(result,'futures_applicable',False):
-                    st.write('Futures/options net realized P/L, USD: ' + result.futures_realized_usd)
+                    st.write('Futures/options net realized P/L: ' + money(Decimal(result.futures_realized_usd)))
                     st.caption(result.futures_evidence_status)
                 if result.crypto_applicable:
                     st.write('Crypto evidence status: ' + result.crypto_status)

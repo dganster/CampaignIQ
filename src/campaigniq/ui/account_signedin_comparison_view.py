@@ -1,3 +1,5 @@
+from decimal import Decimal
+from campaigniq.ui.income_performance import money
 """Explicit account selection and optional position totals; read-only LOCAL UI."""
 from hashlib import sha256
 
@@ -56,14 +58,20 @@ def render(st,service,server_user,*,deployment=False):
                 st.subheader('Published account comparison · '+result.month)
                 for row in result.accounts:
                     st.write(accounts[row.account_id].name)
-                    st.caption('Broker realized gain/loss, USD: '+row.brokerage_realized_usd+
+                    st.caption('Broker realized gain/loss: '+money(Decimal(row.brokerage_realized_usd))+
                         ' • '+str(row.original_documents)+' verified original documents')
                     st.dataframe([dict(Instrument=name,Quantity=quantity) for name,quantity in row.positions],hide_index=True)
                     if row.forex_applicable:
-                        st.caption('Forex settled P/L, USD: '+row.forex_settled_usd+' (excludes financing and other cash activity)')
+                        st.caption('Forex settled P/L: '+money(Decimal(row.forex_settled_usd))+' (excludes financing and other cash activity)')
                     if getattr(row,'futures_applicable',False):
-                        st.caption('Futures/options net P/L, USD: '+row.futures_realized_usd)
+                        st.caption('Futures/options net P/L: '+money(Decimal(row.futures_realized_usd)))
                         st.caption(row.futures_evidence_status)
+                    if deployment:
+                        from campaigniq.ui.income_performance import show_statement
+                        with st.expander('Income-inclusive performance · '+accounts[row.account_id].name):
+                            trading=Decimal(row.brokerage_realized_usd)+Decimal(row.forex_settled_usd)+Decimal(row.futures_realized_usd)
+                            show_statement(st,getattr(row,'income_evidence',None),realized=trading,
+                                known_forex_financing=row.forex_financing_usd if row.forex_policy_approved else None)
                     if row.crypto_applicable:
                         st.caption('Crypto evidence status: '+row.crypto_status)
                         st.dataframe([dict(Crypto=name,Quantity=quantity) for name,quantity in row.crypto_positions],hide_index=True)
