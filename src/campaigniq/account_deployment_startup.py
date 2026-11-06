@@ -51,17 +51,22 @@ def verify_startup(application):
 
 
 def run(st,*,repo):
+    from campaigniq.navigation_timing import stage
     try:
         path=os.environ.get('CAMPAIGNIQ_ACCOUNT_RELEASE_FILE')
         reviewed=os.environ.get('CAMPAIGNIQ_ACCOUNT_RELEASE_SHA256')
         if not path:raise ValueError('Reviewed release configuration required')
-        config=read_release(path,reviewed_sha256=reviewed)
-        application=compose_release(config,os.environ,st.secrets['auth'],repo=repo)
-        verify_startup(application)
+        with stage('release_and_composition'):
+            config=read_release(path,reviewed_sha256=reviewed)
+            application=compose_release(config,os.environ,st.secrets['auth'],repo=repo)
+        with stage('startup_role_and_schema_checks'):
+            verify_startup(application)
     except Exception:
         # Do not expose identities, credentials, DSNs or database exception text.
         st.error('CampaignIQ account startup checks failed. Contact the administrator.')
         return
-    try:render_application(st,application)
+    try:
+        with stage('signed_in_application'):
+            render_application(st,application)
     except Exception:
         st.error('CampaignIQ account access could not be verified. Contact the administrator.')

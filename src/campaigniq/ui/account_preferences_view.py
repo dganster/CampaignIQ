@@ -9,7 +9,9 @@ class PreferenceStorage:
     def __init__(self,service,user,account_id,identity,snapshot):
         self.service,self.user,self.account_id=service,user,account_id
         self.key=preference_key(identity)
-        self.saved=service.load(user,account_id)
+        from campaigniq.navigation_timing import stage
+        with stage('preference_load_and_authorization'):
+            self.saved=service.load(user,account_id)
         self.revision=self.saved.revision
         self.snapshot=snapshot
     def _key(self,key):
@@ -51,6 +53,8 @@ def render(ui,service,user,account_id,identity,snapshot,*,administrator=False,de
             ui.rerun()
     if ui.sidebar.button('Reload saved preferences',key='reload-saved-preferences'):
         ui.session_state.pop('campaigniq_preferences_owner',None)
-    render_preferences(ui,adapter,AccessContext(identity,account_id),persist=adapter.saved.storage_ready)
+    from campaigniq.navigation_timing import stage
+    with stage('preference_controls'):
+        render_preferences(ui,adapter,AccessContext(identity,account_id),persist=adapter.saved.storage_ready)
     if not adapter.saved.storage_ready:
         ui.sidebar.caption('Preferences apply for this visit until an administrator enables local preference storage.')

@@ -19,8 +19,11 @@ def report_module():
 
 
 def render_reports(ui, snapshot, view, *, identity, preferences_renderer=None):
-    module = report_module()
-    module.st = ui
+    from campaigniq.navigation_timing import stage
+    with stage('dashboard_module_import'):
+        module = report_module()
+    from campaigniq.navigation_timing import timed_ui
+    module.st = timed_ui(ui)
     module.ACCESS = None  # Directory administration is composed separately.
     module.ARTIFACT_STORAGE = snapshot
     with TemporaryDirectory(prefix='campaigniq-dashboard-') as directory:
@@ -28,21 +31,26 @@ def render_reports(ui, snapshot, view, *, identity, preferences_renderer=None):
         # Uploaded filenames and shared developer folders are never consulted.
         from campaigniq.account_history_evidence import HistoryEvidence,materialize_history
         history=snapshot.history or HistoryEvidence()
-        module.HISTORICAL_SOURCE_ROOT = materialize_history(Path(directory)/'history',history)
+        with stage('history_materialization'):
+            module.HISTORICAL_SOURCE_ROOT = materialize_history(Path(directory)/'history',history)
         module.AUTHORITATIVE_STATE_DIR = Path(directory) / 'state'
-        module.render_dashboard(selected_view=view, preferences_renderer=preferences_renderer or (lambda st:
-            render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False)))
+        with stage('report_rendering'):
+            module.render_dashboard(selected_view=view, preferences_renderer=preferences_renderer or (lambda st:
+                render_preferences(st, snapshot, AccessContext(identity, snapshot.namespace), persist=False)))
 
 
 def render(st, service, *, administration, deployment=False):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
+    from campaigniq.navigation_timing import stage,authorize_panel,select_view
     mode={"deployment":True} if deployment else {}
     if st.user.to_dict().get('is_logged_in') is not True:
         st.title('CampaignIQ')
         if st.button('Sign in'): st.login()
         return
     try:
-        overview = service.choices(st.user)
+        with stage('account_choices_and_authorization'):
+            overview = service.choices(st.user)
+        if deployment:authorize_panel(st,administrator=overview.administrator)
         root = 'account-dashboard:' + service.store.registry_id + ':' + overview.user_id + ':'
         st.sidebar.caption(('Account workspace' if getattr(service,'continue_existing',False) else 'Account workspace • Existing accounts are read-only') if deployment else 'LOCAL DEVELOPMENT • Existing data is read-only')
         if st.sidebar.button('Sign out', key=root+'logout'):
@@ -72,6 +80,7 @@ def render(st, service, *, administration, deployment=False):
             ui.session_state['main-view'] = pending
         if ui.session_state.get('main-view') not in views: ui.session_state['main-view'] = 'Overview'
         view = ui.sidebar.radio('Navigate', views, key='main-view')
+        select_view(view)
         ui.session_state['campaigniq_primary_view'] = view
         ui.session_state['_last-report-view'] = view
         if view == 'Administration':
@@ -100,7 +109,8 @@ def render(st, service, *, administration, deployment=False):
                 from campaigniq.ui.account_signedin_inputs_view import render as inputs
                 inputs(ui, service.inputs, st.user, selected_account_id=selected, **mode)
             return
-        snapshot = service.snapshot(st.user, selected, include_history=True)
+        with stage('authorized_account_snapshot'):
+            snapshot = service.snapshot(st.user, selected, include_history=True)
         if not snapshot.list_keys(suffix='-realized-attributions.json'):
             st.title('CampaignIQ · '+account.name)
             st.info('No published reports for this account yet. Open Data to prepare its first month.')

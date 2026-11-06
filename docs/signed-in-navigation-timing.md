@@ -1,0 +1,13 @@
+# Actual signed-in navigation timing
+
+Baseline: a7d524f8cebda19a91bd1510993ca3c641ed12af. Browser timings remain 6–7 seconds after the PDF and SQL-read improvements. A validated-connection microbenchmark found about 0.09–0.10 seconds to establish each TLS connection; directory verification itself took about 0.003 seconds. Those measurements do not identify the complete signed-in page path.
+
+This diagnostic adds Navigation diagnostics / Measure page loading in the sidebar only after the current request's account overview verifies administrator status. It is off by default, uses the existing real Streamlit sign-in and saves no preference or database row. When enabled, the bottom timing panel covers release/composition, startup verification, account choices, the fully guarded snapshot, preferences, history materialization, module import and report rendering. It includes connection and SQL call counts and sanitized function timings.
+
+The cProfile collector runs only in the current script thread. ContextVar state keeps concurrent sessions separate. No shared function monkeypatching, authorization cache, connection pooling or financial-result cache is introduced. Every run resets its display authorization. A forged/stale enabled flag alone cannot display diagnostics for a non-administrator. The report includes fixed phase labels, an allowlisted view name and function/module names, never arguments, locals, identities, account IDs, query parameters, SQL text or financial values. It is displayed only for that page load and is not written to logs or persistent storage by this code.
+
+Normal report views end with Streamlit stop. A visit-local UI proxy finalizes the measurement immediately before forwarding that stop; it does not swallow the control signal. Disabled visits retain their original UI object. Active phase durations are included even when their contexts unwind after the stop. Unexpected errors and reruns restore profiler/context state without appending a misleading normal-completion report.
+
+The panel measures server work and includes profiling overhead; it excludes browser rendering and transport after server completion. Phase and function timings overlap and must not be added together.
+
+Validation includes a real Streamlit stop test, disabled-mode behavior, strict administrator visibility, stale flag handling, data redaction and concurrent-session separation. This checkpoint changes no SQL, financial arithmetic, publication policy, role checks or schema. Run the full development suite before release. The baseline's PostgreSQL rehearsal remains the database-behavior evidence; this installer needs no database operation.
