@@ -141,7 +141,7 @@ class PostgresAccountDirectory:
             conn.execute("SET LOCAL lock_timeout='5s'")
             conn.execute("SET LOCAL statement_timeout='20s'")
             validate_runtime_role(conn,self.target)
-            verify_schema(conn)
+            verify_schema(conn,reuse_catalog=readonly)
             yield conn
             if conn.info.transaction_status!=TransactionStatus.INTRANS:
                 raise RuntimeError('Account transaction failed; commit blocked')

@@ -56,7 +56,7 @@ def _role_state(conn,role,policy=POLICY):
 
 
 
-def role_catalog_digest(conn):
+def role_catalog_digest(conn,*,base_catalog=None):
     # Preserve the version 1 catalog algorithm. Version 2 also pins column ACLs
     # and retained-table grants, which table-only checks cannot fully cover.
     schemas=conn.execute("SELECT nspname,nspacl::text FROM pg_namespace WHERE nspname IN ('public','campaigniq_accounts') ORDER BY 1").fetchall()
@@ -66,7 +66,9 @@ def role_catalog_digest(conn):
         WHERE n.nspname='campaigniq_accounts' OR (n.nspname='public'
           AND c.relname IN ('artifact_storage_dev','import_drafts','import_draft_documents'))
         ORDER BY 1,2,a.attnum""").fetchall()
-    return migration.digest((migration.catalog_digest(conn),schemas,relations))
+    if base_catalog is None:base_catalog=migration.catalog_digest(conn)
+    elif not isinstance(base_catalog,str) or re.fullmatch('[0-9a-f]{64}',base_catalog) is None:raise ValueError('Exact base catalog digest required')
+    return migration.digest((base_catalog,schemas,relations))
 
 
 def review_runtime_grants(conn,role):

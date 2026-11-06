@@ -101,8 +101,12 @@ def apply_migrations(conn):
     return True
 
 
-def verify_schema(conn):
+def verify_schema(conn,*,reuse_catalog=False):
     """Read-only compatibility check. Never initializes or migrates a schema."""
+    if type(reuse_catalog) is not bool:raise ValueError('Explicit catalog snapshot mode required')
+    if reuse_catalog:
+        proof=conn.execute("SELECT current_setting('transaction_read_only'),current_setting('transaction_isolation')").fetchone()
+        if proof!=('on','repeatable read'):raise ValueError('Read-only repeatable catalog snapshot required')
     conn.execute("SET LOCAL search_path=pg_catalog")
     tables={row[0] for row in conn.execute(
       "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
@@ -113,19 +117,21 @@ def verify_schema(conn):
     # Version 1 SQL/checksum is immutable. A reviewed grant transition records a
     # second catalog signature; runtime verification still performs no writes.
     from campaigniq.account_runtime_roles import SOURCE_SHA256 as role_source,role_catalog_digest
+    def signature():
+        return role_catalog_digest(conn,base_catalog=current) if reuse_catalog else role_catalog_digest(conn)
     if (len(rows)==2 and rows[0][0:2]==(VERSION,SOURCE_SHA256)
             and isinstance(rows[0][2],str) and len(rows[0][2])==64
-            and rows[1]==(2,role_source,role_catalog_digest(conn))):
+            and rows[1]==(2,role_source,signature())):
         return
     if (len(rows)==3 and rows[0][0:2]==(VERSION,SOURCE_SHA256)
             and isinstance(rows[0][2],str) and len(rows[0][2])==64
             and rows[1][0:2]==(2,role_source) and isinstance(rows[1][2],str) and len(rows[1][2])==64):
         from campaigniq.account_publication_roles import SOURCE_SHA256 as publication_source
-        if rows[2]==(3,publication_source,role_catalog_digest(conn)):return
+        if rows[2]==(3,publication_source,signature()):return
     if (len(rows)==4 and rows[0][0:2]==(VERSION,SOURCE_SHA256)
             and all(isinstance(row[2],str) and len(row[2])==64 for row in rows[:3])
             and rows[1][0:2]==(2,role_source)):
         from campaigniq.account_publication_roles import SOURCE_SHA256 as publication_source
         from campaigniq.account_preference_roles import SOURCE_SHA256 as preference_source
-        if rows[2][0:2]==(3,publication_source) and rows[3]==(4,preference_source,role_catalog_digest(conn)):return
+        if rows[2][0:2]==(3,publication_source) and rows[3]==(4,preference_source,signature()):return
     raise ValueError('Migration source, version or schema integrity differs')

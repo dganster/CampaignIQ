@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from campaigniq.account_reconciliation_preview import ReadOnlyArtifacts
 from campaigniq.broker_account_binding import bind,bindings
-from campaigniq.persistence.account_data_session import AccountDataSession
+from campaigniq.persistence.account_data_session import AccountDataSession,_Drafts
 from campaigniq.persistence.deployment_account_directory import PostgresAccountDirectory,DirectoryTransaction,require_transaction
 
 
@@ -42,7 +42,36 @@ def validate_data_role(conn):
 
 
 
+class _SnapshotDrafts(_Drafts):
+    """Successful exact document reads, scoped to one verified read-only session."""
+    MAX_BYTES=32*1024*1024
+    MAX_ENTRIES=128
+    def __init__(self,session):
+        super().__init__(session)
+        from collections import OrderedDict
+        self._documents=OrderedDict();self._document_bytes=0
+
+    def document(self,draft_id,role):
+        self._session._check()
+        if not self._session._read_snapshot_reusable():return super().document(draft_id,role)
+        key=(self.workspace,draft_id,role)
+        if key in self._documents:
+            self._documents.move_to_end(key)
+            return self._documents[key]
+        result=super().document(draft_id,role)
+        size=len(result[0].encode())+len(result[1].encode())+len(result[2])
+        if size<=self.MAX_BYTES:
+            self._documents[key]=result;self._document_bytes+=size
+            while self._document_bytes>self.MAX_BYTES or len(self._documents)>self.MAX_ENTRIES:
+                _,old=self._documents.popitem(last=False)
+                self._document_bytes-=len(old[0].encode())+len(old[1].encode())+len(old[2])
+        return result
+
 class DeploymentDataSession(AccountDataSession):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self.drafts=_SnapshotDrafts(self)
+
     def _read_snapshot_reusable(self):
         # No cross-transaction cache or writable-session reuse. The gateway closes
         # this session in finally; every cache hit still checks failure/expiry.
