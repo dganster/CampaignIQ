@@ -41,4 +41,9 @@ def _deployment_results_session(service,session,draft,account_id,revision):
         result=replace(result,forex_policy_approved=True,forex_financing_usd=totals['financing_usd'],
             forex_opening_cash_usd=totals['opening_cash_usd'],forex_ending_cash_usd=totals['ending_cash_usd'],
             forex_net_cash_change_usd=totals['net_cash_change_usd'])
+    from campaigniq.account_no_trading_publication import verify as verify_no_trading
+    carry=verify_no_trading(service,session,draft)
+    if carry is not None:
+        from dataclasses import replace
+        result=replace(result,no_trading_month=True,cash_income_usd=carry['review']['financials']['income_usd'])
     return result

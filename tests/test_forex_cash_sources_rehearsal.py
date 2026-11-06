@@ -45,6 +45,7 @@ def test_bundle_imports_without_site_packages_and_only_named_fixtures(tmp_path):
         'from campaigniq.account_forex_financial_candidate import preview;'
         'from campaigniq.account_forex_financial_policy import saved_preview;'
         'from campaigniq.account_forex_publication_rehearsal import verify_forex_publication;'
+        'from campaigniq.account_no_trading_rehearsal import verify_no_trading;'
         'from campaigniq.forex_publication_rehearsal_sources import sources as publication_sources;'
         'u,c,s,d,p,n,f=publication_sources();assert len(u)==4;'
         'from campaigniq.forex_cash_rehearsal_sources import sources;'
@@ -104,3 +105,5 @@ def test_actual_restricted_forex_source_save_on_disposable_database(tmp_path):
     assert report['checks']['approved_forex_independent_reader_rebuilds_exact_money_original_sources_fifo_identity_and_dashboard_without_writes']
     assert report['checks']['combined_forex_futures_crypto_concurrent_publications_have_one_winner_and_repeatable_reader_sees_no_partial_generation']
     assert report['checks']['approved_forex_following_month_commits_from_published_opening_and_previous_generation_is_identical']
+
+    assert report['checks']['no_trading_independent_reader_verifies_dividend_separate_from_zero_trading_and_november_opening_preserves_exact_lots_and_campaigns']

@@ -41,6 +41,14 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
         with self.gateway.transaction(user,account_id) as session:
             draft=self._lock(session,draft_id)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before reconciliation')
+            from campaigniq.account_no_trading import receipt,preview
+            if receipt(session,draft) is not None:
+                if forex_applicable or crypto_applicable:raise ValueError('No-trading securities month requires Forex and Crypto not applicable')
+                reviewed,book=preview(self,session,draft,require_confirmation=True)
+                from campaigniq.account_reconciliation_preview import AccountReconciliationPreview
+                from campaigniq.account_signedin_results import _instrument
+                positions=tuple(sorted((_instrument(i),str(sum(l.quantity for l in rows))) for i,rows in book._lots.items() if sum(l.quantity for l in rows)))
+                return AccountReconciliationPreview(account_id,str(draft.id),draft.revision,True,(),(),positions)
             return _reconcile_session(self,session,draft,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
 
     def save_associated_gain_loss(self,user,account_id,draft_id,revision,upload,*,confirm_same_account=False,replace=False):
@@ -481,3 +489,59 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             draft=self._lock(session,draft_id)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before crypto generation preview')
             return generation_preview(self,session,draft)
+
+    def no_trading_preview(self,user,account_id,draft_id,revision):
+        from campaigniq.account_no_trading import preview
+        if type(revision) is not int:raise ValueError('Displayed revision required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before review')
+            return preview(self,session,draft)[0]
+
+    def no_trading_status(self,user,account_id,draft_id,revision):
+        from campaigniq.account_no_trading import receipt
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload')
+            return receipt(session,draft) is not None
+
+    def save_no_trading_confirmation(self,user,account_id,draft_id,revision,*,reviewed_sha256,confirm_no_trading=False,confirm_cash_income=False):
+        from campaigniq import account_no_trading as mode
+        from datetime import datetime,timezone
+        if type(revision) is not int or confirm_no_trading is not True or confirm_cash_income is not True:
+            raise ValueError('Current review and explicit no-trading and cash-income confirmations required')
+        with self.gateway.transaction(user,account_id,write=True) as session:
+            draft=self._lock(session,draft_id,write=True)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before confirming')
+            directory,actor=DirectoryTransaction(session._connection,self.gateway._directory.settings)._actor(user)
+            directory.authorize(actor.identity,account_id,write=True)
+            account=next(a for a in directory.accounts if a.id==account_id)
+            if account.owner_id!=actor.user_id:raise PermissionError('Only the account owner may confirm no trading')
+            if session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-'):
+                raise ValueError('Existing monthly financial artifacts and confirmations are preserved')
+            reviewed,_=mode.preview(self,session,draft)
+            if reviewed['review_sha256']!=reviewed_sha256:raise ValueError('Statement or predecessor changed since review')
+            if reviewed['owner_confirmed']:return revision
+            value=dict(format=mode.FORMAT,version=1,account_id=account_id,draft_id=str(draft.id),year=draft.year,month=draft.month,
+                confirmed_by=actor.user_id,confirmed_at=datetime.now(timezone.utc).isoformat(),confirmed_revision=revision,
+                review_sha256=reviewed_sha256,no_trading_confirmed=True,cash_income_reviewed=True)
+            updated=session.drafts.upload(draft.id,mode.ROLE,mode.FILENAME,'text/plain',(mode.canonical(value)+'\n').encode())
+            if mode.receipt(session,session.drafts.get(draft.id))!=value:raise ValueError('No-trading confirmation post-write verification failed')
+            mode.preview(self,session,session.drafts.get(draft.id),require_confirmation=True)
+            return updated
+
+    def preview(self,user,account_id,draft_id,revision,*,forex_applicable=True,crypto_applicable=True):
+        from campaigniq.account_no_trading import receipt,preview
+        from campaigniq.account_import_preview import AccountInputPreview,InputStatus
+        if type(revision) is not int or any(type(v) is not bool for v in (forex_applicable,crypto_applicable)):
+            raise ValueError('Displayed revision and boolean market choices required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before preview')
+            selected=receipt(session,draft) is not None
+            if selected:
+                if forex_applicable or crypto_applicable:raise ValueError('No-trading securities month requires Forex and Crypto not applicable')
+                preview(self,session,draft,require_confirmation=True)
+                return AccountInputPreview(account_id,str(draft.id),revision,draft.year,draft.month,True,
+                    (InputStatus('no_trading_statement',True,'Statement and unchanged published opening lots reconcile; cash income is separate from trading P/L.'),),inventory_reconciled=True)
+        return super().preview(user,account_id,draft_id,revision,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)

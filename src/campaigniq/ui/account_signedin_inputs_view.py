@@ -127,6 +127,10 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                                 service.confirm_empty_futures_opening(server_user,account_id,draft.id,draft.revision,
                                     confirm_empty_opening=empty)
                                 st.rerun()
+            no_trading=False
+            if deployment and callable(getattr(service,'no_trading_preview',None)):
+                from campaigniq.ui.account_no_trading_view import render as render_no_trading
+                no_trading=render_no_trading(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
             if deployment and hasattr(service, 'futures_preview'):
                 with st.expander('Futures statement and accounting preview'):
                     st.caption('Save the empty opening confirmation first. This separate preview does not publish a month.')
@@ -176,9 +180,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if deployment and hasattr(service,'review_forex_cash_sources'):
                 from campaigniq.ui.account_forex_cash_review_view import render as render_forex_cash
                 render_forex_cash(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
-            forex = st.checkbox('Forex applicable', value=True, key=key + ':forex')
-            crypto = st.checkbox('Crypto applicable', value=True, key=key + ':crypto')
-            if deployment and hasattr(service, 'futures_monthly_preview'):
+            forex = st.checkbox('Forex applicable', value=not no_trading, key=key + (':forex:no-trading' if no_trading else ':forex'))
+            crypto = st.checkbox('Crypto applicable', value=not no_trading, key=key + (':crypto:no-trading' if no_trading else ':crypto'))
+            if deployment and not no_trading and hasattr(service, 'futures_monthly_preview'):
                 with st.expander('Monthly preview including futures'):
                     st.caption('Check securities/Forex inventory, futures accounting and approved crypto sources together. No month is published by this check.' if getattr(service,'multi_asset_enabled',False) else 'Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
                     if st.button('Check monthly sources including futures', key=key + ':monthly-futures'):
@@ -225,6 +229,10 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 st.subheader('Published results · ' + result.month)
                 st.caption(('Saved generation • Source revision ' if deployment else 'Saved local generation • Source revision ') + str(result.revision) +
                     ' • ' + str(result.original_documents) + ' original documents verified. Read-only view.')
+                if getattr(result,'no_trading_month',False):
+                    from decimal import Decimal
+                    st.write('No trading activity. Published lots and campaign identities carried forward unchanged.')
+                    st.write('Statement cash dividends / interest: '+f'${Decimal(result.cash_income_usd):,.2f}'+' (separate from realized trading P/L)')
                 st.write('Closing positions')
                 if result.positions:
                     st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.positions], hide_index=True)

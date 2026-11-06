@@ -41,6 +41,8 @@ class PublishedResults:
     futures_applicable: bool=False
     futures_realized_usd: str="0"
     futures_evidence_status: str="Not applicable"
+    no_trading_month: bool=False
+    cash_income_usd: str="0.00"
     forex_policy_approved: bool=False
     forex_financing_usd: str="0"
     forex_opening_cash_usd: str|None=None

@@ -2029,6 +2029,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             if getattr(monthly_summary,'forex_policy_approved',False):
                 st.metric('Approved Forex financing',money(monthly_summary.forex_financing_pnl))
                 st.metric('Month P&L including approved Forex financing',money(monthly_summary.combined_with_forex_financing))
+            if getattr(monthly_summary,'no_trading_month',False):
+                st.metric('Statement cash dividends / interest',money(monthly_summary.statement_cash_income))
+                st.caption('No trading this month. Statement cash income is separate from realized trading P&L.')
             month_campaign_total = sum((item.realized_pnl for item in campaign_drilldowns if campaign_month(item) == selected_month), Decimal("0"))
             if monthly_summary.futures_applicable:
                 st.caption("The month total includes separately reported futures/options P&L; those trades are not counted as campaign rows yet.")
@@ -2455,6 +2458,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         pnl1.metric("Equity/Options Realized P&L", money(equity_options_realized_pnl))
         pnl2.metric("FOREX Settled P&L", money(forex_settled_pnl))
         pnl3.metric("Combined Realized P&L", money(combined_realized_pnl))
+        if any(getattr(item,'no_trading_month',False) for item in summaries):
+            st.metric('Cash income from no-trading months',money(sum((item.statement_cash_income for item in summaries),Decimal('0'))))
         if any(getattr(item,'forex_policy_approved',False) for item in summaries):
             approved_financing=sum((item.forex_financing_pnl for item in summaries),Decimal('0'))
             st.metric('Approved Forex financing',money(approved_financing))

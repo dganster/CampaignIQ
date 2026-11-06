@@ -65,5 +65,10 @@ def load_dashboard_sources(storage,*,source_description='selected account'):
         record=approved_forex(storage,period_start=summary.period_start,period_end=summary.period_end)
         approved.append(replace(summary,forex_policy_approved=True,
             forex_financing_pnl=Decimal(record['financials']['financing_usd'])) if record is not None else summary)
-    summaries=tuple(approved)
+    from campaigniq.persistence.no_trading_month import load_income
+    summaries=[]
+    for summary in approved:
+        income=load_income(storage,period_end=summary.period_end)
+        summaries.append(replace(summary,no_trading_month=True,statement_cash_income=income) if income is not None else summary)
+    summaries=tuple(summaries)
     return summaries,monthly,forex

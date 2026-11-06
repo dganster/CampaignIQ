@@ -91,6 +91,13 @@ class DeploymentAccountPublisher:
             from campaigniq.futures_monthly_preview import has_futures
             draft=self.inputs._lock(session,draft_id,write=True)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before publication')
+            from campaigniq.account_no_trading import receipt as no_trading_receipt
+            if no_trading_receipt(session,draft) is not None:
+                if not self.multi_asset_enabled:raise PermissionError('Reviewed application capability required for no-trading publication')
+                from campaigniq.account_no_trading_publication import publish as publish_no_trading
+                result=publish_no_trading(self.inputs,session,actor,account_id,draft_id,revision,
+                    forex_applicable=forex_applicable,crypto_applicable=crypto_applicable)
+                return DeploymentPublication(result.account_id,result.year,result.month,result.draft_id,result.revision,result.artifact_keys,result.receipt_sha256)
             if has_futures(session,draft) and not self.multi_asset_enabled:
                 raise PermissionError('Futures monthly publication is disabled pending complete generation/report integration; use the read-only monthly preview. No rows changed.')
             from campaigniq.account_crypto_statement_sources import load_receipt as crypto_receipt

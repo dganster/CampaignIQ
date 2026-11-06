@@ -85,16 +85,27 @@ def document_identity(role,text):
                        r'\1',value) for value in values]
     elif role in {'schwab_brokerage_statement','schwab_opening_position_snapshot',
                   'schwab_next_month_assignment_evidence','schwab_realized_gain_loss'}:
-        kind='securities';values=[]
+        kind='securities';values=[];masked_suffixes=[]
         lines=text.splitlines()
         for index,line in enumerate(lines):
             if not re.search(r'Account (?:Number|number|No\.)\b',line): continue
             # A Schwab header can put the owner name between label and number.
             area='\n'.join(lines[index:index+4])
             candidates=re.findall(r'(?<![0-9*])([0-9]{4}-[0-9]{4})(?![0-9])',area)
+            if not candidates:
+                # Schwab continuation pages mask the same eight-digit account
+                # as ****-*123. They may corroborate an earlier explicit full
+                # header; they never establish identity themselves.
+                masked=re.findall(r'(?<![0-9*])(\*{4}-\*([0-9]{3}))(?![0-9*])',area)
+                if not values or len(set(masked))!=1:
+                    raise ValueError('Document account identifier is missing, masked, or ambiguous')
+                masked_suffixes.append(masked[0][1])
+                continue
             if len(set(candidates))!=1:
                 raise ValueError('Document account identifier is missing, masked, or ambiguous')
             values.extend(candidates)
+        if masked_suffixes and any(not value.replace('-','').endswith(suffix) for value in values for suffix in masked_suffixes):
+            raise ValueError('Masked continuation header conflicts with the full account identifier')
     else:
         raise ValueError('Account identity is not yet supported for this document role')
     normalized={normalize(kind,value) for value in values}

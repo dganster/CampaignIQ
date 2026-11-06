@@ -31,6 +31,8 @@ class MonthlyAnalyticsSummary:
     futures_applicable: bool = False
     forex_financing_pnl: Decimal = Decimal("0")
     forex_policy_approved: bool = False
+    no_trading_month: bool = False
+    statement_cash_income: Decimal = Decimal("0")
 
     @property
     def combined_with_forex_financing(self) -> Decimal:
