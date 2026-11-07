@@ -52,7 +52,7 @@ RETAINED_WIDGETS = {'checkbox', 'toggle', 'radio', 'selectbox', 'multiselect',
 # account use this prefix; switching accounts cannot reuse client widget state.
 WIDGETS = {'button','checkbox','toggle','radio','selectbox','multiselect','text_input',
     'text_area','number_input','date_input','time_input','slider','select_slider',
-    'file_uploader','data_editor','download_button','form','dataframe','plotly_chart'}
+    'file_uploader','data_editor','download_button','form','dataframe','plotly_chart','altair_chart'}
 
 
 class ScopedUI(AbstractContextManager):
