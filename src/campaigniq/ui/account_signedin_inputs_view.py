@@ -175,7 +175,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if guided:st.subheader('3. Review and publish')
             if deployment and (not guided or no_trading_path) and callable(getattr(service,'no_trading_preview',None)):
                 from campaigniq.ui.account_no_trading_view import render as render_no_trading
-                no_trading=render_no_trading(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published,guided=guided)
+                no_trading=render_no_trading(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published,guided=guided,context=overview.directory_revision if guided else None)
             if deployment and not no_trading_path and 'Futures' in markets and hasattr(service, 'futures_preview'):
                 with st.expander('Futures statement and accounting preview'):
                     st.caption('Save the empty opening confirmation first. This separate preview does not publish a month.')
@@ -275,7 +275,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             if guided:
                 from campaigniq.ui.monthly_review import render as render_review
                 signature=(account_id,str(draft.id),draft.revision,overview.directory_revision,mode,tuple(sorted(markets)) if not no_trading_path else ())
-                review_ready=render_review(st,service,server_user,account_id,draft,key=key,signature=signature,forex=forex,crypto=crypto,futures='Futures' in markets and not no_trading_path,no_trading=no_trading_path)
+                if no_trading_path:review_ready=no_trading
+                else:review_ready=render_review(st,service,server_user,account_id,draft,key=key,signature=signature,forex=forex,crypto=crypto,futures='Futures' in markets,no_trading=False)
             authorization_context=sha256(repr(signature).encode()).hexdigest() if guided else str(forex)+':'+str(crypto)
             publication_enabled=getattr(service,'publication_enabled',True)
             if account.writable and not published and not publication_enabled:
@@ -286,10 +287,11 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         key=key+':authorize:'+authorization_context)
                     st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
                                'Existing published months cannot be replaced.')
-                    if guided and no_trading_path and not no_trading:st.caption('Review the statement and save the no-trading confirmation above before publishing.')
+                    if guided and no_trading_path and not no_trading:st.caption('Review the statement and confirm the month above before publishing.')
                     if st.form_submit_button('Publish month' if deployment else 'Publish locally',disabled=guided and not review_ready):
                         if guided and not review_ready:raise ValueError('Review the current month before publishing')
                         if guided:st.session_state.pop(key+':monthly-review',None)
+                        if guided and no_trading_path:st.session_state[key+':no-trading-publish-attempt']=True
                         service.publish(server_user, account_id, draft.id, draft.revision,
                             **({"confirm_publication":confirm} if deployment else {"authorize_local_publication":confirm}),
                             forex_applicable=forex, crypto_applicable=crypto)
