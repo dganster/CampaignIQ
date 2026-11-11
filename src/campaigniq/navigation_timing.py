@@ -34,12 +34,15 @@ def authorize_panel(st,*,administrator):
     trace=_current.get()
     if trace is not None:trace.authorized=administrator is True
     if administrator is True:
+        show=False
         with st.sidebar.expander('Navigation diagnostics'):
             st.checkbox('Measure page loading',value=False,key=KEY)
             st.caption('Automatic lightweight timings are always collected. Enable detailed profiling only when investigating a slow page; profiling adds overhead.')
-            if hasattr(st,'button') and st.button('Show performance statistics',key='performance-statistics'):
-                from campaigniq.performance_monitor import snapshot
-                st.json(snapshot(administrator=administrator))
+            if hasattr(st,'button'):
+                show=st.button('Show performance statistics',key='performance-statistics')
+        if show:
+            from campaigniq.ui.performance_statistics import render
+            render(st,administrator=administrator)
 
 def select_view(view):
     trace=_current.get()

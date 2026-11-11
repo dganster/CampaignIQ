@@ -13,3 +13,7 @@ Collected fields are fixed page/operation/stage labels, numeric durations/call c
 Collection uses perf_counter, a bounded deque and a short lock. Synchronous logging adds some overhead. Logging failures are suppressed so they cannot change a completed financial operation into an error. Instrumentation itself does not improve latency. Use production measurements to identify bottlenecks and optional profiling for deeper investigation.
 
 Tests cover profiling-off capture, administrator visibility, metadata allowlisting, call/result/exception preservation, bounded concurrent samples, percentiles, logging failure isolation, actual Streamlit stop, profiler separation and existing review flows. Rollout requires an exact candidate release review and paired runtime source checksums.
+
+## Readable statistics panel
+
+Show performance statistics now opens a full-width main-page panel, outside the sidebar. Pages/operations and nested stages appear in separate tables sorted by descending 95th-percentile duration. Column labels identify seconds, sample counts, errors and profiled samples. Low-sample and overlapping-stage caveats remain visible. Download performance statistics (JSON) exports exactly the sanitized snapshot shown, including the last 50 retained events. The snapshot excludes its own in-progress page run. No financial or access behavior changes; current administrator authorization is still required before both display and export.

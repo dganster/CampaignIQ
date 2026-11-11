@@ -83,8 +83,9 @@ def test_automatic_panel_is_admin_only_and_profiler_samples_separate():
     class Panel(UI):
         def button(self,*a,**kw):return True
     ui=Panel(False)
-    with t.navigation_run(ui):t.authorize_panel(ui,administrator=True)
-    assert len(ui.reports)==1 and 'summary' in ui.reports[0]
+    with patch('campaigniq.ui.performance_statistics.render') as render:
+        with t.navigation_run(ui):t.authorize_panel(ui,administrator=True)
+        render.assert_called_once_with(ui,administrator=True)
     ui=Panel(False)
     with t.navigation_run(ui):t.authorize_panel(ui,administrator=False)
     assert not ui.reports
