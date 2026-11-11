@@ -53,6 +53,9 @@ class DeploymentMonthlyApplication:
         self.publication_enabled=publication_enabled
         self.multi_asset_enabled=getattr(publisher,'multi_asset_enabled',False)
         self.gateway=DeploymentInputViewGateway(inputs.gateway)
+    def saved_documents(self,*args,**kwargs):return self._inputs.saved_documents(*args,**kwargs)
+    def draft_recovery_preview(self,*args,**kwargs):return self._inputs.draft_recovery_preview(*args,**kwargs)
+    def recover_draft(self,*args,**kwargs):return self._inputs.recover_draft(*args,**kwargs)
     def no_trading_preview(self,*args,**kwargs):return self._inputs.no_trading_preview(*args,**kwargs)
     def no_trading_status(self,*args,**kwargs):return self._inputs.no_trading_status(*args,**kwargs)
     def save_no_trading_confirmation(self,*args,**kwargs):return self._inputs.save_no_trading_confirmation(*args,**kwargs)

@@ -32,6 +32,8 @@ def verify_no_trading(c,passed):
     with c.owner() as conn:
         for key,text in fixtures.items():
             conn.execute('INSERT INTO campaigniq_accounts.artifact_storage_dev(namespace,artifact_key,content) VALUES(%s,%s,%s)',(scope,key,text))
+    from campaigniq.account_draft_recovery_rehearsal import verify as verify_recovery
+    revision=verify_recovery(c,service,user,account,draft,revision,upload,passed)
     before=c.snapshot();review=service.no_trading_preview(user,account,draft.id,revision)
     assert review['review']['financials']['income_usd']=='59.00' and not review['owner_confirmed']
     assert c.snapshot()==before
@@ -101,6 +103,10 @@ def verify_no_trading(c,passed):
         after=c.snapshot()
         def read(actor=user):return load_deployment_results(service,actor,account,draft.id,revision)
         result=read()
+        frozen=c.snapshot()
+        rejected(ValueError,lambda:service.draft_recovery_preview(user,account,draft.id,revision,action='restart'))
+        assert service.saved_documents(user,account,draft.id,revision)['protected'] and c.snapshot()==frozen
+        passed('draft_recovery_published_month_is_readonly_and_financial_rows_remain_identical')
         assert result.no_trading_month and Decimal(result.cash_income_usd)==59 and Decimal(result.brokerage_realized_usd)==0
         with service.gateway.transaction(user,account) as session:
             from campaigniq.persistence.lot_book_store import deserialize_lot_book

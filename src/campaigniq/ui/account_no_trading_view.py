@@ -1,9 +1,10 @@
 """One statement, one review and owner confirmation; publication remains separate."""
 from decimal import Decimal
 
-def render(st,service,user,account_id,draft,*,key,writable,published):
+def render(st,service,user,account_id,draft,*,key,writable,published,guided=False):
     selected=service.no_trading_status(user,account_id,draft.id,draft.revision)
-    with st.expander('No trading activity this month',expanded=selected):
+    if selected:st.info('No-trading confirmation saved. Use the account/month confirmation below to publish.')
+    with st.expander('No trading activity this month',expanded=selected or guided):
         st.caption('Upload the monthly Brokerage Statement above. Existing published lots and campaigns carry forward unchanged. Cash dividends and interest are shown separately; empty trading reports are not required.')
         state_key=key+':no-trading-review';signature=(account_id,str(draft.id),draft.revision)
         cached=st.session_state.get(state_key)

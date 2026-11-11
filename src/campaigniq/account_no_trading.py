@@ -44,8 +44,9 @@ def receipt(session,draft):
 def evaluate(service,session,draft):
     start,end=dates(draft);uploads=restore_uploads(session.drafts,draft.id)
     if 'schwab_brokerage_statement' not in uploads:raise ValueError('Upload the monthly brokerage statement first')
+    optional_history=uploads.get('thinkorswim_trade_history')
     for role,u in uploads.items():
-        if str(getattr(role,'value',role))!='schwab_brokerage_statement' and u.content.strip():
+        if str(getattr(role,'value',role)) not in ('schwab_brokerage_statement','thinkorswim_trade_history') and u.content.strip():
             raise ValueError('No-trading mode requires the statement alone; supplied nonempty activity reports must use the normal workflow')
     for role in ('forex_cash_source_choice_receipt_v1','forex_daily_source_receipt_v1','forex_financial_policy_approval_v1',
                  'crypto_statement_sources_approval_v1','futures_empty_opening_confirmation_v1','futures_monthly_statement_pdf_v1',
@@ -93,6 +94,9 @@ def evaluate(service,session,draft):
                 parser=_OPTION_RE if section=='option' else _EQUITY_RE
                 if parser.match(line) is None:raise ValueError('Unrecognized statement holding; no-trading confirmation withheld')
         cash=analyze(text,start=start,end=end)
+        if optional_history is not None:
+            from campaigniq.no_trading_export import check_history
+            check_history(optional_history.content,service._known(session),start,end,cash)
         rows=read_position_snapshot_section(text.splitlines(),snapshot_at=datetime.combine(end,datetime.max.time()))
         control=reconcile_closing_inventory(ending_lot_book=book,snapshot_rows=rows,period_end=end)
         if not control.reconciled:raise ValueError('Unchanged opening positions do not match the monthly statement; no-trading confirmation withheld')

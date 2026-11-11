@@ -76,14 +76,42 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             selected = st.selectbox('Saved month', list(drafts),
                 format_func=lambda value: f'{drafts[value].year:04d}-{drafts[value].month:02d}', key=key + ':draft')
             draft = drafts[selected]
-            key += ':' + selected + ':' + str(draft.revision)
+            stable_key=key+':'+selected
+            key=stable_key+':'+str(draft.revision)
             st.caption('Saved document revision ' + str(draft.revision))
             published = service.published(server_user, account_id, draft.id, draft.revision)
             if published:
                 st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
-            if account.writable and not published:
+            guided=deployment and callable(getattr(service,'saved_documents',None))
+            no_trading_path=False
+            markets=('Equities and options','Forex','Futures','Crypto')
+            if guided:
+                if st.session_state.get(stable_key+':notice'):st.success(st.session_state[stable_key+':notice'])
+                st.subheader('1. Activity this month')
+                mode=st.radio('Choose the monthly workflow',('I traded','No trading activity'),
+                    index=1 if service.no_trading_status(server_user,account_id,draft.id,draft.revision) else (0 if published else None),
+                    key=stable_key+':activity',disabled=published)
+                no_trading_path=mode=='No trading activity'
+                from campaigniq.ui.account_draft_recovery_view import render as render_saved_documents
+                saved_roles=render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
+                if mode is None:
+                    st.info('Choose whether you traded this month to see the documents you need. You can correct saved uploads above.')
+                    return
+                if not no_trading_path:
+                    defaults=['Equities and options']
+                    for name,token in (('Forex','forex'),('Futures','futures'),('Crypto','crypto')):
+                        if any(token in r for r in saved_roles):defaults.append(name)
+                    markets=st.multiselect('Markets to include this month',markets,default=defaults,key=stable_key+':markets',disabled=published)
+                st.subheader('2. Documents')
+                if no_trading_path:st.caption('Save the monthly Brokerage Statement. Empty trading reports are not required. Remove mistaken uploads using the saved-document controls above.')
+            upload_locked=guided and 'no_trading_owner_confirmation_v1' in saved_roles
+            if upload_locked:st.info('A no-trading confirmation is saved. To change the inputs, remove that confirmation using Correct this draft above; then save the updated documents and review again.')
+            if account.writable and not published and not upload_locked:
                 roles=tuple(r for r in UPLOAD_ROLES if r!='schwab_crypto_statement') if deployment and getattr(service,'multi_asset_enabled',False) else UPLOAD_ROLES
-                role = st.selectbox('Document role', roles, index=None,
+                if guided:roles=tuple(r for r in roles if ('forex' not in r or 'Forex' in markets) and ('crypto' not in r or 'Crypto' in markets))
+                if no_trading_path:roles=('schwab_brokerage_statement',)
+                from campaigniq.account_draft_recovery import label
+                role = st.selectbox('Document role', roles, index=None, format_func=label,
                     placeholder='Select a document type…', key=key + ':role')
                 if role == 'schwab_forex_transaction_report':
                     start = date(draft.year, draft.month, 1) - timedelta(days=1)
@@ -106,8 +134,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                                     confirm_same_account=True,replace=replace)
                             else:
                                 service.save(server_user, account_id, draft.id, draft.revision, role,restored,replace=replace)
+                            if guided:st.session_state[stable_key+':notice']='Document saved. It appears in Saved documents above.'
                             st.rerun()
-            if deployment and hasattr(service, 'confirm_empty_futures_opening'):
+            if deployment and not no_trading_path and 'Futures' in markets and hasattr(service, 'confirm_empty_futures_opening'):
                 with st.expander('Futures opening positions'):
                     as_of = date(draft.year,draft.month,1) - timedelta(days=1)
                     st.caption('For accounts resuming futures trading with no carried positions. '
@@ -128,10 +157,11 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                                     confirm_empty_opening=empty)
                                 st.rerun()
             no_trading=False
-            if deployment and callable(getattr(service,'no_trading_preview',None)):
+            if guided:st.subheader('3. Review and publish')
+            if deployment and (not guided or no_trading_path) and callable(getattr(service,'no_trading_preview',None)):
                 from campaigniq.ui.account_no_trading_view import render as render_no_trading
-                no_trading=render_no_trading(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
-            if deployment and hasattr(service, 'futures_preview'):
+                no_trading=render_no_trading(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published,guided=guided)
+            if deployment and not no_trading_path and 'Futures' in markets and hasattr(service, 'futures_preview'):
                 with st.expander('Futures statement and accounting preview'):
                     st.caption('Save the empty opening confirmation first. This separate preview does not publish a month.')
                     if account.writable and not published:
@@ -174,15 +204,15 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         for finding in futures['blockers']:
                             st.warning(finding)
                         st.info('Read-only futures preview. No month was published.')
-            if deployment and getattr(service,'multi_asset_enabled',False):
+            if deployment and not no_trading_path and 'Crypto' in markets and getattr(service,'multi_asset_enabled',False):
                 from campaigniq.ui.account_crypto_sources_view import render as render_crypto_sources
                 render_crypto_sources(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
-            if deployment and hasattr(service,'review_forex_cash_sources'):
+            if deployment and not no_trading_path and 'Forex' in markets and hasattr(service,'review_forex_cash_sources'):
                 from campaigniq.ui.account_forex_cash_review_view import render as render_forex_cash
                 render_forex_cash(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
-            forex = st.checkbox('Forex applicable', value=not no_trading, key=key + (':forex:no-trading' if no_trading else ':forex'))
-            crypto = st.checkbox('Crypto applicable', value=not no_trading, key=key + (':crypto:no-trading' if no_trading else ':crypto'))
-            if deployment and not no_trading and hasattr(service, 'futures_monthly_preview'):
+            forex = ('Forex' in markets and not no_trading_path) if guided else st.checkbox('Forex applicable', value=not no_trading, key=key + (':forex:no-trading' if no_trading else ':forex'))
+            crypto = ('Crypto' in markets and not no_trading_path) if guided else st.checkbox('Crypto applicable', value=not no_trading, key=key + (':crypto:no-trading' if no_trading else ':crypto'))
+            if deployment and not no_trading_path and not no_trading and hasattr(service, 'futures_monthly_preview'):
                 with st.expander('Monthly preview including futures'):
                     st.caption('Check securities/Forex inventory, futures accounting and approved crypto sources together. No month is published by this check.' if getattr(service,'multi_asset_enabled',False) else 'Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
                     if st.button('Check monthly sources including futures', key=key + ':monthly-futures'):
@@ -201,7 +231,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         if getattr(service,'multi_asset_enabled',False) and monthly['all_source_controls_ready']:
                             st.success('Monthly source and inventory checks passed. Use the separate month confirmation to publish.')
                         else:st.info(monthly['publication_blocker'])
-            if st.button('Preview saved inputs', key=key + ':preview'):
+            if not no_trading_path and st.button('Preview saved inputs', key=key + ':preview'):
                 result = service.preview(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)
                 st.dataframe([dict(Input=v.role, Valid=v.valid, Detail=v.message) for v in result.validations], hide_index=True)
@@ -209,7 +239,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     st.success('Required input checks passed. Nothing was reconciled or published.')
                 else:
                     st.info('Complete the missing or invalid inputs. No data was published.')
-            if st.button('Preview closing inventory', key=key + ':reconcile'):
+            if not no_trading_path and st.button('Preview closing inventory', key=key + ':reconcile'):
                 result = service.reconcile(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)
                 st.caption('Read-only quantity reconciliation. No financial approval or publication has been performed.')
@@ -282,7 +312,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         key=key + ':authorize:' + str(forex) + ':' + str(crypto))
                     st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
                                'Existing published months cannot be replaced.')
-                    if st.form_submit_button('Publish month' if deployment else 'Publish locally'):
+                    if guided and no_trading_path and not no_trading:st.caption('Review the statement and save the no-trading confirmation above before publishing.')
+                    if st.form_submit_button('Publish month' if deployment else 'Publish locally',disabled=guided and no_trading_path and not no_trading):
                         service.publish(server_user, account_id, draft.id, draft.revision,
                             **({"confirm_publication":confirm} if deployment else {"authorize_local_publication":confirm}),
                             forex_applicable=forex, crypto_applicable=crypto)

@@ -495,6 +495,18 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
             if draft.revision!=revision:raise ValueError('Draft changed; reload before crypto generation preview')
             return generation_preview(self,session,draft)
 
+    def saved_documents(self,*args,**kwargs):
+        from campaigniq.account_draft_recovery import inventory
+        return inventory(self,*args,**kwargs)
+
+    def draft_recovery_preview(self,*args,**kwargs):
+        from campaigniq.account_draft_recovery import review
+        return review(self,*args,**kwargs)
+
+    def recover_draft(self,*args,**kwargs):
+        from campaigniq.account_draft_recovery import execute
+        return execute(self,*args,**kwargs)
+
     def no_trading_preview(self,user,account_id,draft_id,revision):
         from campaigniq.account_no_trading import preview
         if type(revision) is not int:raise ValueError('Displayed revision required')
