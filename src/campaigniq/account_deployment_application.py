@@ -68,6 +68,7 @@ class DeploymentMonthlyApplication:
     def save_futures_statement(self,*args,**kwargs):return self._inputs.save_futures_statement(*args,**kwargs)
     def futures_preview(self,*args,**kwargs):return self._inputs.futures_preview(*args,**kwargs)
     def confirm_empty_futures_closing(self,*args,**kwargs):return self._inputs.confirm_empty_futures_closing(*args,**kwargs)
+    def monthly_source_preview(self,*args,**kwargs):return self._inputs.monthly_source_preview(*args,**kwargs)
     def futures_monthly_preview(self,*args,**kwargs):return self._inputs.futures_monthly_preview(*args,**kwargs)
     def futures_generation_preview(self,*args,**kwargs):return self._inputs.futures_generation_preview(*args,**kwargs)
     def save_forex_daily_sources(self,*args,**kwargs):return self._inputs.save_forex_daily_sources(*args,**kwargs)

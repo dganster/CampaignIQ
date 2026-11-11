@@ -60,7 +60,7 @@ from campaigniq.ui.account_signedin_inputs_view import render
 class Gateway:
  _directory=SimpleNamespace(registry_id='registry')
  _backend=SimpleNamespace(_continue_existing=True)
- def overview(self,user):return SimpleNamespace(accounts=[SimpleNamespace(id='account',name='Andrew',writable=True,archived=False,suffixes=(('securities','4285'),))],user_id='owner',administrator=False)
+ def overview(self,user):return SimpleNamespace(accounts=[SimpleNamespace(id='account',name='Andrew',writable=True,archived=False,suffixes=(('securities','4285'),))],user_id='owner',administrator=False,directory_revision=1)
  def storage_ready(self,user):return True
 class Service:
  gateway=Gateway()
@@ -82,5 +82,6 @@ render(st,Service(),'user',selected_account_id='account',deployment=True)
     assert not any('Forex' in c.label or 'Crypto' in c.label for c in at.checkbox)
     assert not any('Futures' in e.label or 'Forex' in e.label or 'Crypto' in e.label for e in at.expander)
     assert button(at,'Publish month').disabled
-    document=next(s for s in at.selectbox if s.label=='Document role')
-    assert document.options==['Brokerage statement']
+    assert not any(s.label=='Document role' for s in at.selectbox)
+    assert any('Document: Brokerage statement' in c.value for c in at.caption)
+    assert not any('replacement' in c.label.lower() for c in at.checkbox)

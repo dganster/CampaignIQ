@@ -227,6 +227,15 @@ class DeploymentMonthlyInputs(BoundAccountImportPreviewService):
                 raise ValueError('Futures ending confirmation could not be verified')
             return revision
 
+    def monthly_source_preview(self,user,account_id,draft_id,revision,*,forex_applicable,crypto_applicable,futures_applicable):
+        from campaigniq.futures_monthly_preview import monthly_preview
+        if type(revision) is not int or any(type(v) is not bool for v in (forex_applicable,crypto_applicable,futures_applicable)):
+            raise ValueError('Displayed revision and explicit market choices required')
+        with self.gateway.transaction(user,account_id) as session:
+            draft=self._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; review the current month')
+            return monthly_preview(self,session,draft,forex_applicable=forex_applicable,crypto_applicable=crypto_applicable,futures_applicable=futures_applicable)
+
     def futures_monthly_preview(self,user,account_id,draft_id,revision,*,forex_applicable=True,crypto_applicable=True):
         from campaigniq.futures_monthly_preview import monthly_preview
         if type(revision) is not int or revision<0 or any(type(v) is not bool for v in (forex_applicable,crypto_applicable)):

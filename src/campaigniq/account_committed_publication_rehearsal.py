@@ -166,7 +166,28 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                 draft=service.create(user,account,2025,1);revision=0
                 for kind,upload in synthetic_sources(number).items():revision=service.save(user,account,draft.id,revision,kind,upload)
                 drafts[account]=draft;revisions[account]=revision
-            initial=snapshot();real_write=AppendOnlyArtifacts.write_text
+            initial=snapshot()
+            checked=service.monthly_source_preview(user,a,drafts[a].id,revisions[a],forex_applicable=False,crypto_applicable=False,futures_applicable=False)
+            assert checked['all_source_controls_ready'] and checked['futures'] is None and snapshot()==initial
+            for actor,rev,exception in ((foreign,revisions[a],PermissionError),(user,revisions[a]-1,ValueError)):
+                try:service.monthly_source_preview(actor,a,drafts[a].id,rev,forex_applicable=False,crypto_applicable=False,futures_applicable=False)
+                except exception:pass
+                else:raise AssertionError('Review accepted foreign or stale access')
+            from campaigniq import futures_monthly_preview as review_module
+            real_review=review_module.monthly_preview
+            def forbidden_review(inputs,session,draft,**kwargs):
+                try:
+                    with session._operation() as conn:conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+                except psycopg.Error:pass
+                else:raise AssertionError('Review connection permits SQL writes')
+                return real_review(inputs,session,draft,**kwargs)
+            with patch.object(review_module,'monthly_preview',new=forbidden_review):
+                try:service.monthly_source_preview(user,a,drafts[a].id,revisions[a],forex_applicable=False,crypto_applicable=False,futures_applicable=False)
+                except (RuntimeError,psycopg.Error):pass
+                else:raise AssertionError('Caught forbidden SQL did not invalidate review')
+            assert snapshot()==initial
+            passed('unified_month_review_uses_restricted_readonly_role_rejects_foreign_stale_and_caught_sql_writes_without_row_changes')
+            real_write=AppendOnlyArtifacts.write_text
             def fail_marker(storage,key,text):
                 value=real_write(storage,key,text)
                 if key.endswith('-finalized.json'):raise RuntimeError('injected marker failure')

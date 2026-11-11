@@ -194,3 +194,10 @@ def test_next_month_uses_published_opening_without_changing_approved_forex_gener
     application(c).publish(c.admin,c.account,draft.id,rev,confirm_publication=True,forex_applicable=False,crypto_applicable=False)
     assert {k:storage.rows[k] for k in october}==october
     assert sum(l.quantity for rows in deserialize_lot_book(storage.rows['2026-11-lot-book.json']).lot_book._lots.values() for l in rows)==11
+
+
+def test_unified_review_without_futures_preserves_approved_forex_path_and_originals(ready):
+    c=ready;before=deepcopy(repo(c).__dict__);financial=deepcopy(c.artifacts[c.account].rows)
+    reviewed=c.associated.monthly_source_preview(c.admin,c.account,c.selected.id,revision(c),forex_applicable=True,crypto_applicable=False,futures_applicable=False)
+    assert reviewed['all_source_controls_ready'] and reviewed['approved_forex_policy'] and reviewed['futures'] is None
+    assert repo(c).__dict__==before and c.artifacts[c.account].rows==financial

@@ -1,0 +1,11 @@
+# Monthly review and presentation cleanup
+
+Based on live 879369cf84510f2fdb5f09d2635d89cb5c1401b8. Development only until the exact candidate is reviewed and deployed.
+
+Bound account settings are collapsed. Published guided months show saved documents/history and a results action, with no activity selection, market selection, upload/recovery workflow, review or publication form. The published-results renderer keeps existing calculations and now imports currency formatting before displaying lot costs.
+
+No-trading uploads automatically select the Brokerage Statement. Replacement confirmation appears only when the selected role already has an active saved document. Normal months have one Review month action. It uses the existing combined source, inventory, Forex and crypto checks, with an explicit non-futures path that does not require or fabricate futures confirmations. Saved futures evidence blocks omission of Futures. The original Trade History is preserved, and only the existing verified futures branch creates a temporary derivative.
+
+Publish remains disabled until that review succeeds. Review state is bound to account, draft, source revision, directory revision, activity choice and market selection. Changing those choices invalidates readiness and resets the publication authorization widget. Publication still rechecks current access and source controls in the existing serialized writer; browser readiness is not a security boundary. Failed or blocked review cannot enable the button. Each publication attempt consumes the UI review state so a failure requires review again.
+
+Tests cover empty drafts, successful review across checkbox reruns, source/market invalidation, published read-only presentation, statement auto-selection/replacement visibility, equities-only combined reconciliation, explicit market flags, rejected futures omission, and unchanged approved Forex/crypto review. Existing futures checks retain their default behavior. The disposable PostgreSQL rehearsal additionally verifies the new review through actual restricted roles, stale/foreign rejection, and caught forbidden SQL rollback with unchanged rows. No existing source, publication receipt, financial row or runtime configuration is migrated.

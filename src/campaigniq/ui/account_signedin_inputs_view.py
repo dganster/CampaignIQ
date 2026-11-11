@@ -1,4 +1,6 @@
 """Saved inputs, reconciliation and explicit LOCAL new-account publication."""
+from hashlib import sha256
+from contextlib import nullcontext
 from calendar import monthrange
 from datetime import date, timedelta
 
@@ -24,6 +26,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 format_func=lambda key: choices[key].name + (' [archived]' if choices[key].archived else '') + ' · ' + key[:8],
                 key='new-account-selection:' + overview.user_id + ':' + service.gateway._directory.registry_id)
             account = choices[account_id]
+            guided=deployment and callable(getattr(service,'saved_documents',None))
             key = 'signedin-input:' + service.gateway._directory.registry_id + ':' + overview.user_id + ':' + account_id
             if not service.gateway.storage_ready(server_user):
                 if deployment:
@@ -42,24 +45,25 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             else:
                 st.info('Bind the full broker account identifier before saving documents.')
             if overview.administrator and not account.archived:
-                form_key = key + ':binding:' + str(st.session_state.get(key + ':binding-epoch', 0))
-                revision_key = form_key + ':revision'
-                if revision_key not in st.session_state:
-                    st.session_state[revision_key] = overview.directory_revision
-                with st.form(form_key, clear_on_submit=True):
-                    kind = st.selectbox('Account identifier type', KINDS, key=form_key + ':kind')
-                    number = st.text_input('Full broker account identifier', autocomplete='off', key=form_key + ':number')
-                    confirm = st.checkbox('Confirm replacement of the existing identifier', key=form_key + ':confirm')
-                    st.caption('Schwab securities and Forex identifiers are separate. Only the final four digits are displayed. '
-                               'Crypto statements use a separate owner source review below.')
-                    if st.form_submit_button('Save broker binding'):
-                        service.gateway.bind(server_user, account_id, kind, number,
-                            expected_revision=st.session_state[revision_key], confirm_replace=confirm)
+                with st.expander('Account settings',expanded=not bool(account.suffixes)) if guided else nullcontext():
+                    form_key = key + ':binding:' + str(st.session_state.get(key + ':binding-epoch', 0))
+                    revision_key = form_key + ':revision'
+                    if revision_key not in st.session_state:
+                        st.session_state[revision_key] = overview.directory_revision
+                    with st.form(form_key, clear_on_submit=True):
+                        kind = st.selectbox('Account identifier type', KINDS, key=form_key + ':kind')
+                        number = st.text_input('Full broker account identifier', autocomplete='off', key=form_key + ':number')
+                        confirm = st.checkbox('Confirm replacement of the existing identifier', key=form_key + ':confirm')
+                        st.caption('Schwab securities and Forex identifiers are separate. Only the final four digits are displayed. '
+                                   'Crypto statements use a separate owner source review below.')
+                        if st.form_submit_button('Save broker binding'):
+                            service.gateway.bind(server_user, account_id, kind, number,
+                                expected_revision=st.session_state[revision_key], confirm_replace=confirm)
+                            st.session_state[key + ':binding-epoch'] = st.session_state.get(key + ':binding-epoch', 0) + 1
+                            st.rerun()
+                    if st.button('Reload broker binding', key=key + ':reload-binding'):
                         st.session_state[key + ':binding-epoch'] = st.session_state.get(key + ':binding-epoch', 0) + 1
                         st.rerun()
-                if st.button('Reload broker binding', key=key + ':reload-binding'):
-                    st.session_state[key + ':binding-epoch'] = st.session_state.get(key + ':binding-epoch', 0) + 1
-                    st.rerun()
             if account.writable:
                 with st.form(key + ':create'):
                     year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2026 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 2025, key=key + ':year'))
@@ -85,6 +89,12 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             guided=deployment and callable(getattr(service,'saved_documents',None))
             no_trading_path=False
             markets=('Equities and options','Forex','Futures','Crypto')
+            if guided and published:
+                from campaigniq.ui.account_draft_recovery_view import render as render_saved_documents
+                render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=False,published=True)
+                if st.button('View published results',key=key+':results'):
+                    show_published_results(st,service,server_user,account_id,draft,deployment=deployment)
+                return
             if guided:
                 if st.session_state.get(stable_key+':notice'):st.success(st.session_state[stable_key+':notice'])
                 st.subheader('1. Activity this month')
@@ -102,6 +112,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     for name,token in (('Forex','forex'),('Futures','futures'),('Crypto','crypto')):
                         if any(token in r for r in saved_roles):defaults.append(name)
                     markets=st.multiselect('Markets to include this month',markets,default=defaults,key=stable_key+':markets',disabled=published)
+                if not no_trading_path and not markets:
+                    st.info('Select at least one market to continue.');return
                 st.subheader('2. Documents')
                 if no_trading_path:st.caption('Save the monthly Brokerage Statement. Empty trading reports are not required. Remove mistaken uploads using the saved-document controls above.')
             upload_locked=guided and 'no_trading_owner_confirmation_v1' in saved_roles
@@ -111,15 +123,18 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 if guided:roles=tuple(r for r in roles if ('forex' not in r or 'Forex' in markets) and ('crypto' not in r or 'Crypto' in markets))
                 if no_trading_path:roles=('schwab_brokerage_statement',)
                 from campaigniq.account_draft_recovery import label
-                role = st.selectbox('Document role', roles, index=None, format_func=label,
-                    placeholder='Select a document type…', key=key + ':role')
+                if guided and len(roles)==1:
+                    role=roles[0];st.caption('Document: '+label(role))
+                else:
+                    role = st.selectbox('Document role', roles, index=None, format_func=label,
+                        placeholder='Select a document type…', key=key + ':role')
                 if role == 'schwab_forex_transaction_report':
                     start = date(draft.year, draft.month, 1) - timedelta(days=1)
                     end = date(draft.year, draft.month, monthrange(draft.year, draft.month)[1])
                     st.info(f'Forex Transaction Report: export {start:%B %d, %Y} through {end:%B %d, %Y}.')
                 with st.form(key + ':upload', clear_on_submit=False):
                     upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file')
-                    replace = st.checkbox('Confirm replacement of this role; preserve the previous original', key=key + ':replace')
+                    replace = st.checkbox('Replace the saved document; preserve its original in history', key=key+':replace:'+str(role)) if guided and role in saved_roles else (False if guided else st.checkbox('Confirm replacement of this role; preserve the previous original',key=key+':replace'))
                     associated = st.checkbox('I confirm this Gain/Loss report belongs to the selected account and month', key=key + ':associate') if deployment and role == 'schwab_realized_gain_loss' else False
                     if st.form_submit_button('Save document', disabled=role is None):
                         if role is None:
@@ -212,7 +227,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 render_forex_cash(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
             forex = ('Forex' in markets and not no_trading_path) if guided else st.checkbox('Forex applicable', value=not no_trading, key=key + (':forex:no-trading' if no_trading else ':forex'))
             crypto = ('Crypto' in markets and not no_trading_path) if guided else st.checkbox('Crypto applicable', value=not no_trading, key=key + (':crypto:no-trading' if no_trading else ':crypto'))
-            if deployment and not no_trading_path and not no_trading and hasattr(service, 'futures_monthly_preview'):
+            if deployment and not guided and not no_trading_path and not no_trading and hasattr(service, 'futures_monthly_preview'):
                 with st.expander('Monthly preview including futures'):
                     st.caption('Check securities/Forex inventory, futures accounting and approved crypto sources together. No month is published by this check.' if getattr(service,'multi_asset_enabled',False) else 'Read-only securities/Forex inventory, separate futures accounting, and crypto source controls. Publication remains disabled for futures months.')
                     if st.button('Check monthly sources including futures', key=key + ':monthly-futures'):
@@ -231,7 +246,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         if getattr(service,'multi_asset_enabled',False) and monthly['all_source_controls_ready']:
                             st.success('Monthly source and inventory checks passed. Use the separate month confirmation to publish.')
                         else:st.info(monthly['publication_blocker'])
-            if not no_trading_path and st.button('Preview saved inputs', key=key + ':preview'):
+            if not guided and not no_trading_path and st.button('Preview saved inputs', key=key + ':preview'):
                 result = service.preview(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)
                 st.dataframe([dict(Input=v.role, Valid=v.valid, Detail=v.message) for v in result.validations], hide_index=True)
@@ -239,7 +254,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     st.success('Required input checks passed. Nothing was reconciled or published.')
                 else:
                     st.info('Complete the missing or invalid inputs. No data was published.')
-            if not no_trading_path and st.button('Preview closing inventory', key=key + ':reconcile'):
+            if not guided and not no_trading_path and st.button('Preview closing inventory', key=key + ':reconcile'):
                 result = service.reconcile(server_user, account_id, draft.id, draft.revision,
                     forex_applicable=forex, crypto_applicable=crypto)
                 st.caption('Read-only quantity reconciliation. No financial approval or publication has been performed.')
@@ -254,66 +269,27 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         Difference=row.difference) for row in result.mismatches], hide_index=True)
                 for finding in result.source_findings:
                     st.warning(finding)
-            if published and st.button('View published results', key=key + ':results'):
-                result = service.results(server_user, account_id, draft.id, draft.revision)
-                st.subheader('Published results · ' + result.month)
-                st.caption(('Saved generation • Source revision ' if deployment else 'Saved local generation • Source revision ') + str(result.revision) +
-                    ' • ' + str(result.original_documents) + ' original documents verified. Read-only view.')
-                if getattr(result,'no_trading_month',False):
-                    from decimal import Decimal
-                    st.write('No trading activity. Published lots and campaign identities carried forward unchanged.')
-                    st.write('Statement cash dividends / interest: '+f'${Decimal(result.cash_income_usd):,.2f}'+' (separate from realized trading P/L)')
-                st.write('Closing positions')
-                if result.positions:
-                    st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.positions], hide_index=True)
-                else:
-                    st.info('No open positions in the published lot state.')
-                with st.expander('Closing lots and source basis'):
-                    st.dataframe([dict(Instrument=row[0], Quantity=row[1], Lot=row[2], Basis=money(Decimal(row[3])) if row[3]!='Unknown' else row[3],
-                        Source=row[4], Campaign=row[5]) for row in result.lots], hide_index=True)
-                from campaigniq.ui.income_performance import money
-                from decimal import Decimal
-                st.write('Broker realized gain/loss: ' + money(Decimal(result.brokerage_realized_usd)))
-                if result.realized:
-                    st.dataframe([dict(Date=row[0], Instrument=row[1], Quantity=row[2], Proceeds=money(Decimal(row[3])),
-                        Basis=money(Decimal(row[4])), Gain_loss=money(Decimal(row[5]))) for row in result.realized], hide_index=True)
-                else:
-                    st.caption('No broker realized records for this month.')
-                from campaigniq.ui.income_performance import show_statement
-                from decimal import Decimal
-                trading=Decimal(result.brokerage_realized_usd)+Decimal(result.forex_settled_usd)+Decimal(result.futures_realized_usd)
-                with st.expander('Dividends, interest and performance',expanded=True):
-                    show_statement(st,getattr(result,'income_evidence',None),realized=trading,
-                        known_forex_financing=result.forex_financing_usd if result.forex_policy_approved else None)
-                if result.forex_applicable:
-                    st.write('Forex settled P/L: ' + money(Decimal(result.forex_settled_usd)))
-                    st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
-                    if getattr(result,'forex_policy_approved',False):
-                        st.write('Approved daily-session Forex financing: '+money(Decimal(result.forex_financing_usd)))
-                        st.write('Forex cash: '+money(Decimal(result.forex_opening_cash_usd))+' → '+money(Decimal(result.forex_ending_cash_usd))+
-                            '; net change '+money(Decimal(result.forex_net_cash_change_usd)))
-                        st.caption('Owner-approved daily-session basis. Original CSV differences and daily coverage limits remain retained.')
-                    st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=money(Decimal(row[2])), Campaign=row[3])
-                        for row in result.forex_settlements], hide_index=True)
-                if getattr(result,'futures_applicable',False):
-                    st.write('Futures/options net realized P/L: ' + money(Decimal(result.futures_realized_usd)))
-                    st.caption(result.futures_evidence_status)
-                if result.crypto_applicable:
-                    st.write('Crypto evidence status: ' + result.crypto_status)
-                    st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
-                    for warning in result.crypto_warnings:
-                        st.warning(warning)
+            if published and st.button('View published results',key=key+':results'):
+                show_published_results(st,service,server_user,account_id,draft,deployment=deployment)
+            review_ready=False
+            if guided:
+                from campaigniq.ui.monthly_review import render as render_review
+                signature=(account_id,str(draft.id),draft.revision,overview.directory_revision,mode,tuple(sorted(markets)) if not no_trading_path else ())
+                review_ready=render_review(st,service,server_user,account_id,draft,key=key,signature=signature,forex=forex,crypto=crypto,futures='Futures' in markets and not no_trading_path,no_trading=no_trading_path)
+            authorization_context=sha256(repr(signature).encode()).hexdigest() if guided else str(forex)+':'+str(crypto)
             publication_enabled=getattr(service,'publication_enabled',True)
             if account.writable and not published and not publication_enabled:
                 st.caption('Publication is not enabled for this application.')
             if account.writable and not published and publication_enabled:
-                with st.form(key + ':publication:' + str(forex) + ':' + str(crypto)):
+                with st.form(key+':publication:'+authorization_context):
                     confirm = st.checkbox((f'I authorize publication for {account.name} · {draft.year:04d}-{draft.month:02d}' if deployment else 'I authorize publication to the local development database'),
-                        key=key + ':authorize:' + str(forex) + ':' + str(crypto))
+                        key=key+':authorize:'+authorization_context)
                     st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
                                'Existing published months cannot be replaced.')
                     if guided and no_trading_path and not no_trading:st.caption('Review the statement and save the no-trading confirmation above before publishing.')
-                    if st.form_submit_button('Publish month' if deployment else 'Publish locally',disabled=guided and no_trading_path and not no_trading):
+                    if st.form_submit_button('Publish month' if deployment else 'Publish locally',disabled=guided and not review_ready):
+                        if guided and not review_ready:raise ValueError('Review the current month before publishing')
+                        if guided:st.session_state.pop(key+':monthly-review',None)
                         service.publish(server_user, account_id, draft.id, draft.revision,
                             **({"confirm_publication":confirm} if deployment else {"authorize_local_publication":confirm}),
                             forex_applicable=forex, crypto_applicable=crypto)
@@ -324,3 +300,56 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
         st.error(str(error))
     except Exception:
         st.error('Account inputs could not be verified. Reload before retrying.' if deployment else 'Local inputs could not be verified. Reload before retrying.')
+
+
+def show_published_results(st,service,server_user,account_id,draft,*,deployment):
+    from decimal import Decimal
+    from campaigniq.ui.income_performance import money
+    result = service.results(server_user, account_id, draft.id, draft.revision)
+    st.subheader('Published results · ' + result.month)
+    st.caption(('Saved generation • Source revision ' if deployment else 'Saved local generation • Source revision ') + str(result.revision) +
+        ' • ' + str(result.original_documents) + ' original documents verified. Read-only view.')
+    if getattr(result,'no_trading_month',False):
+        from decimal import Decimal
+        st.write('No trading activity. Published lots and campaign identities carried forward unchanged.')
+        st.write('Statement cash dividends / interest: '+f'${Decimal(result.cash_income_usd):,.2f}'+' (separate from realized trading P/L)')
+    st.write('Closing positions')
+    if result.positions:
+        st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.positions], hide_index=True)
+    else:
+        st.info('No open positions in the published lot state.')
+    with st.expander('Closing lots and source basis'):
+        st.dataframe([dict(Instrument=row[0], Quantity=row[1], Lot=row[2], Basis=money(Decimal(row[3])) if row[3]!='Unknown' else row[3],
+            Source=row[4], Campaign=row[5]) for row in result.lots], hide_index=True)
+    from campaigniq.ui.income_performance import money
+    from decimal import Decimal
+    st.write('Broker realized gain/loss: ' + money(Decimal(result.brokerage_realized_usd)))
+    if result.realized:
+        st.dataframe([dict(Date=row[0], Instrument=row[1], Quantity=row[2], Proceeds=money(Decimal(row[3])),
+            Basis=money(Decimal(row[4])), Gain_loss=money(Decimal(row[5]))) for row in result.realized], hide_index=True)
+    else:
+        st.caption('No broker realized records for this month.')
+    from campaigniq.ui.income_performance import show_statement
+    from decimal import Decimal
+    trading=Decimal(result.brokerage_realized_usd)+Decimal(result.forex_settled_usd)+Decimal(result.futures_realized_usd)
+    with st.expander('Dividends, interest and performance',expanded=True):
+        show_statement(st,getattr(result,'income_evidence',None),realized=trading,
+            known_forex_financing=result.forex_financing_usd if result.forex_policy_approved else None)
+    if result.forex_applicable:
+        st.write('Forex settled P/L: ' + money(Decimal(result.forex_settled_usd)))
+        st.caption('Settlement P/L only; financing and other cash activity are not included in this subtotal.')
+        if getattr(result,'forex_policy_approved',False):
+            st.write('Approved daily-session Forex financing: '+money(Decimal(result.forex_financing_usd)))
+            st.write('Forex cash: '+money(Decimal(result.forex_opening_cash_usd))+' → '+money(Decimal(result.forex_ending_cash_usd))+
+                '; net change '+money(Decimal(result.forex_net_cash_change_usd)))
+            st.caption('Owner-approved daily-session basis. Original CSV differences and daily coverage limits remain retained.')
+        st.dataframe([dict(Reference=row[0], Instrument=row[1], Settled_PL_USD=money(Decimal(row[2])), Campaign=row[3])
+            for row in result.forex_settlements], hide_index=True)
+    if getattr(result,'futures_applicable',False):
+        st.write('Futures/options net realized P/L: ' + money(Decimal(result.futures_realized_usd)))
+        st.caption(result.futures_evidence_status)
+    if result.crypto_applicable:
+        st.write('Crypto evidence status: ' + result.crypto_status)
+        st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
+        for warning in result.crypto_warnings:
+            st.warning(warning)

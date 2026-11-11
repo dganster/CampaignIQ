@@ -87,19 +87,27 @@ def project_history(content,result,destination):
         removed_futures_row_ids=source_ids,original_preserved=True)
 
 
-def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
-    futures=connected_preview(service,session,draft)
+def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable,futures_applicable=True):
+    if type(futures_applicable) is not bool:raise ValueError('Explicit futures applicability required')
+    if not futures_applicable and has_futures(session,draft):raise ValueError('Saved futures activity or confirmations require Futures to be included')
+    futures=connected_preview(service,session,draft) if futures_applicable else None
     uploads=restore_uploads(session.drafts,draft.id)
     findings=[]
-    if not futures['closing_positions_confirmed_by_owner']:
+    if futures is not None and not futures['closing_positions_confirmed_by_owner']:
         findings.append('Save the owner confirmation of no ending futures positions.')
     with TemporaryDirectory(prefix='campaigniq-monthly-futures-preview-') as temporary:
         root=Path(temporary)
         supplied=stage_monthly_uploads(upload_dir=root,uploads=uploads)
         identities=service._identity_validations(session,uploads,supplied,draft=draft)
         findings.extend(v.message for v in identities if not v.valid)
+        if HISTORY not in uploads:raise ValueError('Save the Trade History before reviewing a trading month')
         original=uploads[HISTORY].getvalue()
-        lineage=project_history(original,futures,root/'derived-securities-history.csv')
+        history_path=root/'derived-securities-history.csv'
+        if futures is not None:
+            lineage=project_history(original,futures,history_path)
+        else:
+            history_path.write_bytes(original)
+            lineage=dict(format='campaigniq.original_monthly_history_lineage',version=1,original_sha256=sha256(original).hexdigest(),original_preserved=True)
         # Identity checks use original source bytes. This derivative is explicitly
         # labelled and is not saved as an original or sent to publication.
         supplied[MonthlyInputRole.THINKORSWIM_TRADE_HISTORY]=root/'derived-securities-history.csv'
@@ -180,7 +188,7 @@ def monthly_preview(service,session,draft,*,forex_applicable,crypto_applicable):
             if any(not isinstance(row.instrument,ForexPair) for row in control.mismatches):
                 findings.append('Securities closing inventory does not reconcile.')
         ready=bool(prepared.ready and all(v.valid for v in identities) and inventory and crypto_ready
-            and futures['closing_positions_confirmed_by_owner'] and not findings)
+            and (futures is None or futures['closing_positions_confirmed_by_owner']) and not findings)
         return dict(format='campaigniq.futures_monthly_readonly_preview',version=1,account_id=session.account.account_id,
             draft_id=str(draft.id),revision=draft.revision,period=f'{draft.year:04d}-{draft.month:02d}',
             futures=futures,source_lineage=lineage,validations=validations,crypto=crypto_status,

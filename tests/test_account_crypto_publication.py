@@ -111,3 +111,11 @@ def test_combined_futures_crypto_and_securities_share_one_generation(ready):
         assert result.futures_applicable and Decimal(result.futures_realized_usd)==-816
         assert result.crypto_applicable and sum(Decimal(q) for _,q in result.positions)==110
         assert verify_published(c.associated,session,session.drafts.get(c.selected.id))
+
+
+def test_unified_review_preserves_approved_crypto_without_futures_or_writes(ready):
+    c=ready;before=deepcopy(c.repositories[c.account].__dict__);financial=deepcopy(c.artifacts[c.account].rows)
+    result=c.associated.monthly_source_preview(c.admin,c.account,c.selected.id,rev(c),forex_applicable=False,crypto_applicable=True,futures_applicable=False)
+    assert result['all_source_controls_ready'] and result['futures'] is None
+    assert result['crypto']['approved_source_candidate_sha256']
+    assert c.repositories[c.account].__dict__==before and c.artifacts[c.account].rows==financial
