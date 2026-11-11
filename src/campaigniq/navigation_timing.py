@@ -21,7 +21,7 @@ class Trace:
 @contextmanager
 def stage(name):
     trace=_current.get()
-    if trace is None or not trace.enabled or name not in _STAGES:
+    if trace is None or name not in _STAGES:
         yield;return
     start=perf_counter();entry=(name,start);trace.active.append(entry)
     try:yield
@@ -36,7 +36,10 @@ def authorize_panel(st,*,administrator):
     if administrator is True:
         with st.sidebar.expander('Navigation diagnostics'):
             st.checkbox('Measure page loading',value=False,key=KEY)
-            st.caption('Enable, then select a report screen. Timings appear below the page. No financial changes.')
+            st.caption('Automatic lightweight timings are always collected. Enable detailed profiling only when investigating a slow page; profiling adds overhead.')
+            if hasattr(st,'button') and st.button('Show performance statistics',key='performance-statistics'):
+                from campaigniq.performance_monitor import snapshot
+                st.json(snapshot(administrator=administrator))
 
 def select_view(view):
     trace=_current.get()
@@ -82,7 +85,7 @@ class _TimingUI:
 
 def timed_ui(ui):
     trace=_current.get()
-    return _TimingUI(ui) if trace is not None and trace.enabled and trace.authorized else ui
+    return _TimingUI(ui) if trace is not None else ui
 
 @contextmanager
 def navigation_run(st):
@@ -94,6 +97,16 @@ def navigation_run(st):
         yield trace
         completed=True
         finish_navigation()
+    except BaseException as error:
+        outcome='rerun' if type(error).__name__=='RerunException' else ('stopped' if type(error).__name__=='StopException' else 'error')
+        raise
     finally:
         if profile is not None:profile.disable()
+        now=perf_counter()
+        stages={k:dict(v) for k,v in trace.stages.items()}
+        for name,start in trace.active:
+            item=stages.setdefault(name,{'calls':0,'seconds':0.0})
+            item['calls']+=1;item['seconds']+=now-start
         _current.reset(token)
+        from campaigniq.performance_monitor import record
+        record('page',trace.view or 'Startup',now-trace._start,outcome=locals().get('outcome','success'),stages=stages,profiled=trace.enabled)

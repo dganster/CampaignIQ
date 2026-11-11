@@ -11,6 +11,9 @@ from campaigniq.import_draft_bridge import RestoredUpload
 
 def render(st, service, server_user, *, selected_account_id=None, deployment=False):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
+    if deployment:
+        from campaigniq.performance_monitor import TimedService
+        service=TimedService(service)
     try:
         overview = service.gateway.overview(server_user)
         with st.expander('Monthly inputs' if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 'Monthly inputs for new brokerage accounts'):
