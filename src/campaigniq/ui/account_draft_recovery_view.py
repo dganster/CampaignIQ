@@ -2,8 +2,8 @@
 from campaigniq.account_draft_recovery import AUDIT_PREFIX, CONFIRMATIONS, label
 
 
-def render(st,service,user,account_id,draft,*,key,writable,published):
-    inventory=service.saved_documents(user,account_id,draft.id,draft.revision)
+def render(st,service,user,account_id,draft,*,key,writable,published,inventory=None):
+    if inventory is None:inventory=service.saved_documents(user,account_id,draft.id,draft.revision)
     rows=inventory['documents']
     active=[r for r in rows if not r['superseded'] and not r['role'].startswith(AUDIT_PREFIX)]
     st.subheader('Saved documents')

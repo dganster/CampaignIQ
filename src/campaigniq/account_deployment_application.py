@@ -89,6 +89,23 @@ class DeploymentMonthlyApplication:
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)
     def compare(self,*args,**kwargs):return compare_deployment_accounts(self._inputs,*args,**kwargs)
+    def draft_display(self,user,account_id,draft_id,revision):
+        """Detached presentation state from one fresh authorized READ ONLY snapshot."""
+        if type(revision) is not int:raise ValueError('Displayed source revision required')
+        from campaigniq.account_draft_recovery import metadata
+        from campaigniq.account_no_trading import receipt
+        with self._inputs.gateway.transaction(user,account_id) as session:
+            draft=self._inputs._lock(session,draft_id)
+            if draft.revision!=revision:raise ValueError('Draft changed; reload before viewing inputs')
+            published=_published_session(self._inputs,session,account_id,draft,revision,
+                receipt_format='campaigniq.deployment_account_publication')
+            if published:_deployment_results_session(self._inputs,session,draft,account_id,revision)
+            inventory=dict(revision=revision,documents=metadata(session,draft),
+                protected=bool(session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-')))
+            confirmed=False if published else receipt(session,draft) is not None
+            session._check()
+            return dict(published=published,inventory=inventory,no_trading=confirmed)
+
     def published(self,user,account_id,draft_id,revision):
         if type(revision) is not int:raise ValueError('Displayed source revision required')
         with self._inputs.gateway.transaction(user,account_id) as session:

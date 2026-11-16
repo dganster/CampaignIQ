@@ -187,6 +187,30 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                 else:raise AssertionError('Caught forbidden SQL did not invalidate review')
             assert snapshot()==initial
             passed('unified_month_review_uses_restricted_readonly_role_rejects_foreign_stale_and_caught_sql_writes_without_row_changes')
+            from campaigniq.account_deployment_application import DeploymentMonthlyApplication
+            display_app=DeploymentMonthlyApplication(service,publisher,publication_enabled=True)
+            screen=display_app.draft_display(user,a,drafts[a].id,revisions[a])
+            assert not screen['published'] and not screen['no_trading']
+            assert screen['inventory']==service.saved_documents(user,a,drafts[a].id,revisions[a]) and snapshot()==initial
+            for actor,account,rev in ((foreign,a,revisions[a]),(user,b,revisions[a]),(user,a,revisions[a]-1)):
+                try:display_app.draft_display(actor,account,drafts[a].id,rev)
+                except (PermissionError,FileNotFoundError,ValueError):pass
+                else:raise AssertionError('Display accepted foreign account or stale draft')
+            from campaigniq import account_draft_recovery as recovery_display
+            real_metadata=recovery_display.metadata
+            def forbidden_metadata(session,draft):
+                try:
+                    with session._operation() as conn:conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+                except psycopg.Error:pass
+                else:raise AssertionError('Display permits SQL writes')
+                return real_metadata(session,draft)
+            with patch.object(recovery_display,'metadata',new=forbidden_metadata):
+                try:display_app.draft_display(user,a,drafts[a].id,revisions[a])
+                except (RuntimeError,psycopg.Error):pass
+                else:raise AssertionError('Caught display write did not invalidate read')
+            assert snapshot()==initial
+            passed('draft_display_reuses_one_restricted_readonly_snapshot_rejects_foreign_stale_and_caught_writes_without_row_changes')
+
             real_write=AppendOnlyArtifacts.write_text
             def fail_marker(storage,key,text):
                 value=real_write(storage,key,text)
@@ -228,6 +252,11 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             assert sum(float(q) for _,q in result.positions)==110 and result.original_documents==4
             after=snapshot();assert load_deployment_results(service,user,a,drafts[a].id,revisions[a])==result and snapshot()==after
             passed('independent_canonical_reader_verifies_committed_110_share_generation_and_original_receipt_without_writes')
+            screen=display_app.draft_display(user,a,drafts[a].id,revisions[a])
+            assert screen['published'] and screen['inventory']['protected']
+            assert screen['inventory']==service.saved_documents(user,a,drafts[a].id,revisions[a]) and snapshot()==after
+            passed('published_draft_display_replays_canonical_generation_and_exact_inventory_without_writes')
+
             with gateway.transaction(user,a) as readonly:
                 assert readonly._connection.execute('SHOW transaction_read_only').fetchone()==('on',)
                 try:

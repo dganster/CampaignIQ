@@ -31,7 +31,10 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             account = choices[account_id]
             guided=deployment and callable(getattr(service,'saved_documents',None))
             key = 'signedin-input:' + service.gateway._directory.registry_id + ':' + overview.user_id + ':' + account_id
-            if not service.gateway.storage_ready(server_user):
+            combined_display=deployment and callable(getattr(service,'draft_display',None))
+            # The deployment overview above already entered the same schema- and
+            # role-verified gateway. Actions still authorize in their own calls.
+            if not combined_display and not service.gateway.storage_ready(server_user):
                 if deployment:
                     st.error('Account storage could not be verified. Contact an administrator.')
                 elif overview.administrator:
@@ -86,7 +89,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             stable_key=key+':'+selected
             key=stable_key+':'+str(draft.revision)
             st.caption('Saved document revision ' + str(draft.revision))
-            published = service.published(server_user, account_id, draft.id, draft.revision)
+            display=service.draft_display(server_user,account_id,draft.id,draft.revision) if combined_display else None
+            published = display['published'] if display is not None else service.published(server_user, account_id, draft.id, draft.revision)
             if published:
                 st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
             guided=deployment and callable(getattr(service,'saved_documents',None))
@@ -94,7 +98,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             markets=('Equities and options','Forex','Futures','Crypto')
             if guided and published:
                 from campaigniq.ui.account_draft_recovery_view import render as render_saved_documents
-                render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=False,published=True)
+                render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=False,published=True,**({'inventory':display['inventory']} if display is not None else {}))
                 if st.button('View published results',key=key+':results'):
                     show_published_results(st,service,server_user,account_id,draft,deployment=deployment)
                 return
@@ -102,11 +106,11 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 if st.session_state.get(stable_key+':notice'):st.success(st.session_state[stable_key+':notice'])
                 st.subheader('1. Activity this month')
                 mode=st.radio('Choose the monthly workflow',('I traded','No trading activity'),
-                    index=1 if service.no_trading_status(server_user,account_id,draft.id,draft.revision) else (0 if published else None),
+                    index=1 if (display['no_trading'] if display is not None else service.no_trading_status(server_user,account_id,draft.id,draft.revision)) else (0 if published else None),
                     key=stable_key+':activity',disabled=published)
                 no_trading_path=mode=='No trading activity'
                 from campaigniq.ui.account_draft_recovery_view import render as render_saved_documents
-                saved_roles=render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published)
+                saved_roles=render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published,**({'inventory':display['inventory']} if display is not None else {}))
                 if mode is None:
                     st.info('Choose whether you traded this month to see the documents you need. You can correct saved uploads above.')
                     return
