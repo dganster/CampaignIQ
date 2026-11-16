@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from campaigniq.account_reconciliation_preview import ReadOnlyArtifacts
 from campaigniq.broker_account_binding import bind,bindings
-from campaigniq.persistence.account_data_session import AccountDataSession,_Drafts
+from campaigniq.persistence.account_data_session import AccountDataSession,_Drafts,_Artifacts
 from campaigniq.persistence.deployment_account_directory import PostgresAccountDirectory,DirectoryTransaction,require_transaction
 
 
@@ -42,6 +42,52 @@ def validate_data_role(conn):
 
 
 
+class _SnapshotArtifacts(_Artifacts):
+    """Bounded exact namespace bytes in one proven read-only transaction."""
+    MAX_BYTES=32*1024*1024
+    MAX_ENTRIES=512
+    def __init__(self,session):
+        super().__init__(session)
+        self._snapshot_scope=None;self._snapshot_rows=None;self._snapshot_declined=False
+
+    def _snapshot(self):
+        self._session._check()
+        if not self._session._read_snapshot_reusable():return None
+        scope=self.namespace
+        if scope!=self._snapshot_scope:
+            self._snapshot_scope=scope;self._snapshot_rows=None;self._snapshot_declined=False
+        if self._snapshot_declined:return None
+        if self._snapshot_rows is None:
+            with self._session._operation() as conn:
+                count,size=conn.execute('SELECT count(*),coalesce(sum(octet_length(artifact_key)+octet_length(content)),0) '
+                    'FROM artifact_storage_dev WHERE namespace=%s',(scope,)).fetchone()
+                if count>self.MAX_ENTRIES or size>self.MAX_BYTES:
+                    self._snapshot_declined=True;return None
+                rows=conn.execute('SELECT artifact_key,content FROM artifact_storage_dev WHERE namespace=%s ORDER BY artifact_key',(scope,)).fetchall()
+            # The size check and read must describe the same repeatable snapshot.
+            if len(rows)!=count or sum(len(k.encode())+len(v.encode()) for k,v in rows)!=size:
+                raise ValueError('Artifact snapshot inventory differs; no reuse')
+            self._snapshot_rows=dict(rows)
+        return self._snapshot_rows
+
+    def exists(self,key):
+        from campaigniq.persistence.postgres_artifact_storage import _validate_key
+        _validate_key(key);rows=self._snapshot()
+        return super().exists(key) if rows is None else key in rows
+
+    def read_text(self,key):
+        from campaigniq.persistence.postgres_artifact_storage import _validate_key
+        _validate_key(key);rows=self._snapshot()
+        if rows is None:return super().read_text(key)
+        if key not in rows:raise FileNotFoundError(key)
+        return rows[key]
+
+    def list_keys(self,*,prefix='',suffix=''):
+        rows=self._snapshot()
+        if rows is None:return super().list_keys(prefix=prefix,suffix=suffix)
+        return tuple(k for k in sorted(rows) if k.startswith(prefix) and k.endswith(suffix))
+
+
 class _SnapshotDrafts(_Drafts):
     """Successful exact document reads, scoped to one verified read-only session."""
     MAX_BYTES=32*1024*1024
@@ -71,6 +117,7 @@ class DeploymentDataSession(AccountDataSession):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,**kwargs)
         self.drafts=_SnapshotDrafts(self)
+        self.artifacts=_SnapshotArtifacts(self)
 
     def _read_snapshot_reusable(self):
         # No cross-transaction cache or writable-session reuse. The gateway closes
