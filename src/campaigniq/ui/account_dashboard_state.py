@@ -50,7 +50,7 @@ RETAINED_WIDGETS = {'checkbox', 'toggle', 'radio', 'selectbox', 'multiselect',
 
 # Assign keys also to previously implicit widgets. All controls within an
 # account use this prefix; switching accounts cannot reuse client widget state.
-WIDGETS = {'button','checkbox','toggle','radio','selectbox','multiselect','text_input',
+WIDGETS = {'tabs','button','checkbox','toggle','radio','selectbox','multiselect','text_input',
     'text_area','number_input','date_input','time_input','slider','select_slider',
     'file_uploader','data_editor','download_button','form','dataframe','plotly_chart','altair_chart'}
 
