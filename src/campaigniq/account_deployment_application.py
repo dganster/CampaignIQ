@@ -18,6 +18,10 @@ from campaigniq.persistence.signedin_account_data import InputAccounts,InputAcco
 from campaigniq.broker_account_binding import bindings
 
 
+class DraftSelectionUnavailable(FileNotFoundError):
+    """The saved display preference is outside the current account's draft list."""
+
+
 class DeploymentAdministration:
     def __init__(self,store):
         self._store=store;self._issuer=store.settings.trusted_issuer
@@ -89,22 +93,45 @@ class DeploymentMonthlyApplication:
     def reconcile(self,*args,**kwargs):return self._inputs.reconcile(*args,**kwargs)
     def results(self,*args,**kwargs):return load_deployment_results(self._inputs,*args,**kwargs)
     def compare(self,*args,**kwargs):return compare_deployment_accounts(self._inputs,*args,**kwargs)
+    def _draft_display_session(self,session,account_id,draft):
+        from campaigniq.account_draft_recovery import metadata
+        from campaigniq.account_no_trading import receipt
+        revision=draft.revision
+        published=_published_session(self._inputs,session,account_id,draft,revision,
+            receipt_format='campaigniq.deployment_account_publication')
+        if published:_deployment_results_session(self._inputs,session,draft,account_id,revision)
+        inventory=dict(revision=revision,documents=metadata(session,draft),
+            protected=bool(session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-')))
+        confirmed=False if published else receipt(session,draft) is not None
+        session._check()
+        return dict(published=published,inventory=inventory,no_trading=confirmed)
+
     def draft_display(self,user,account_id,draft_id,revision):
         """Detached presentation state from one fresh authorized READ ONLY snapshot."""
         if type(revision) is not int:raise ValueError('Displayed source revision required')
-        from campaigniq.account_draft_recovery import metadata
-        from campaigniq.account_no_trading import receipt
         with self._inputs.gateway.transaction(user,account_id) as session:
             draft=self._inputs._lock(session,draft_id)
             if draft.revision!=revision:raise ValueError('Draft changed; reload before viewing inputs')
-            published=_published_session(self._inputs,session,account_id,draft,revision,
-                receipt_format='campaigniq.deployment_account_publication')
-            if published:_deployment_results_session(self._inputs,session,draft,account_id,revision)
-            inventory=dict(revision=revision,documents=metadata(session,draft),
-                protected=bool(session.artifacts.list_keys(prefix=f'{draft.year:04d}-{draft.month:02d}-')))
-            confirmed=False if published else receipt(session,draft) is not None
-            session._check()
-            return dict(published=published,inventory=inventory,no_trading=confirmed)
+            return self._draft_display_session(session,account_id,draft)
+
+    def draft_screen(self,user,account_id,*,preferred_draft_id=None):
+        """List and inspect only this account's selected draft in one fresh snapshot."""
+        if preferred_draft_id is not None and (not isinstance(preferred_draft_id,str) or not preferred_draft_id):
+            raise ValueError('Saved draft selection must be a nonempty identifier')
+        with self._inputs.gateway.transaction(user,account_id) as session:
+            drafts=tuple(session.drafts.list_drafts())
+            choices={str(d.id):d for d in drafts}
+            if preferred_draft_id is not None and preferred_draft_id not in choices:
+                raise DraftSelectionUnavailable('Selected draft is unavailable for this account; reload saved months')
+            selected=preferred_draft_id if preferred_draft_id is not None else next(iter(choices),None)
+            if selected is None:
+                session._check()
+                return dict(drafts=drafts,selected=None,display=None)
+            listed=choices[selected]
+            draft=self._inputs._lock(session,listed.id)
+            if draft.revision!=listed.revision:raise ValueError('Draft listing changed; reload before viewing inputs')
+            display=self._draft_display_session(session,account_id,draft)
+            return dict(drafts=drafts,selected=selected,display=display)
 
     def published(self,user,account_id,draft_id,revision):
         if type(revision) is not int:raise ValueError('Displayed source revision required')

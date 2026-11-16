@@ -210,6 +210,20 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                 else:raise AssertionError('Caught display write did not invalidate read')
             assert snapshot()==initial
             passed('draft_display_reuses_one_restricted_readonly_snapshot_rejects_foreign_stale_and_caught_writes_without_row_changes')
+            listed=display_app.draft_screen(user,a,preferred_draft_id=str(drafts[a].id))
+            assert listed['selected']==str(drafts[a].id) and listed['display']==screen
+            assert all(d.workspace==drafts[a].workspace for d in listed['drafts']) and snapshot()==initial
+            for actor,account,selected in ((foreign,a,str(drafts[a].id)),(user,b,str(drafts[a].id))):
+                try:display_app.draft_screen(actor,account,preferred_draft_id=selected)
+                except (PermissionError,FileNotFoundError,ValueError):pass
+                else:raise AssertionError('Draft screen accepted foreign selection')
+            with patch.object(recovery_display,'metadata',new=forbidden_metadata):
+                try:display_app.draft_screen(user,a,preferred_draft_id=str(drafts[a].id))
+                except (RuntimeError,psycopg.Error):pass
+                else:raise AssertionError('Caught draft screen write did not invalidate snapshot')
+            assert snapshot()==initial
+            passed('draft_screen_lists_and_displays_one_account_in_restricted_readonly_snapshot_rejects_foreign_selection_and_caught_writes')
+
 
             real_write=AppendOnlyArtifacts.write_text
             def fail_marker(storage,key,text):
@@ -256,6 +270,10 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             assert screen['published'] and screen['inventory']['protected']
             assert screen['inventory']==service.saved_documents(user,a,drafts[a].id,revisions[a]) and snapshot()==after
             passed('published_draft_display_replays_canonical_generation_and_exact_inventory_without_writes')
+            listed=display_app.draft_screen(user,a,preferred_draft_id=str(drafts[a].id))
+            assert listed['display']==screen and listed['selected']==str(drafts[a].id) and snapshot()==after
+            passed('published_draft_screen_preserves_exact_inventory_and_canonical_generation_without_writes')
+
 
             with gateway.transaction(user,a) as readonly:
                 assert readonly._connection.execute('SHOW transaction_read_only').fetchone()==('on',)

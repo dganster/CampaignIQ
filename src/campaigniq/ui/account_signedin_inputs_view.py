@@ -31,7 +31,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             account = choices[account_id]
             guided=deployment and callable(getattr(service,'saved_documents',None))
             key = 'signedin-input:' + service.gateway._directory.registry_id + ':' + overview.user_id + ':' + account_id
-            combined_display=deployment and callable(getattr(service,'draft_display',None))
+            combined_screen=deployment and callable(getattr(service,'draft_screen',None))
+            combined_display=combined_screen or (deployment and callable(getattr(service,'draft_display',None)))
             # The deployment overview above already entered the same schema- and
             # role-verified gateway. Actions still authorize in their own calls.
             if not combined_display and not service.gateway.storage_ready(server_user):
@@ -79,17 +80,30 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.rerun()
             else:
                 st.info('View access only. Saved documents remain readable; uploads are disabled.')
-            drafts = {str(d.id):d for d in service.drafts(server_user, account_id)}
+            screen_data=None
+            if combined_screen:
+                from campaigniq.account_deployment_application import DraftSelectionUnavailable
+                try:
+                    screen_data=service.draft_screen(server_user,account_id,preferred_draft_id=st.session_state.get(key+':draft'))
+                except DraftSelectionUnavailable as error:
+                    st.error(str(error))
+                    if st.button('Reload saved months',key=key+':reload-drafts'):
+                        st.session_state.pop(key+':draft',None)
+                        st.rerun()
+                    return
+            drafts = {str(d.id):d for d in (screen_data['drafts'] if screen_data is not None else service.drafts(server_user, account_id))}
             if not drafts:
                 st.info('No saved monthly drafts.')
                 return
             selected = st.selectbox('Saved month', list(drafts),
                 format_func=lambda value: f'{drafts[value].year:04d}-{drafts[value].month:02d}', key=key + ':draft')
+            if screen_data is not None and selected!=screen_data['selected']:
+                st.rerun()
             draft = drafts[selected]
             stable_key=key+':'+selected
             key=stable_key+':'+str(draft.revision)
             st.caption('Saved document revision ' + str(draft.revision))
-            display=service.draft_display(server_user,account_id,draft.id,draft.revision) if combined_display else None
+            display=screen_data['display'] if screen_data is not None else (service.draft_display(server_user,account_id,draft.id,draft.revision) if combined_display else None)
             published = display['published'] if display is not None else service.published(server_user, account_id, draft.id, draft.revision)
             if published:
                 st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
