@@ -1,5 +1,6 @@
 """Deployment account-scoped drafts and retained legacy reads; no publisher or DDL."""
-from contextlib import contextmanager
+from contextlib import contextmanager,ExitStack
+from campaigniq.navigation_timing import stage
 from dataclasses import dataclass
 from campaigniq.account_reconciliation_preview import ReadOnlyArtifacts
 from campaigniq.broker_account_binding import bind,bindings
@@ -58,7 +59,7 @@ class _SnapshotArtifacts(_Artifacts):
             self._snapshot_scope=scope;self._snapshot_rows=None;self._snapshot_declined=False
         if self._snapshot_declined:return None
         if self._snapshot_rows is None:
-            with self._session._operation() as conn:
+            with stage('snapshot_artifact_batch_read'), self._session._operation() as conn:
                 count,size=conn.execute('SELECT count(*),coalesce(sum(octet_length(artifact_key)+octet_length(content)),0) '
                     'FROM artifact_storage_dev WHERE namespace=%s',(scope,)).fetchone()
                 if count>self.MAX_ENTRIES or size>self.MAX_BYTES:
@@ -138,31 +139,34 @@ class DeploymentDataSession(AccountDataSession):
 
 def _open_session(conn,settings,user,account_id,*,write=False,legacy=False,continue_existing=False):
     """Internal routing on an already checked connection and current server session."""
-    directory,actor=DirectoryTransaction(conn,settings)._actor(user)
-    access=directory.authorize(actor.identity,account_id,write=write)
-    account=next(a for a in directory.accounts if a.id==account_id)
-    if legacy:
-        if write or not account.legacy:raise ValueError('Retained account access is read-only')
-        schema='public';path='pg_catalog,public,pg_temp'
-    else:
-        new_schwab_account(directory,account_id,continue_existing=continue_existing)
-        schema='campaigniq_accounts';path='campaigniq_accounts,pg_catalog,pg_temp'
-    conn.execute('SET LOCAL search_path='+path)
-    rows=conn.execute('''SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-        WHERE c.oid IN(to_regclass('artifact_storage_dev'),to_regclass('import_drafts'),
-                       to_regclass('import_draft_documents')) ORDER BY c.relname''').fetchall()
-    if rows!=[(schema,n) for n in ('artifact_storage_dev','import_draft_documents','import_drafts')]:
-        raise ValueError('Exact account storage schema missing; no fallback or initialization')
-    session=DeploymentDataSession(conn,access,write,settings.registry_id)
-    session._physical_scope=access.storage_scope
-    # This directory was authorized on this exact financial connection. Reuse
-    # it only after proving READ ONLY REPEATABLE READ; never across sessions.
-    if not write and session._read_snapshot_reusable():
-        session._known_directory_snapshot=directory
-    session.artifacts=ReadOnlyArtifacts(session.artifacts)
+    with stage('account_data_session_authorization'):
+        directory,actor=DirectoryTransaction(conn,settings)._actor(user)
+        access=directory.authorize(actor.identity,account_id,write=write)
+        account=next(a for a in directory.accounts if a.id==account_id)
+        if legacy:
+            if write or not account.legacy:raise ValueError('Retained account access is read-only')
+            schema='public';path='pg_catalog,public,pg_temp'
+        else:
+            new_schwab_account(directory,account_id,continue_existing=continue_existing)
+            schema='campaigniq_accounts';path='campaigniq_accounts,pg_catalog,pg_temp'
+    with stage('account_data_session_schema'):
+        conn.execute('SET LOCAL search_path='+path)
+        rows=conn.execute('''SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE c.oid IN(to_regclass('artifact_storage_dev'),to_regclass('import_drafts'),
+                           to_regclass('import_draft_documents')) ORDER BY c.relname''').fetchall()
+        if rows!=[(schema,n) for n in ('artifact_storage_dev','import_draft_documents','import_drafts')]:
+            raise ValueError('Exact account storage schema missing; no fallback or initialization')
+        session=DeploymentDataSession(conn,access,write,settings.registry_id)
+        session._physical_scope=access.storage_scope
+        # This directory was authorized on this exact financial connection. Reuse
+        # it only after proving READ ONLY REPEATABLE READ; never across sessions.
+        if not write and session._read_snapshot_reusable():
+            session._known_directory_snapshot=directory
+        session.artifacts=ReadOnlyArtifacts(session.artifacts)
     if continue_existing and not legacy:
         from campaigniq.account_continuation import attach_continuation
-        attach_continuation(session,account)
+        with stage('snapshot_continuation_setup'):
+            attach_continuation(session,account)
     return session,actor.directory_revision
 
 
@@ -174,8 +178,10 @@ class PostgresAccountDataGateway:
 
     @contextmanager
     def _connection(self,*,readonly):
-        with self._directory._connection(readonly=readonly) as conn:
-            validate_data_role(conn)
+        with ExitStack() as stack:
+            with stage('account_data_connection_setup'):
+                conn=stack.enter_context(self._directory._connection(readonly=readonly))
+                validate_data_role(conn)
             yield conn
 
     def overview(self,user):
@@ -199,14 +205,15 @@ class PostgresAccountDataGateway:
     @contextmanager
     def _guard(self,user,account_id,*,legacy=False,write=False):
         with self._connection(readonly=False) as conn:
-            conn.execute('SELECT registry_id FROM campaigniq_accounts.directories WHERE registry_id=%s FOR SHARE',
-                         (self._directory.settings.registry_id,))
-            directory,actor=DirectoryTransaction(conn,self._directory.settings)._actor(user)
-            directory.authorize(actor.identity,account_id,write=write)
-            account=next(a for a in directory.accounts if a.id==account_id)
-            if legacy:
-                if not account.legacy or write:raise ValueError('Retained accounts are read-only')
-            else:new_schwab_account(directory,account_id,continue_existing=self._continue_existing)
+            with stage('account_data_guard_authorization'):
+                conn.execute('SELECT registry_id FROM campaigniq_accounts.directories WHERE registry_id=%s FOR SHARE',
+                             (self._directory.settings.registry_id,))
+                directory,actor=DirectoryTransaction(conn,self._directory.settings)._actor(user)
+                directory.authorize(actor.identity,account_id,write=write)
+                account=next(a for a in directory.accounts if a.id==account_id)
+                if legacy:
+                    if not account.legacy or write:raise ValueError('Retained accounts are read-only')
+                else:new_schwab_account(directory,account_id,continue_existing=self._continue_existing)
             yield conn
 
     @contextmanager

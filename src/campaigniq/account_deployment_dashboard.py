@@ -24,7 +24,9 @@ class DeploymentAccountDashboard:
 
     def snapshot(self,user,account_id,*,include_history=False):
         if type(include_history) is not bool:raise ValueError('Explicit history selection required')
-        choices=self.choices(user);selected=next((a for a in choices.accounts if a.id==account_id),None)
+        with stage('snapshot_account_selection'):
+            choices=self.choices(user)
+        selected=next((a for a in choices.accounts if a.id==account_id),None)
         if selected is None:raise PermissionError('Selected account is unavailable')
         # Each route reauthorizes in its own guarded read-only financial snapshot.
         if selected.legacy and not self.gateway._continue_existing:
@@ -46,18 +48,23 @@ class DeploymentAccountDashboard:
                 session._check();return result
         with self.gateway.transaction(user,account_id) as session:
             visible=[];income=[]
-            for draft in session.drafts.list_drafts():
-                self.inputs._lock(session,draft.id)
-                if _published_session(self.inputs,session,account_id,draft,draft.revision,receipt_format='campaigniq.deployment_account_publication'):
+            with stage('snapshot_draft_listing'):
+                drafts=session.drafts.list_drafts()
+            for draft in drafts:
+                with stage('snapshot_publication_checks'):
+                    self.inputs._lock(session,draft.id)
+                    published=_published_session(self.inputs,session,account_id,draft,draft.revision,receipt_format='campaigniq.deployment_account_publication')
+                if published:
                     with stage('snapshot_current_result_verification'):
                         loaded=_deployment_results_session(self.inputs,session,draft,account_id,draft.revision)
                     income.append(loaded.income_evidence)
                     visible.append(f'{draft.year:04d}-{draft.month:02d}-')
-            retained=getattr(session,'retained_rows',())
-            retained_keys={k for k,v in retained}
-            if set(session.artifacts.list_keys(suffix='-finalized.json'))-retained_keys!={p+'finalized.json' for p in visible}:
-                raise ValueError('Published generation has no matching saved source draft')
-            rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or k=='.campaigniq-monthly-publication-v1.json']
+            with stage('snapshot_artifact_assembly'):
+                retained=getattr(session,'retained_rows',())
+                retained_keys={k for k,v in retained}
+                if set(session.artifacts.list_keys(suffix='-finalized.json'))-retained_keys!={p+'finalized.json' for p in visible}:
+                    raise ValueError('Published generation has no matching saved source draft')
+                rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or k=='.campaigniq-monthly-publication-v1.json']
             if selected.legacy:
                 from campaigniq.account_income_evidence import legacy_statement_rows,legacy_statements
                 with stage('snapshot_retained_income'):
@@ -66,9 +73,10 @@ class DeploymentAccountDashboard:
             result=ReportSnapshot(session.account.storage_scope,rows,income=income)
             if include_history:
                 conn=session._connection
-                originals=conn.execute('SELECT d.id,d.sha256,d.content FROM campaigniq_accounts.import_draft_documents d '
-                    'JOIN campaigniq_accounts.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(session.account.storage_scope,ROLE)).fetchall()
-                if selected.legacy:originals+=retained_history_rows(conn,session.account.storage_scope,legacy=True)
+                with stage('snapshot_history_source_reads'):
+                    originals=conn.execute('SELECT d.id,d.sha256,d.content FROM campaigniq_accounts.import_draft_documents d '
+                        'JOIN campaigniq_accounts.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(session.account.storage_scope,ROLE)).fetchall()
+                    if selected.legacy:originals+=retained_history_rows(conn,session.account.storage_scope,legacy=True)
                 with stage('snapshot_history_verification'):
                     result.history=bind_history(result,originals,known_bindings=self.inputs._known(session))
             session._check();return result
