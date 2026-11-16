@@ -167,6 +167,26 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                 for kind,upload in synthetic_sources(number).items():revision=service.save(user,account,draft.id,revision,kind,upload)
                 drafts[account]=draft;revisions[account]=revision
             initial=snapshot()
+            from campaigniq.account_role_privilege_batch import read_role_guards
+            for role in roles[:3 if verify_preferences or verify_application else 2]:
+                with restricted(role,readonly=True) as conn:
+                    assert conn.execute('SHOW transaction_read_only').fetchone()==('on',)
+                    read_role_guards(conn,role)
+                    # Independent scalar evidence for every batched guard,
+                    # queried through the actual restricted session.
+                    assert conn.execute('''SELECT rolsuper,rolcreatedb,rolcreaterole,
+                        rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user''').fetchone()==(False,)*5
+                    assert conn.execute('SELECT 1 FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)').fetchone() is None
+                    assert conn.execute("SELECT has_database_privilege(current_user,current_database(),'CREATE')").fetchone()==(False,)
+                    for schema in ('public','campaigniq_accounts'):
+                        for privilege in ('CREATE','USAGE WITH GRANT OPTION'):
+                            assert conn.execute('SELECT has_schema_privilege(current_user,%s,%s)',(schema,privilege)).fetchone()==(False,)
+                        assert conn.execute('''SELECT 1 FROM pg_namespace n WHERE n.nspname=%s
+                            AND n.nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+                            UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                            WHERE n.nspname=%s AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)''',(schema,schema)).fetchone() is None
+            assert snapshot()==initial
+            passed('batched_role_guards_match_independent_scalar_checks_on_actual_restricted_readonly_sessions_without_row_changes')
             checked=service.monthly_source_preview(user,a,drafts[a].id,revisions[a],forex_applicable=False,crypto_applicable=False,futures_applicable=False)
             assert checked['all_source_controls_ready'] and checked['futures'] is None and snapshot()==initial
             for actor,rev,exception in ((foreign,revisions[a],PermissionError),(user,revisions[a]-1,ValueError)):

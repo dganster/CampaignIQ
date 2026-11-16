@@ -1,5 +1,35 @@
 """Read all effective table/column privileges once in the caller's snapshot."""
 
+def read_role_guards(conn,role):
+    """Fresh bounded catalog read; no connection or cross-request cache."""
+    rows=conn.execute('''/* campaigniq_batched_role_guards */
+        SELECT s.ord,s.schema_name,r.rolsuper,r.rolcreatedb,r.rolcreaterole,
+            r.rolreplication,r.rolbypassrls,
+            EXISTS(SELECT 1 FROM pg_auth_members WHERE member=r.oid),
+            has_database_privilege(r.rolname,current_database(),'CREATE'),
+            has_schema_privilege(r.rolname,s.schema_name,'USAGE WITH GRANT OPTION'),
+            has_schema_privilege(r.rolname,s.schema_name,'CREATE'),
+            EXISTS(SELECT 1 FROM pg_namespace n
+                WHERE n.nspname=s.schema_name AND n.nspowner=r.oid),
+            EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname=s.schema_name AND c.relowner=r.oid)
+        FROM pg_roles r CROSS JOIN
+            unnest(%s::text[]) WITH ORDINALITY AS s(schema_name,ord)
+        WHERE r.rolname=%s ORDER BY s.ord''',
+        (['public','campaigniq_accounts'],role)).fetchall()
+    if len(rows)!=2:raise PermissionError('Existing unprivileged runtime role required')
+    for number,schema in enumerate(('public','campaigniq_accounts'),1):
+        row=rows[number-1]
+        if (len(row)!=13 or type(row[0]) is not int or row[:2]!=(number,schema)
+            or any(type(value) is not bool for value in row[2:])):
+            raise ValueError('Missing role guard result')
+        if any(row[2:7]):raise PermissionError('Existing unprivileged runtime role required')
+        if row[7]:raise PermissionError('Runtime role memberships are prohibited')
+        if row[8]:raise PermissionError('Runtime role cannot create database objects')
+        if row[9]:raise PermissionError('Runtime schema grant options are prohibited')
+        if row[10]:raise PermissionError('Runtime role cannot create schema objects')
+        if any(row[11:]):raise PermissionError('Runtime role cannot own account or retained storage')
+
 def read_privileges(conn,role,policy,privileges):
     rows=conn.execute('''/* campaigniq_batched_privileges */
         SELECT t.ord,p.privilege,

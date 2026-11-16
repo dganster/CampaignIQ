@@ -34,23 +34,8 @@ def role_name(value):
 
 def _role_state(conn,role,policy=POLICY):
     role_name(role)
-    row=conn.execute('''SELECT oid,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
-        FROM pg_roles WHERE rolname=%s''',(role,)).fetchone()
-    if row is None or any(row[1:]):raise PermissionError('Existing unprivileged runtime role required')
-    if conn.execute('SELECT 1 FROM pg_auth_members WHERE member=%s LIMIT 1',(row[0],)).fetchone():
-        raise PermissionError('Runtime role memberships are prohibited')
-    if conn.execute('SELECT has_database_privilege(%s,current_database(),%s)',(role,'CREATE')).fetchone()!=(False,):
-        raise PermissionError('Runtime role cannot create database objects')
-    for schema in ('public','campaigniq_accounts'):
-        if conn.execute('SELECT has_schema_privilege(%s,%s,%s)',(role,schema,'USAGE WITH GRANT OPTION')).fetchone()!=(False,):
-            raise PermissionError('Runtime schema grant options are prohibited')
-        if conn.execute('SELECT has_schema_privilege(%s,%s,%s)',(role,schema,'CREATE')).fetchone()!=(False,):
-            raise PermissionError('Runtime role cannot create schema objects')
-        if conn.execute('''SELECT 1 FROM pg_namespace n WHERE n.nspname=%s AND n.nspowner=%s
-            UNION ALL SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname=%s AND c.relowner=%s LIMIT 1''',(schema,row[0],schema,row[0])).fetchone():
-            raise PermissionError('Runtime role cannot own account or retained storage')
-    from campaigniq.account_role_privilege_batch import read_privileges
+    from campaigniq.account_role_privilege_batch import read_role_guards,read_privileges
+    read_role_guards(conn,role)
     return read_privileges(conn,role,policy,PRIVILEGES)
 
 

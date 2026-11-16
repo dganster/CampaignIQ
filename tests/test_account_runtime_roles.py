@@ -20,6 +20,10 @@ class Connection:
         from psycopg import sql
         if isinstance(query,sql.Composable):query=query.as_string()
         self.calls.append((query,args))
+        if '/* campaigniq_batched_role_guards */' in query:
+            return Result([(i,s,self.elevated,False,False,False,False,self.member,
+                self.create,self.create,self.create,self.owner,self.owner)
+                for i,s in enumerate(args[0],1)])
         if '/* campaigniq_batched_privileges */' in query:
             tables,privileges=args[-2:]
             rows=[]
