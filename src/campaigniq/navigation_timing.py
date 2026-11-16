@@ -9,7 +9,7 @@ import pstats
 
 KEY='campaigniq_navigation_timing_enabled'
 _current=ContextVar('campaigniq_navigation_timing',default=None)
-_STAGES=frozenset(('release_and_composition','startup_role_and_schema_checks','signed_in_application','account_choices_and_authorization','dashboard_module_import','history_materialization','report_rendering','authorized_account_snapshot','preference_load_and_authorization','preference_controls'))
+_STAGES=frozenset(('snapshot_current_result_verification','snapshot_retained_income','snapshot_history_verification','snapshot_retained_result_verification','release_and_composition','startup_role_and_schema_checks','signed_in_application','account_choices_and_authorization','dashboard_module_import','history_materialization','report_rendering','authorized_account_snapshot','preference_load_and_authorization','preference_controls'))
 @dataclass
 class Trace:
     enabled:bool

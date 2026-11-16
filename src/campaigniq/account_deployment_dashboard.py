@@ -1,4 +1,5 @@
 """Deployment report snapshots for existing main loaders; no launcher or UI switch."""
+from campaigniq.navigation_timing import stage
 from campaigniq.account_dashboard import ReportSnapshot,DashboardAccount,DashboardChoices
 from campaigniq.account_deployment_inputs import DeploymentMonthlyInputs
 from campaigniq.account_deployment_results import _deployment_results_session
@@ -48,7 +49,8 @@ class DeploymentAccountDashboard:
             for draft in session.drafts.list_drafts():
                 self.inputs._lock(session,draft.id)
                 if _published_session(self.inputs,session,account_id,draft,draft.revision,receipt_format='campaigniq.deployment_account_publication'):
-                    loaded=_deployment_results_session(self.inputs,session,draft,account_id,draft.revision)
+                    with stage('snapshot_current_result_verification'):
+                        loaded=_deployment_results_session(self.inputs,session,draft,account_id,draft.revision)
                     income.append(loaded.income_evidence)
                     visible.append(f'{draft.year:04d}-{draft.month:02d}-')
             retained=getattr(session,'retained_rows',())
@@ -58,14 +60,15 @@ class DeploymentAccountDashboard:
             rows=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys() if k in retained_keys or any(k.startswith(p) for p in visible) or k=='.campaigniq-monthly-publication-v1.json']
             if selected.legacy:
                 from campaigniq.account_income_evidence import legacy_statement_rows,legacy_statements
-                directory=DirectoryTransaction(session._connection,self.store.settings)._load()
-                income.extend(legacy_statements(session.artifacts,legacy_statement_rows(session._connection,session.account.storage_scope),
-                    bindings(directory,account_id),tuple(key[:7] for key in retained_keys if key.endswith('-realized-attributions.json'))))
+                with stage('snapshot_retained_income'):
+                    income.extend(legacy_statements(session.artifacts,legacy_statement_rows(session._connection,session.account.storage_scope),
+                        self.inputs._known(session),tuple(key[:7] for key in retained_keys if key.endswith('-realized-attributions.json'))))
             result=ReportSnapshot(session.account.storage_scope,rows,income=income)
             if include_history:
-                conn=session._connection;directory=DirectoryTransaction(conn,self.store.settings)._load()
+                conn=session._connection
                 originals=conn.execute('SELECT d.id,d.sha256,d.content FROM campaigniq_accounts.import_draft_documents d '
                     'JOIN campaigniq_accounts.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(session.account.storage_scope,ROLE)).fetchall()
                 if selected.legacy:originals+=retained_history_rows(conn,session.account.storage_scope,legacy=True)
-                result.history=bind_history(result,originals,known_bindings=bindings(directory,account_id))
+                with stage('snapshot_history_verification'):
+                    result.history=bind_history(result,originals,known_bindings=self.inputs._known(session))
             session._check();return result

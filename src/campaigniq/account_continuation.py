@@ -3,6 +3,7 @@
 This adapter is opt-in in development composition. It changes no schema,
 privilege, live release setting, account identity or publication availability.
 """
+from campaigniq.navigation_timing import stage
 from datetime import date
 import re
 import json
@@ -100,9 +101,10 @@ def attach_continuation(session,account):
         retained=conn.execute('SELECT artifact_key,content FROM public.artifact_storage_dev WHERE namespace=%s ORDER BY artifact_key',(scope,)).fetchall()
         source=ReportSnapshot(scope,retained)
         if published_months(source)!=expected:raise ValueError('Reviewed retained history frontier changed')
-        for period in expected:
-            year,month=map(int,period.split('-'))
-            _results(source,account.id,year,month,[(k,v) for k,v in retained if k.startswith(period+'-')])
+        with stage('snapshot_retained_result_verification'):
+            for period in expected:
+                year,month=map(int,period.split('-'))
+                _results(source,account.id,year,month,[(k,v) for k,v in retained if k.startswith(period+'-')])
         # The inventory found empty future drafts. Never hide a newly uploaded
         # retained original or silently migrate a nonempty draft into new storage.
         pending=conn.execute('SELECT p.year,p.month,p.revision,count(d.id) FROM public.import_drafts p '

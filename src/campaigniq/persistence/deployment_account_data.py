@@ -108,6 +108,10 @@ def _open_session(conn,settings,user,account_id,*,write=False,legacy=False,conti
         raise ValueError('Exact account storage schema missing; no fallback or initialization')
     session=DeploymentDataSession(conn,access,write,settings.registry_id)
     session._physical_scope=access.storage_scope
+    # This directory was authorized on this exact financial connection. Reuse
+    # it only after proving READ ONLY REPEATABLE READ; never across sessions.
+    if not write and session._read_snapshot_reusable():
+        session._known_directory_snapshot=directory
     session.artifacts=ReadOnlyArtifacts(session.artifacts)
     if continue_existing and not legacy:
         from campaigniq.account_continuation import attach_continuation
