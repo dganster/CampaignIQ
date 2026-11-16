@@ -11,7 +11,7 @@ from threading import Lock
 from time import perf_counter
 
 _VIEWS=frozenset(('Overview','Campaigns','Performance','Positions','Data','Crypto','Compare accounts','Administration'))
-_OPERATIONS=frozenset(('draft_screen','draft_display','monthly_source_preview','no_trading_preview','save_no_trading_confirmation','publish','save','save_associated_gain_loss','results','reconcile','preview','futures_preview','futures_monthly_preview','saved_documents','draft_recovery_preview','recover_draft','review_forex_cash_sources','save_forex_cash_sources','saved_forex_cash_source_preview','review_crypto_statements','save_crypto_statement_sources','crypto_statement_preview','crypto_generation_preview','save_futures_statement'))
+_OPERATIONS=frozenset(('draft_screen','data_page','draft_display','monthly_source_preview','no_trading_preview','save_no_trading_confirmation','publish','save','save_associated_gain_loss','results','reconcile','preview','futures_preview','futures_monthly_preview','saved_documents','draft_recovery_preview','recover_draft','review_forex_cash_sources','save_forex_cash_sources','saved_forex_cash_source_preview','review_crypto_statements','save_crypto_statement_sources','crypto_statement_preview','crypto_generation_preview','save_futures_statement'))
 _events=deque(maxlen=2000)
 _lock=Lock()
 _logger=logging.getLogger('campaigniq.performance')

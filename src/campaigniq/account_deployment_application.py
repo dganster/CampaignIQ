@@ -119,19 +119,47 @@ class DeploymentMonthlyApplication:
         if preferred_draft_id is not None and (not isinstance(preferred_draft_id,str) or not preferred_draft_id):
             raise ValueError('Saved draft selection must be a nonempty identifier')
         with self._inputs.gateway.transaction(user,account_id) as session:
-            drafts=tuple(session.drafts.list_drafts())
-            choices={str(d.id):d for d in drafts}
-            if preferred_draft_id is not None and preferred_draft_id not in choices:
-                raise DraftSelectionUnavailable('Selected draft is unavailable for this account; reload saved months')
-            selected=preferred_draft_id if preferred_draft_id is not None else next(iter(choices),None)
-            if selected is None:
-                session._check()
-                return dict(drafts=drafts,selected=None,display=None)
-            listed=choices[selected]
-            draft=self._inputs._lock(session,listed.id)
-            if draft.revision!=listed.revision:raise ValueError('Draft listing changed; reload before viewing inputs')
-            display=self._draft_display_session(session,account_id,draft)
-            return dict(drafts=drafts,selected=selected,display=display)
+            return self._draft_screen_session(session,account_id,preferred_draft_id)
+
+    def _draft_screen_session(self,session,account_id,preferred_draft_id):
+        drafts=tuple(session.drafts.list_drafts())
+        choices={str(d.id):d for d in drafts}
+        if preferred_draft_id is not None and preferred_draft_id not in choices:
+            raise DraftSelectionUnavailable('Selected draft is unavailable for this account; reload saved months')
+        selected=preferred_draft_id if preferred_draft_id is not None else next(iter(choices),None)
+        if selected is None:
+            session._check()
+            return dict(drafts=drafts,selected=None,display=None)
+        listed=choices[selected]
+        draft=self._inputs._lock(session,listed.id)
+        if draft.revision!=listed.revision:raise ValueError('Draft listing changed; reload before viewing inputs')
+        display=self._draft_display_session(session,account_id,draft)
+        return dict(drafts=drafts,selected=selected,display=display)
+
+    def data_page(self,user,account_id,*,preferred_draft_id=None):
+        """Detached Data presentation from one fresh guarded read-only snapshot."""
+        if preferred_draft_id is not None and (type(preferred_draft_id) is not str or not preferred_draft_id):
+            raise ValueError('Selected draft must be a nonempty identifier')
+        from campaigniq.account_signin import signed_in_accounts
+        from campaigniq.account_dashboard import ReportSnapshot
+        from campaigniq.account_legacy_results import published_months
+        with self._inputs.gateway.transaction(user,account_id) as session:
+            session._check()
+            if not session._read_snapshot_reusable():raise ValueError('Read-only repeatable Data snapshot required')
+            directory=session._known_directory_snapshot
+            settings=self._inputs.gateway._directory.settings
+            actor=signed_in_accounts(user,directory,trusted_issuer=settings.trusted_issuer)
+            # Only the selected, freshly authorized account is needed here.
+            account=next(a for a in directory.accounts if a.id==account_id)
+            access=directory.authorize(actor.identity,account_id)
+            overview=InputAccounts(actor.administrator,directory.revision,
+                (InputAccount(account.id,account.name,account.archived,access.writable,
+                    tuple(sorted((kind,value.suffix) for kind,value in bindings(directory,account_id).items()))),),actor.user_id)
+            retained=ReportSnapshot(access.storage_scope,getattr(session,'retained_rows',()))
+            months=published_months(retained) if account.legacy else ()
+            screen=self._draft_screen_session(session,account_id,preferred_draft_id)
+            session._check()
+            return dict(screen,overview=overview,retained_months=months)
 
     def published(self,user,account_id,draft_id,revision):
         if type(revision) is not int:raise ValueError('Displayed source revision required')

@@ -93,6 +93,19 @@ def render(st, service, *, administration, deployment=False):
             return
         if view == 'Data':
             st.title('Data · '+account.name)
+            page_data=None
+            if deployment and getattr(service,'continue_existing',False) and callable(getattr(service.inputs,'data_page',None)):
+                from campaigniq.performance_monitor import TimedService
+                from campaigniq.account_deployment_application import DraftSelectionUnavailable
+                draft_key='signedin-input:'+service.store.registry_id+':'+overview.user_id+':'+selected+':draft'
+                try:
+                    page_data=TimedService(service.inputs).data_page(st.user,selected,preferred_draft_id=ui.session_state.get(draft_key))
+                except DraftSelectionUnavailable as error:
+                    ui.error(str(error))
+                    if ui.button('Reload saved months',key=draft_key+':reload'):
+                        ui.session_state.pop(draft_key,None)
+                        st.rerun()
+                    return
             if account.legacy:
                 st.info(('Published history is preserved. Continue with a new reporting month below.' if getattr(service,'continue_existing',False) else 'Existing saved account data is read-only.') if deployment else 'Existing saved account data is read-only in this local development view.')
                 if ui.button('Verify existing saved data'):
@@ -101,13 +114,13 @@ def render(st, service, *, administration, deployment=False):
                     ui.dataframe([{'Artifacts':result.artifact_count,'Active drafts':result.active_drafts,
                                    'Original versions':result.document_versions}], hide_index=True)
                 from campaigniq.ui.account_legacy_results_view import render as existing
-                existing(ui, service.legacy, st.user, selected, **mode)
+                existing(ui, service.legacy, st.user, selected, **mode,**({'months':page_data['retained_months']} if page_data is not None else {}))
                 if deployment and getattr(service,"continue_existing",False):
                     from campaigniq.ui.account_signedin_inputs_view import render as inputs
-                    inputs(ui,service.inputs,st.user,selected_account_id=selected,**mode)
+                    inputs(ui,service.inputs,st.user,selected_account_id=selected,**mode,**({'page_data':page_data} if page_data is not None else {}))
             else:
                 from campaigniq.ui.account_signedin_inputs_view import render as inputs
-                inputs(ui, service.inputs, st.user, selected_account_id=selected, **mode)
+                inputs(ui, service.inputs, st.user, selected_account_id=selected, **mode,**({'page_data':page_data} if page_data is not None else {}))
             return
         with stage('authorized_account_snapshot'):
             snapshot = service.snapshot(st.user, selected, include_history=True)

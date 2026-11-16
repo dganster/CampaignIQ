@@ -1,13 +1,13 @@
 """Read-only published records from the retained local workspace copy."""
 
 
-def render(st,service,server_user,account_id,*,deployment=False):
+def render(st,service,server_user,account_id,*,deployment=False,months=None):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
         with st.expander('Existing account published results'):
             st.caption('Saved account results; no import or reconciliation is rerun.' if deployment else
                 'Data source: retained LOCAL workspace copy. Production updates may not be present here. Saved results only; no import or reconciliation is rerun.')
-            months=service.published_months(server_user,account_id)
+            months=service.published_months(server_user,account_id) if months is None else months
             if not months:
                 st.info('No published month-end lot states are available for this account.' if deployment else 'No published month-end lot states are available in this local workspace copy.')
                 return

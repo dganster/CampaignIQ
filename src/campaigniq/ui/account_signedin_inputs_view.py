@@ -9,13 +9,13 @@ from campaigniq.broker_account_binding import KINDS
 from campaigniq.import_draft_bridge import RestoredUpload
 
 
-def render(st, service, server_user, *, selected_account_id=None, deployment=False):
+def render(st, service, server_user, *, selected_account_id=None, deployment=False, page_data=None):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     if deployment:
         from campaigniq.performance_monitor import TimedService
         service=TimedService(service)
     try:
-        overview = service.gateway.overview(server_user)
+        overview = page_data['overview'] if deployment and page_data is not None else service.gateway.overview(server_user)
         with st.expander('Monthly inputs' if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 'Monthly inputs for new brokerage accounts'):
             st.caption('Save source documents, check closing inventory, and publish a reconciled month for the selected account.' if deployment else
                 'Local development only. Existing workspace records are untouched. Publish locally stores a reconciled month only in the local development database.')
@@ -80,8 +80,8 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.rerun()
             else:
                 st.info('View access only. Saved documents remain readable; uploads are disabled.')
-            screen_data=None
-            if combined_screen:
+            screen_data=page_data if deployment else None
+            if combined_screen and screen_data is None:
                 from campaigniq.account_deployment_application import DraftSelectionUnavailable
                 try:
                     screen_data=service.draft_screen(server_user,account_id,preferred_draft_id=st.session_state.get(key+':draft'))
