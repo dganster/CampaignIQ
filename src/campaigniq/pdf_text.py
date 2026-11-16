@@ -47,6 +47,40 @@ def _remember(key,raw,text):
         while _cache_bytes>_CACHE_MAX_BYTES or len(_cache)>_CACHE_MAX_ENTRIES:
             _,entry=_cache.popitem(last=False);_cache_bytes-=len(entry[0])+len(entry[1])
 
+def warm_extraction_cache(documents):
+    """Best-effort pure extraction, at most two workers; never returns evidence.
+
+    Only bounded batches of exact authorized source bytes belong here. Callers
+    must still read the original and validate every binding and financial control.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    documents=tuple(dict.fromkeys(documents))
+    if (len(documents)<2 or len(documents)>32 or
+        any(type(raw) is not bytes for raw in documents) or
+        sum(map(len,documents))>8*1024*1024):return
+    executable=shutil.which('pdftotext')
+    if executable is None:return
+    identity=_tool_identity(executable)
+    pending=[raw for raw in documents if _cached(
+        ('poppler-layout-utf8-v1',identity,sha256(raw).digest(),len(raw)),raw) is None]
+    if len(pending)<2:return
+    def extract(raw):
+        try:
+            with TemporaryDirectory(prefix='campaigniq-pdf-warm-') as folder:
+                root=Path(folder);source=root/'source.pdf';source.write_bytes(raw)
+                extract_pdf_text(source,root/'text.txt')
+        except (PdfTextExtractionError,OSError):
+            # Failure is never cached. The ordinary verified read retries it
+            # and retains its existing unsupported/unverified behavior.
+            pass
+    try:
+        with ThreadPoolExecutor(max_workers=2,thread_name_prefix='campaigniq-pdf') as pool:
+            tuple(pool.map(extract,pending))
+    except (RuntimeError,OSError):
+        # Resource-limited worker startup must not prevent the ordinary read.
+        # Successfully cached text remains pure; nothing is marked verified.
+        return
+
 def extract_pdf_text(source: str|Path,destination: str|Path)->Path:
     """Extract exact current source bytes to layout-preserving UTF-8 text."""
     source_path=Path(source);destination_path=Path(destination)

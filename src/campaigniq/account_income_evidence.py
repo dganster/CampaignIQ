@@ -59,6 +59,23 @@ def legacy_statement_rows(conn,scope):
         'JOIN public.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(scope,ROLE)).fetchall()
 
 def legacy_statements(storage,rows,known,months):
+    from campaigniq.pdf_text import warm_extraction_cache
+    from campaigniq.navigation_timing import stage
+    months=tuple(months);rows=tuple(rows)
+    # No directory, connection, receipt, parsed income or account identity enters
+    # a worker. Warm only checksum-valid PDFs in this authorized month set.
+    originals=[]
+    for row in rows:
+        try:
+            identifier,digest,content,media,year,number=row
+            if media!='application/pdf' or f'{year:04d}-{number:02d}' not in months:continue
+            raw=bytes(content)
+            if sha256(raw).hexdigest()==digest:originals.append(raw)
+        except (TypeError,ValueError):
+            # The unchanged per-month reader below decides evidence status.
+            continue
+    with stage('income_pdf_prewarm'):
+        warm_extraction_cache(originals)
     result=[]
     for month in months:
         try:
@@ -84,7 +101,8 @@ def legacy_statements(storage,rows,known,months):
             # Identical extracted originals are one source, never extra income.
             if len({r[3] for r in matched})!=1:raise ValueError('Ambiguous statement originals')
             _,raw,media,text=sorted(matched,key=lambda r:r[0])[0]
-            result.append(_read_bound_text(month,raw,text,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest()))
+            with stage('income_statement_verification'):
+                result.append(_read_bound_text(month,raw,text,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest()))
         except (ValueError,KeyError,TypeError,UnicodeError,FileNotFoundError,PdfTextExtractionError):
             result.append(IncomeEvidence(month,'unverified','No supported published-source-bound statement income; not assumed zero.'))
     return tuple(result)

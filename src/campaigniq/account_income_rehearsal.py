@@ -16,6 +16,30 @@ from campaigniq.import_draft_bridge import RestoredUpload
 from campaigniq.income_rehearsal_sources import controls
 
 
+def _retained_income_parity(service,user):
+    from campaigniq.account_income_evidence import legacy_statements
+    from campaigniq.account_legacy_results import published_months
+    from campaigniq import pdf_text
+    # Pure extraction workers receive no session/connection. Compare exact
+    # historical evidence with the original sequential extraction path.
+    checked=0
+    for retained in service.gateway.overview(user):
+        if not retained.legacy:continue
+        with service.gateway.legacy_transaction(user,retained.id) as (conn,session,_):
+            originals=legacy_statement_rows(conn,session.account.storage_scope)
+            storage=ReportSnapshot(session.account.storage_scope,
+                [(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys()])
+            months=published_months(storage);known=service._known(session)
+            pdf_text.clear_extraction_cache()
+            with patch.object(pdf_text,'warm_extraction_cache',return_value=None):
+                sequential=legacy_statements(storage,originals,known,months)
+            pdf_text.clear_extraction_cache()
+            warmed=legacy_statements(storage,originals,known,months)
+            assert warmed==sequential
+            session._check();checked+=1
+    if not checked:raise AssertionError('Accessible retained account required for income parity rehearsal')
+
+
 def verify_income(c,passed):
     service,user,reader=c.inputs,c.user,c.reader
     owner=reader.snapshot(user).user(c.identities[0]).id
@@ -75,6 +99,9 @@ def verify_income(c,passed):
         legacy_statement_rows(conn,'workspace-andrew')
     assert c.snapshot()==before_read
     passed('income_legacy_statement_query_uses_actual_restricted_readonly_role_without_writes')
+    _retained_income_parity(service,user)
+    assert c.snapshot()==before_read
+    passed('retained_income_warmup_matches_sequential_reads_in_restricted_readonly_snapshot_without_row_changes')
     # Coherent row checksum tamper cannot replace the published source receipt.
     with c.owner() as conn:
         row=conn.execute('SELECT id,sha256,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND NOT superseded',
