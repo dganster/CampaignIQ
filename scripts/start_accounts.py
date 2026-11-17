@@ -48,7 +48,7 @@ def main():
     os.environ['CAMPAIGNIQ_ACCOUNT_RELEASE_SHA256']=runtime['release_sha256']
     port=os.environ.get('PORT','8501')
     if not port.isdecimal() or not 1<=int(port)<=65535:raise ValueError('Invalid server port')
-    os.execv(sys.executable,[sys.executable,'-m','campaigniq.account_server_boot'])
+    os.execv(sys.executable,[sys.executable,'-m','campaigniq.account_server_boot','--repo',str(root)])
 
 if __name__=='__main__':
     try:main()
