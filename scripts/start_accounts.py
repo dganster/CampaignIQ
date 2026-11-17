@@ -48,8 +48,7 @@ def main():
     os.environ['CAMPAIGNIQ_ACCOUNT_RELEASE_SHA256']=runtime['release_sha256']
     port=os.environ.get('PORT','8501')
     if not port.isdecimal() or not 1<=int(port)<=65535:raise ValueError('Invalid server port')
-    os.execv(sys.executable,[sys.executable,'-m','streamlit','run',str(root/'src/campaigniq/ui/account_deployment_entrypoint.py'),
-        '--server.address=0.0.0.0','--server.port='+port,'--server.headless=true'])
+    os.execv(sys.executable,[sys.executable,'-m','campaigniq.account_server_boot'])
 
 if __name__=='__main__':
     try:main()

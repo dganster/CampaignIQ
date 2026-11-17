@@ -13,8 +13,7 @@ from campaigniq.account_forex_inventory_preview import preceding_state
 from campaigniq.forex_cash_ledger_preview import _ledger, money
 from campaigniq.forex_daily_inventory import validate_daily_chain
 from campaigniq.importers.thinkorswim.forex_trade_reader import read_forex_trades
-from campaigniq.pdf_text import extract_pdf_text, warm_extraction_cache
-from campaigniq.navigation_timing import stage
+from campaigniq.pdf_text import extract_pdf_text
 from campaigniq.persistence.import_drafts import MAX_DOCUMENT_BYTES
 from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 
@@ -67,11 +66,6 @@ def evaluate_originals(service, session, draft, pdfs, *, archive_sha256):
     docs = cash.originals(session, draft, receipt)
     start, end = date(2026, 10, 1), date(2026, 10, 31)
     book, predecessor_hashes = preceding_state(session.artifacts, start=start)
-    pdfs = tuple(pdfs)
-    # Pure text only, at most two workers and bounded bytes/entries. The normal
-    # reader below still extracts each exact original and validates every report.
-    with stage('forex_daily_pdf_prewarm'):
-        warm_extraction_cache([raw for _, raw in pdfs])
     with TemporaryDirectory(prefix='campaigniq-forex-daily-review-') as folder:
         root = Path(folder)
         reports = []
