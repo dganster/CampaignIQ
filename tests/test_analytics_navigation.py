@@ -169,7 +169,8 @@ def test_identical_shared_chart_is_chronological_and_clickable():
 
 def test_both_views_use_shared_chart_and_range_precedes_all_analytics():
     source = (Path(__file__).parents[1] / "src/campaigniq/ui/dashboard.py").read_text()
-    assert source.count("build_month_chart(df)") == 2
+    assert source.count("build_month_chart(df)") == 1
+    assert source.count("build_month_chart_spec(df)") == 1
     assert source.index("filter_reporting_periods(\n") < source.index("multi_month_performance = summarize_multi_month_performance(summaries)")
     assert 'if view in ("Overview", "Campaigns", "Performance"):' in source
 

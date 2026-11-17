@@ -90,8 +90,34 @@ def render_month_chart(ui, chart, months):
         if hasattr(ui, "query_params"):
             publish_route(ui)
 
-    ui.altair_chart(chart, use_container_width=True, key=key,
+    render = ui.vega_lite_chart if isinstance(chart, dict) else ui.altair_chart
+    render(chart, use_container_width=True, key=key,
                     on_select=selected, selection_mode="campaign_month")
+
+
+def build_month_chart_spec(frame):
+    """Overview's monthly chart without loading the Altair compiler."""
+    data = frame[["period_start", "realized_pnl"]].sort_values("period_start")
+    rows = [dict(month_label=day.strftime("%b %Y"), month_key=day.strftime("%Y-%m"),
+                 realized_pnl=float(value), result="Gain" if value >= 0 else "Loss")
+            for day, value in data.itertuples(index=False, name=None)]
+    return {
+        "config": {"view": {"continuousWidth": 300, "continuousHeight": 300}},
+        "data": {"values": rows},
+        "mark": {"type": "bar", "cursor": "pointer"},
+        "encoding": {
+            "x": {"field": "month_label", "type": "nominal", "sort": [r["month_label"] for r in rows],
+                  "title": "Reporting month", "axis": {"labelAngle": 0}},
+            "y": {"field": "realized_pnl", "type": "quantitative", "title": "Realized P&L (USD)"},
+            "color": {"field": "result", "type": "nominal", "legend": None,
+                      "scale": {"domain": ["Gain", "Loss"], "range": ["#287d59", "#c44949"]}},
+            "tooltip": [{"field": "month_label", "type": "nominal", "title": "Month"},
+                        {"field": "realized_pnl", "type": "quantitative", "title": "Realized P&L", "format": "$,.2f"}],
+        },
+        "height": 320,
+        "params": [{"name": "campaign_month", "select": {"type": "point", "fields": ["month_key"], "toggle": False}}],
+        "$schema": "https://vega.github.io/schema/vega-lite/v6.4.1.json",
+    }, tuple(r["month_key"] for r in rows)
 
 
 def build_month_chart(frame):

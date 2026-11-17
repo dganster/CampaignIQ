@@ -10,7 +10,6 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -102,7 +101,7 @@ from campaigniq.ui.position_history_view import (
 from campaigniq.domain.campaign_identity import underlying_symbol
 from campaigniq.persistence.lot_book_store import _deserialize_instrument
 from campaigniq.ui.campaign_interactions import (
-    apply_performance_typography, render_performance_months, build_month_chart,
+    apply_performance_typography, render_performance_months, build_month_chart, build_month_chart_spec,
     campaign_month, closed_position_side, closed_quantity_units,
     forex_drilldowns, read_closing_trades, render_campaign_table, render_month_chart,
 )
@@ -1949,7 +1948,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         )
 
         st.subheader("Monthly Realized P&L")
-        monthly_chart, chart_months = build_month_chart(df)
+        monthly_chart, chart_months = build_month_chart_spec(df)
         st.caption("Click a month’s bar to inspect its campaigns.")
         render_month_chart(st, monthly_chart, chart_months)
 
@@ -2558,6 +2557,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 cumulative = cumulative.sort_values("period_start")
                 cumulative["cumulative_pnl"] = cumulative["realized_pnl"].cumsum()
 
+                import altair as alt
+
                 cumulative_pnl_chart = (
                     alt.Chart(cumulative)
                     .mark_line(point=True)
@@ -2893,6 +2894,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 drawdown_df["closed_date"] = pd.to_datetime(
                     drawdown_df["closed_date"]
                 )
+
+                import altair as alt
 
                 equity_base = alt.Chart(drawdown_df).encode(
                     x=alt.X(
