@@ -20,8 +20,14 @@ def load_deployment_results(service,user,account_id,draft_id,revision):
 def _deployment_results_session(service,session,draft,account_id,revision):
     # Caller owns one authorized READ ONLY snapshot for every selected source.
     from campaigniq.persistence.deployment_account_data import DeploymentDataSession,_SnapshotDrafts
-    if type(session) is DeploymentDataSession and type(session.drafts) is _SnapshotDrafts:
-        session.drafts.prime_documents(draft.id)
+    from campaigniq.account_continuation import ContinuationDrafts
+    if type(session) is DeploymentDataSession:
+        reader=session.drafts
+        supported=type(reader) is _SnapshotDrafts and reader._session is session
+        if type(reader) is ContinuationDrafts:
+            supported=(reader._session is session and type(reader._reader) is _SnapshotDrafts
+                and reader._reader._session is session)
+        if supported:reader.prime_documents(draft.id)
     uploads=restore_uploads(session.drafts,draft.id)
     with TemporaryDirectory(prefix='campaigniq-deployment-results-') as root:
         supplied=stage_monthly_uploads(upload_dir=Path(root),uploads=uploads)

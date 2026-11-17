@@ -87,6 +87,11 @@ class ContinuationDrafts:
         return self._reader.upload(draft_id,*args,**kwargs)
     def abandon(self,draft_id):
         self._session._check(write=True);self.get(draft_id);return self._reader.abandon(draft_id)
+    def prime_documents(self,draft_id):
+        # Preserve the retained-month boundary before prefetching any originals.
+        self.get(draft_id)
+        prime=getattr(self._reader,'prime_documents',None)
+        return prime(draft_id) if callable(prime) else False
     def __getattr__(self,name):
         # Original reads and metadata also retain the underlying expiring session.
         if name.startswith('_'):raise AttributeError(name)

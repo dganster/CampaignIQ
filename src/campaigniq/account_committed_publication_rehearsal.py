@@ -237,6 +237,19 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
             except (RuntimeError,psycopg.Error):pass
             assert invalidated and snapshot()==initial
             passed('document_batch_matches_independent_scalar_reads_in_restricted_readonly_snapshot_rejects_foreign_expired_and_failed_access_without_row_changes')
+            from campaigniq.account_continuation import ContinuationDrafts
+            with gateway.transaction(user,a) as boundary_session:
+                underlying=boundary_session.drafts
+                boundary_session.drafts=ContinuationDrafts(boundary_session,underlying)
+                # The synthetic January source is real and account-scoped, but
+                # remains behind the continuation adapter's September frontier.
+                try:boundary_session.drafts.prime_documents(drafts[a].id)
+                except ValueError as error:
+                    assert str(error)=='Retained published history is immutable; select October 2026 or later'
+                else:raise AssertionError('Continuation prefetch crossed retained month boundary')
+                assert underlying._primed_scope is None and not underlying._documents
+            assert snapshot()==initial
+            passed('continuation_document_batch_preserves_retained_month_boundary_in_restricted_readonly_snapshot_without_row_changes')
             checked=service.monthly_source_preview(user,a,drafts[a].id,revisions[a],forex_applicable=False,crypto_applicable=False,futures_applicable=False)
             assert checked['all_source_controls_ready'] and checked['futures'] is None and snapshot()==initial
             for actor,rev,exception in ((foreign,revisions[a],PermissionError),(user,revisions[a]-1,ValueError)):
