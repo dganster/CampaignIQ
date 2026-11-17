@@ -1,4 +1,4 @@
-"""Original-statement-bound income for immutable account report snapshots. No writes."""
+"""Original-bound income snapshots; no financial writes, optional derived text cache."""
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
@@ -59,23 +59,9 @@ def legacy_statement_rows(conn,scope):
         'JOIN public.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(scope,ROLE)).fetchall()
 
 def legacy_statements(storage,rows,known,months):
-    from campaigniq.pdf_text import warm_extraction_cache
+    from campaigniq.statement_text_cache import active_text_cache
     from campaigniq.navigation_timing import stage
-    months=tuple(months);rows=tuple(rows)
-    # No directory, connection, receipt, parsed income or account identity enters
-    # a worker. Warm only checksum-valid PDFs in this authorized month set.
-    originals=[]
-    for row in rows:
-        try:
-            identifier,digest,content,media,year,number=row
-            if media!='application/pdf' or f'{year:04d}-{number:02d}' not in months:continue
-            raw=bytes(content)
-            if sha256(raw).hexdigest()==digest:originals.append(raw)
-        except (TypeError,ValueError):
-            # The unchanged per-month reader below decides evidence status.
-            continue
-    with stage('income_pdf_prewarm'):
-        warm_extraction_cache(originals)
+    months=tuple(months);rows=tuple(rows);cache=active_text_cache()
     result=[]
     for month in months:
         try:
@@ -86,23 +72,30 @@ def legacy_statements(storage,rows,known,months):
                 raise ValueError('Published statement provenance differs')
             controls=[r for r in manifest['inputs'] if r.get('role')=='schwab_closing_position_snapshot']
             if len(controls)!=1:raise ValueError('One published closing-statement source required')
-            expected=controls[0];matched=[]
+            expected=controls[0];matched=[];uncached=[]
             for identifier,digest,content,media,year,number in rows:
                 if (year,number)!=(start.year,start.month):continue
                 raw=bytes(content)
                 if sha256(raw).hexdigest()!=digest:continue
-                text=statement_text(raw,media);data=text.encode()
+                text=cache.read(raw,expected) if cache is not None and media=='application/pdf' else None
+                cached=text is not None
+                if text is None:text=statement_text(raw,media)
+                data=text.encode()
                 # Legacy provenance bound extracted layout text. Raw originals
                 # also qualify where the original generator recorded raw bytes.
                 if not any(sha256(candidate).hexdigest()==expected.get('sha256') and len(candidate)==expected.get('byte_size') for candidate in (data,raw)):
                     continue
                 matched.append((str(identifier),raw,media,text))
+                if not cached and media=='application/pdf':uncached.append((raw,text))
             if not matched:raise ValueError('Matching published original statement is unavailable')
             # Identical extracted originals are one source, never extra income.
             if len({r[3] for r in matched})!=1:raise ValueError('Ambiguous statement originals')
             _,raw,media,text=sorted(matched,key=lambda r:r[0])[0]
             with stage('income_statement_verification'):
-                result.append(_read_bound_text(month,raw,text,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest()))
+                evidence=_read_bound_text(month,raw,text,known,published_binding=sha256(storage.read_text(key).encode()).hexdigest())
+            if cache is not None:
+                for source,layout in uncached:cache.store(source,expected,layout)
+            result.append(evidence)
         except (ValueError,KeyError,TypeError,UnicodeError,FileNotFoundError,PdfTextExtractionError):
             result.append(IncomeEvidence(month,'unverified','No supported published-source-bound statement income; not assumed zero.'))
     return tuple(result)

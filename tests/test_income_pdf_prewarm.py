@@ -61,7 +61,7 @@ def test_income_only_warms_current_checksum_valid_pdfs_and_rechecks_binding():
     bad=('bad','0'*64,b'bad','application/pdf',2025,1)
     with patch.object(pdf,'warm_extraction_cache') as warm,patch.object(income,'statement_text',return_value=statement()):
         result=income.legacy_statements(store,[pdf_row,other,bad],known,('2025-01',))
-        assert result[0].status=='verified' and warm.call_args.args==([raw],)
+        assert result[0].status=='verified' and warm.call_count==0
         from campaigniq.broker_account_binding import BrokerBinding
         foreign={'securities':BrokerBinding.create('securities','87654321')}
         assert income.legacy_statements(store,[pdf_row],foreign,('2025-01',))[0].status=='unverified'

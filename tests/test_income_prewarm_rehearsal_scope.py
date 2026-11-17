@@ -20,7 +20,7 @@ def test_income_parity_uses_current_authorized_choices_and_fresh_readonly_sessio
     with patch('campaigniq.account_income_rehearsal.legacy_statement_rows',return_value=[]),patch('campaigniq.account_income_evidence.legacy_statements',return_value=('exact-evidence',)) as read:
         _retained_income_parity(service,user)
     gateway.overview.assert_called_once_with(user)
-    assert read.call_count==2 and events==['enter','check','close']
+    assert read.call_count==3 and events==['enter','check','close']
 
 
 def test_revoked_access_is_not_skipped_or_treated_as_success():

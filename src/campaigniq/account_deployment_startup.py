@@ -66,7 +66,8 @@ def run(st,*,repo):
         st.error('CampaignIQ account startup checks failed. Contact the administrator.')
         return
     try:
-        with stage('signed_in_application'):
+        from campaigniq.statement_text_cache import using_text_cache,directory_for_release
+        with using_text_cache(directory_for_release(path,config.sha256)),stage('signed_in_application'):
             render_application(st,application)
     except Exception:
         st.error('CampaignIQ account access could not be verified. Contact the administrator.')

@@ -20,8 +20,11 @@ def _retained_income_parity(service,user):
     from campaigniq.account_income_evidence import legacy_statements
     from campaigniq.account_legacy_results import published_months
     from campaigniq import pdf_text
-    # Pure extraction workers receive no session/connection. Compare exact
-    # historical evidence with the original sequential extraction path.
+    from campaigniq.statement_text_cache import using_text_cache
+    from tempfile import TemporaryDirectory
+    from pathlib import Path
+    # Compare exact uncached, populated and disk-backed evidence. Cache files
+    # stay private and temporary; restricted database sessions remain read-only.
     checked=0
     for retained in service.gateway.overview(user):
         if not retained.legacy:continue
@@ -31,11 +34,15 @@ def _retained_income_parity(service,user):
                 [(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys()])
             months=published_months(storage);known=service._known(session)
             pdf_text.clear_extraction_cache()
-            with patch.object(pdf_text,'warm_extraction_cache',return_value=None):
+            with using_text_cache(None):
                 sequential=legacy_statements(storage,originals,known,months)
-            pdf_text.clear_extraction_cache()
-            warmed=legacy_statements(storage,originals,known,months)
-            assert warmed==sequential
+            with TemporaryDirectory(prefix='campaigniq-text-cache-rehearsal-') as folder:
+                cache=Path(folder)/'text'
+                pdf_text.clear_extraction_cache()
+                with using_text_cache(cache):populated=legacy_statements(storage,originals,known,months)
+                pdf_text.clear_extraction_cache()
+                with using_text_cache(cache):warmed=legacy_statements(storage,originals,known,months)
+                assert populated==warmed==sequential
             session._check();checked+=1
     if not checked:raise AssertionError('Accessible retained account required for income parity rehearsal')
 
@@ -102,6 +109,7 @@ def verify_income(c,passed):
     _retained_income_parity(service,user)
     assert c.snapshot()==before_read
     passed('retained_income_warmup_matches_sequential_reads_in_restricted_readonly_snapshot_without_row_changes')
+    passed('persistent_statement_text_cache_matches_fresh_income_evidence_in_restricted_readonly_snapshot_without_row_changes')
     # Coherent row checksum tamper cannot replace the published source receipt.
     with c.owner() as conn:
         row=conn.execute('SELECT id,sha256,content FROM campaigniq_accounts.import_draft_documents WHERE draft_id=%s AND role=%s AND NOT superseded',
