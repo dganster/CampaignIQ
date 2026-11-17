@@ -90,18 +90,47 @@ class _SnapshotArtifacts(_Artifacts):
 
 
 class _SnapshotDrafts(_Drafts):
-    """Successful exact document reads, scoped to one verified read-only session."""
+    """Exact originals and bounded batches in one verified read-only session."""
     MAX_BYTES=32*1024*1024
     MAX_ENTRIES=128
     def __init__(self,session):
         super().__init__(session)
         from collections import OrderedDict
         self._documents=OrderedDict();self._document_bytes=0
+        self._primed_scope=None;self._primed_roles=frozenset()
+
+    def prime_documents(self,draft_id):
+        """Bounded current originals for one draft, never outside this snapshot."""
+        self._session._check()
+        if not self._session._read_snapshot_reusable():return False
+        scope=(self.workspace,draft_id)
+        if scope==self._primed_scope:return True
+        with stage('snapshot_document_batch_read'),self._session._operation() as conn:
+            count,size=conn.execute("""SELECT count(*),coalesce(sum(octet_length(d.filename)+octet_length(d.media_type)+octet_length(d.content)),0)
+                FROM import_draft_documents d JOIN import_drafts p ON p.id=d.draft_id
+                WHERE p.id=%s AND p.workspace=%s AND p.state='draft' AND d.superseded=false""",(draft_id,self.workspace)).fetchone()
+            if count>self.MAX_ENTRIES or size>self.MAX_BYTES:return False
+            rows=conn.execute("""SELECT d.role,d.filename,d.media_type,d.content
+                FROM import_draft_documents d JOIN import_drafts p ON p.id=d.draft_id
+                WHERE p.id=%s AND p.workspace=%s AND p.state='draft' AND d.superseded=false ORDER BY d.role""",(draft_id,self.workspace)).fetchall()
+        loaded={}
+        for role,name,media,raw in rows:
+            if role in loaded:raise ValueError('Document snapshot has duplicate current roles')
+            loaded[role]=(name,media,bytes(raw))
+        actual=sum(len(name.encode())+len(media.encode())+len(raw) for name,media,raw in loaded.values())
+        if len(rows)!=count or actual!=size:raise ValueError('Document snapshot inventory differs; no reuse')
+        # Retain one bounded batch in the same LRU used for individual reads.
+        self._documents.clear();self._document_bytes=actual
+        self._documents.update(((self.workspace,draft_id,role),value) for role,value in loaded.items())
+        self._primed_scope=scope;self._primed_roles=frozenset(loaded)
+        return True
 
     def document(self,draft_id,role):
         self._session._check()
         if not self._session._read_snapshot_reusable():return super().document(draft_id,role)
         key=(self.workspace,draft_id,role)
+        if (self.workspace,draft_id)==self._primed_scope and role not in self._primed_roles:
+            raise FileNotFoundError('document not found')
         if key in self._documents:
             self._documents.move_to_end(key)
             return self._documents[key]

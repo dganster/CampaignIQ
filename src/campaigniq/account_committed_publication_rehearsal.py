@@ -187,6 +187,56 @@ def run_rehearsal(output,*,development_only,verify_dashboard=False,verify_prefer
                             WHERE n.nspname=%s AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)''',(schema,schema)).fetchone() is None
             assert snapshot()==initial
             passed('batched_role_guards_match_independent_scalar_checks_on_actual_restricted_readonly_sessions_without_row_changes')
+            # Independent originals through the actual restricted readonly session.
+            from campaigniq.persistence.account_data_session import ClosedAccountSession
+            from campaigniq.persistence.import_drafts import ImportDraftRepository
+            with gateway.transaction(user,a) as batch_session:
+                target=batch_session._connection
+                assert target.execute('SHOW transaction_read_only').fetchone()==('on',)
+                selected=target.execute("""SELECT d.role FROM import_draft_documents d JOIN import_drafts p ON p.id=d.draft_id
+                    WHERE p.id=%s AND p.workspace=%s AND p.state='draft' AND d.superseded=false ORDER BY d.role""",
+                    (drafts[a].id,batch_session.drafts.workspace)).fetchall()
+                assert len(selected)>=4
+                independent={role:ImportDraftRepository.document(batch_session.drafts,drafts[a].id,role) for role, in selected}
+                real_execute=psycopg.Connection.execute;document_queries=[]
+                def counted_documents(conn,query,*args,**kwargs):
+                    if conn is target and isinstance(query,str) and 'FROM import_draft_documents d JOIN import_drafts p' in query:document_queries.append(query)
+                    return real_execute(conn,query,*args,**kwargs)
+                with patch.object(psycopg.Connection,'execute',new=counted_documents):
+                    assert batch_session.drafts.prime_documents(drafts[a].id)
+                    for _ in range(2):
+                        assert {role:batch_session.drafts.document(drafts[a].id,role) for role in independent}==independent
+                        try:batch_session.drafts.document(drafts[a].id,'not-a-current-original')
+                        except FileNotFoundError:pass
+                        else:raise AssertionError('Absent optional source became available')
+                    assert len(document_queries)==2
+                assert batch_session.drafts.prime_documents(drafts[b].id)
+                try:batch_session.drafts.document(drafts[b].id,next(iter(independent)))
+                except FileNotFoundError:pass
+                else:raise AssertionError('Foreign draft source crossed account scope')
+                assert batch_session.drafts.prime_documents(drafts[a].id)
+                assert {role:batch_session.drafts.document(drafts[a].id,role) for role in independent}==independent
+                expired=batch_session.drafts
+            try:expired.document(drafts[a].id,next(iter(independent)))
+            except ClosedAccountSession:pass
+            else:raise AssertionError('Expired batch returned an original')
+            try:
+                with gateway.transaction(foreign,a):raise AssertionError('Foreign actor acquired original snapshot')
+            except PermissionError:pass
+            invalidated=False
+            try:
+                with gateway.transaction(user,a) as failed_batch:
+                    assert failed_batch.drafts.prime_documents(drafts[a].id)
+                    try:
+                        with failed_batch._operation() as conn:conn.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE false')
+                    except psycopg.Error:pass
+                    else:raise AssertionError('Document batch connection permits SQL writes')
+                    try:failed_batch.drafts.document(drafts[a].id,next(iter(independent)))
+                    except RuntimeError:invalidated=True
+                    else:raise AssertionError('Caught SQL failure left cached document available')
+            except (RuntimeError,psycopg.Error):pass
+            assert invalidated and snapshot()==initial
+            passed('document_batch_matches_independent_scalar_reads_in_restricted_readonly_snapshot_rejects_foreign_expired_and_failed_access_without_row_changes')
             checked=service.monthly_source_preview(user,a,drafts[a].id,revisions[a],forex_applicable=False,crypto_applicable=False,futures_applicable=False)
             assert checked['all_source_controls_ready'] and checked['futures'] is None and snapshot()==initial
             for actor,rev,exception in ((foreign,revisions[a],PermissionError),(user,revisions[a]-1,ValueError)):

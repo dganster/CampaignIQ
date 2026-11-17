@@ -109,6 +109,7 @@ sys.argv=['boot','--repo',os.environ['BOOT_TEST_REPO']]
 boot.main()
 '''
     env=dict(os.environ,PYTHONPATH=str(Path(__file__).parents[1]/'src'),PORT=str(port),BOOT_TEST_REPO=str(REPO),
+             STREAMLIT_BROWSER_SERVER_ADDRESS='127.0.0.1',STREAMLIT_BROWSER_GATHER_USAGE_STATS='false',
              CAMPAIGNIQ_ACCOUNT_RELEASE_FILE='/synthetic/verified-release.json',
              CAMPAIGNIQ_ACCOUNT_RELEASE_SHA256='a'*64)
     log=tmp_path/'server.log'
@@ -127,6 +128,7 @@ boot.main()
             text=log.read_text()
             assert 'campaigniq.server_boot.v1' in text
             assert 'Traceback' not in text
+            assert 'External URL' not in text
         finally:
             process.terminate()
             try:process.wait(timeout=5)
