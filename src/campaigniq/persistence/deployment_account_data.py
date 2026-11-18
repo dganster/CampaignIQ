@@ -86,7 +86,9 @@ class _SnapshotArtifacts(_Artifacts):
     def list_keys(self,*,prefix='',suffix=''):
         rows=self._snapshot()
         if rows is None:return super().list_keys(prefix=prefix,suffix=suffix)
-        return tuple(k for k in sorted(rows) if k.startswith(prefix) and k.endswith(suffix))
+        # Keep the SQL ORDER BY sequence, including database collation.
+        # Python sorting can differ from the direct and fallback SQL readers.
+        return tuple(k for k in rows if k.startswith(prefix) and k.endswith(suffix))
 
 
 class _SnapshotDrafts(_Drafts):
