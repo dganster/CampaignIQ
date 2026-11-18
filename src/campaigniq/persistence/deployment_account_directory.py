@@ -134,14 +134,20 @@ class PostgresAccountDirectory:
     def _connection(self,*,readonly):
         import psycopg
         from psycopg.pq import TransactionStatus
+        from campaigniq.navigation_timing import connection_phase
         # No environment-discovered DSN and no target/role fallback.
-        with psycopg.connect(self.target.conninfo(self._conninfo)) as conn:
-            if readonly:conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            conn.execute('SET LOCAL search_path=pg_catalog')
-            conn.execute("SET LOCAL lock_timeout='5s'")
-            conn.execute("SET LOCAL statement_timeout='20s'")
-            validate_runtime_role(conn,self.target)
-            verify_schema(conn,reuse_catalog=readonly)
+        with connection_phase('connect'):
+            connection=psycopg.connect(self.target.conninfo(self._conninfo))
+        with connection as conn:
+            with connection_phase('transaction_setup'):
+                if readonly:conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                conn.execute('SET LOCAL search_path=pg_catalog')
+                conn.execute("SET LOCAL lock_timeout='5s'")
+                conn.execute("SET LOCAL statement_timeout='20s'")
+            with connection_phase('runtime_role'):
+                validate_runtime_role(conn,self.target)
+            with connection_phase('schema'):
+                verify_schema(conn,reuse_catalog=readonly)
             yield conn
             if conn.info.transaction_status!=TransactionStatus.INTRANS:
                 raise RuntimeError('Account transaction failed; commit blocked')

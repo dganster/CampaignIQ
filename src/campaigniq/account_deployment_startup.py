@@ -38,8 +38,9 @@ class _StartupConnectionTiming:
     """Delegate transaction exit exactly, including exception information."""
     def __init__(self,manager,prefix):self.manager=manager;self.prefix=prefix
     def __enter__(self):
-        from campaigniq.navigation_timing import stage
-        with stage(self.prefix+'connection'):return self.manager.__enter__()
+        from campaigniq.navigation_timing import stage,connection_timing_scope
+        with connection_timing_scope(self.prefix),stage(self.prefix+'connection'):
+            return self.manager.__enter__()
     def __exit__(self,*error):
         from campaigniq.navigation_timing import stage
         with stage(self.prefix+'close'):return self.manager.__exit__(*error)

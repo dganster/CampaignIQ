@@ -12,6 +12,8 @@ _current=ContextVar('campaigniq_navigation_timing',default=None)
 _STAGES=frozenset(('income_text_cache_write','income_text_cache_read','income_text_cache_hit','income_text_cache_miss','income_text_cache_rejected','income_text_cache_store','income_pdf_prewarm','income_statement_verification','account_data_connection_setup','account_data_guard_authorization','account_data_session_authorization','account_data_session_schema','snapshot_account_selection','snapshot_continuation_setup','snapshot_draft_listing','snapshot_publication_checks','snapshot_artifact_assembly','snapshot_artifact_batch_read','snapshot_history_source_reads','performance_monthly_render','performance_campaign_render','performance_drawdown_render','snapshot_current_result_verification','snapshot_retained_income','snapshot_history_verification','snapshot_retained_result_verification','release_and_composition','startup_role_and_schema_checks','signed_in_application','account_choices_and_authorization','dashboard_module_import','history_materialization','report_rendering','authorized_account_snapshot','preference_load_and_authorization','preference_controls'))
 # Fixed labels only; no identities or connection information enter the trace.
 _STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in ('connection','validator','migrations','directory','close'))
+_STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in ('connect','transaction_setup','runtime_role','schema'))
+_connection_prefix=ContextVar('campaigniq_connection_timing_prefix',default=None)
 @dataclass
 class Trace:
     enabled:bool
@@ -49,6 +51,23 @@ def merge_stages(values):
         if name not in _STAGES:continue
         item=trace.stages.setdefault(name,{'calls':0,'seconds':0.0})
         item['calls']+=value['calls'];item['seconds']+=value['seconds']
+
+
+@contextmanager
+def connection_timing_scope(prefix):
+    if prefix not in ('startup_reader_','startup_publisher_','startup_preferences_'):
+        raise ValueError('Fixed connection timing scope required')
+    token=_connection_prefix.set(prefix)
+    try:yield
+    finally:_connection_prefix.reset(token)
+
+
+@contextmanager
+def connection_phase(name):
+    prefix=_connection_prefix.get()
+    if prefix is None or name not in ('connect','transaction_setup','runtime_role','schema'):
+        yield;return
+    with stage(prefix+name):yield
 
 
 def authorize_panel(st,*,administrator):
