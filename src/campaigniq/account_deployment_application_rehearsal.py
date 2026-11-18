@@ -20,6 +20,40 @@ def verify_application(c,passed):
     assert app.inputs._inputs.gateway._directory is c.reader
     passed('application_composes_three_distinct_restricted_roles_without_connection_side_effects_or_implicit_publication')
     passed('startup_checks_all_three_actual_roles_schema_audit_and_trusted_mapping_in_readonly_transactions')
+
+    from contextlib import ExitStack,contextmanager
+    from threading import Lock
+    from unittest.mock import patch
+    from campaigniq import account_deployment_startup as startup
+    opened=[];closed=[];active=set();lock=Lock()
+    stores=(c.reader,c.writer,c.store)
+    def tracked(index,original):
+        @contextmanager
+        def connection(*,readonly):
+            if readonly is not True:raise AssertionError('Startup must stay read-only')
+            with original(readonly=readonly) as conn:
+                with lock:opened.append(index);active.add(index)
+                try:yield conn
+                finally:
+                    with lock:closed.append(index);active.remove(index)
+        return connection
+    original_publication=startup.validate_publication_role
+    def fail_publication(conn):
+        original_publication(conn)
+        raise PermissionError('Injected startup role failure after real validation')
+    with ExitStack() as stack:
+        for index,store in enumerate(stores):stack.enter_context(patch.object(store,'_connection',new=tracked(index,store._connection)))
+        verify_startup(app)
+        assert sorted(opened)==[0,1,2] and sorted(closed)==[0,1,2] and not active
+        opened.clear();closed.clear()
+        with patch.object(startup,'validate_publication_role',new=fail_publication):
+            try:verify_startup(app)
+            except PermissionError:pass
+            else:raise AssertionError('Concurrent startup accepted failed role')
+        assert sorted(opened)==[0,1,2] and sorted(closed)==[0,1,2] and not active
+    assert c.snapshot()==before
+    passed('concurrent_startup_rechecks_three_actual_restricted_sessions_and_joins_all_connections_after_role_failure_without_row_changes')
+
     def command(action,**values):return app.administration.execute(c.user,app.administration.snapshot(c.user).revision,action,**values)
     directory=app.administration.snapshot(c.user);owner=directory.user(c.user.identity).id
     try:app.administration.snapshot(c.foreign)

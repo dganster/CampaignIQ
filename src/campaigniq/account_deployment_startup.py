@@ -34,19 +34,27 @@ def compose_release(config,connections,auth,*,repo):
     return DeploymentApplication(*stores,publication_enabled=config.publication_enabled,continue_existing=config.continue_existing,multi_asset_enabled=config.multi_asset_enabled)
 
 
+def _verify_startup_role(store,validate):
+    # Each task owns its connection/transaction and closes it on every exit.
+    with store._connection(readonly=True) as conn:
+        if validate is _verify_complete:validate(conn,store.target.user)
+        else:validate(conn)
+        if conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()!=[(1,),(2,),(3,),(4,)]:
+            raise ValueError('Reviewed account migrations are incomplete')
+        return DirectoryTransaction(conn,store.settings)._load()
+
+
 def verify_startup(application):
-    """Read-only preflight across all roles before rendering or accepting commands."""
+    """Fresh read-only checks of all three roles before rendering or commands."""
     if type(application) is not DeploymentApplication:raise ValueError('Explicit deployment application required')
+    from concurrent.futures import ThreadPoolExecutor
     stores=(application.store,application.inputs._publisher.writer,application.preferences.store)
     validators=(_verify_complete,validate_publication_role,validate_preference_role)
-    directories=[]
-    for store,validate in zip(stores,validators):
-        with store._connection(readonly=True) as conn:
-            if validate is _verify_complete:validate(conn,store.target.user)
-            else:validate(conn)
-            if conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()!=[(1,),(2,),(3,),(4,)]:
-                raise ValueError('Reviewed account migrations are incomplete')
-            directories.append(DirectoryTransaction(conn,store.settings)._load())
+    # Shutdown joins all submitted tasks on success AND failure. Never cache
+    # role/directory results or share a connection between worker threads.
+    with ThreadPoolExecutor(max_workers=3,thread_name_prefix='campaigniq-startup') as pool:
+        pending=[pool.submit(_verify_startup_role,store,validate) for store,validate in zip(stores,validators)]
+        directories=[future.result() for future in pending]
     if directories[1:]!=directories[:-1]:raise ValueError('Account directory changed during startup; retry')
 
 
