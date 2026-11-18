@@ -34,28 +34,48 @@ def compose_release(config,connections,auth,*,repo):
     return DeploymentApplication(*stores,publication_enabled=config.publication_enabled,continue_existing=config.continue_existing,multi_asset_enabled=config.multi_asset_enabled)
 
 
+class _StartupConnectionTiming:
+    """Delegate transaction exit exactly, including exception information."""
+    def __init__(self,manager,prefix):self.manager=manager;self.prefix=prefix
+    def __enter__(self):
+        from campaigniq.navigation_timing import stage
+        with stage(self.prefix+'connection'):return self.manager.__enter__()
+    def __exit__(self,*error):
+        from campaigniq.navigation_timing import stage
+        with stage(self.prefix+'close'):return self.manager.__exit__(*error)
+
+
 def _verify_startup_role(store,validate):
+    from campaigniq.navigation_timing import stage
+    role='reader' if validate is _verify_complete else ('publisher' if validate is validate_publication_role else 'preferences')
+    prefix='startup_'+role+'_'
     # Each task owns its connection/transaction and closes it on every exit.
-    with store._connection(readonly=True) as conn:
-        if validate is _verify_complete:validate(conn,store.target.user)
-        else:validate(conn)
-        if conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()!=[(1,),(2,),(3,),(4,)]:
-            raise ValueError('Reviewed account migrations are incomplete')
-        return DirectoryTransaction(conn,store.settings)._load()
+    with _StartupConnectionTiming(store._connection(readonly=True),prefix) as conn:
+        with stage(prefix+'validator'):
+            if validate is _verify_complete:validate(conn,store.target.user)
+            else:validate(conn)
+        with stage(prefix+'migrations'):
+            if conn.execute('SELECT version FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()!=[(1,),(2,),(3,),(4,)]:
+                raise ValueError('Reviewed account migrations are incomplete')
+        with stage(prefix+'directory'):
+            return DirectoryTransaction(conn,store.settings)._load()
 
 
 def verify_startup(application):
     """Fresh read-only checks of all three roles before rendering or commands."""
     if type(application) is not DeploymentApplication:raise ValueError('Explicit deployment application required')
     from concurrent.futures import ThreadPoolExecutor
+    from campaigniq.navigation_timing import capture_stages,merge_stages
     stores=(application.store,application.inputs._publisher.writer,application.preferences.store)
     validators=(_verify_complete,validate_publication_role,validate_preference_role)
     # Shutdown joins all submitted tasks on success AND failure. Never cache
     # role/directory results or share a connection between worker threads.
     with ThreadPoolExecutor(max_workers=3,thread_name_prefix='campaigniq-startup') as pool:
-        pending=[pool.submit(_verify_startup_role,store,validate) for store,validate in zip(stores,validators)]
-        directories=[future.result() for future in pending]
+        pending=[pool.submit(capture_stages,_verify_startup_role,store,validate) for store,validate in zip(stores,validators)]
+        results=[future.result() for future in pending]
+    directories=[directory for directory,measurements in results]
     if directories[1:]!=directories[:-1]:raise ValueError('Account directory changed during startup; retry')
+    for directory,measurements in results:merge_stages(measurements)
 
 
 def run(st,*,repo):

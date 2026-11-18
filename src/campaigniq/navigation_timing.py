@@ -10,6 +10,8 @@ import pstats
 KEY='campaigniq_navigation_timing_enabled'
 _current=ContextVar('campaigniq_navigation_timing',default=None)
 _STAGES=frozenset(('income_text_cache_write','income_text_cache_read','income_text_cache_hit','income_text_cache_miss','income_text_cache_rejected','income_text_cache_store','income_pdf_prewarm','income_statement_verification','account_data_connection_setup','account_data_guard_authorization','account_data_session_authorization','account_data_session_schema','snapshot_account_selection','snapshot_continuation_setup','snapshot_draft_listing','snapshot_publication_checks','snapshot_artifact_assembly','snapshot_artifact_batch_read','snapshot_history_source_reads','performance_monthly_render','performance_campaign_render','performance_drawdown_render','snapshot_current_result_verification','snapshot_retained_income','snapshot_history_verification','snapshot_retained_result_verification','release_and_composition','startup_role_and_schema_checks','signed_in_application','account_choices_and_authorization','dashboard_module_import','history_materialization','report_rendering','authorized_account_snapshot','preference_load_and_authorization','preference_controls'))
+# Fixed labels only; no identities or connection information enter the trace.
+_STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in ('connection','validator','migrations','directory','close'))
 @dataclass
 class Trace:
     enabled:bool
@@ -29,6 +31,25 @@ def stage(name):
         trace.active.remove(entry)
         value=trace.stages.setdefault(name,{'calls':0,'seconds':0.0})
         value['calls']+=1;value['seconds']+=perf_counter()-start
+
+def capture_stages(function,*args):
+    """Keep worker timings isolated from the calling thread's trace."""
+    trace=Trace(False);token=_current.set(trace)
+    try:
+        result=function(*args)
+        return result,{k:dict(v) for k,v in trace.stages.items()}
+    finally:_current.reset(token)
+
+
+def merge_stages(values):
+    """Merge completed worker measurements on the request thread only."""
+    trace=_current.get()
+    if trace is None:return
+    for name,value in values.items():
+        if name not in _STAGES:continue
+        item=trace.stages.setdefault(name,{'calls':0,'seconds':0.0})
+        item['calls']+=value['calls'];item['seconds']+=value['seconds']
+
 
 def authorize_panel(st,*,administrator):
     trace=_current.get()
