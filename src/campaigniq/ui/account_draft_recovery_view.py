@@ -10,10 +10,11 @@ def render(st,service,user,account_id,draft,*,key,writable,published,inventory=N
     sources=[r for r in active if r['role'] not in CONFIRMATIONS]
     if sources:st.table([dict(Document=r['purpose'],Filename=r['filename'],Status='Saved') for r in sources])
     else:st.info('No source documents saved for this month.')
-    with st.expander('Upload and recovery history'):
-        st.table([dict(Document=r['purpose'],Filename=r['filename'],Status='Superseded' if r['superseded'] else 'Current') for r in rows])
+    if rows:
+        with st.expander('Upload and recovery history'):
+            st.table([dict(Document=r['purpose'],Filename=r['filename'],Status='Superseded' if r['superseded'] else 'Current') for r in rows])
     roles={r['role'] for r in active}
-    if not writable or published or inventory['protected']:return roles
+    if not active or not writable or published or inventory['protected']:return roles
     with st.expander('Correct this draft or start over'):
         st.caption('Original uploads stay in history. Recovery clears saved confirmations; review and confirm the updated month again. Published months cannot be changed here.')
         choices={r['id']:r for r in active}
