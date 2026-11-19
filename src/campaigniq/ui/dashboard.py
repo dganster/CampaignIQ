@@ -1683,6 +1683,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             raise ValueError("Account report view is unsupported")
         view = selected_view
         st.session_state["campaigniq_primary_view"] = view
+        render_return_button(st, ("Overview", "Campaigns", "Performance", "Positions", "Crypto"))
     if view != "Crypto":
         st.title("Portfolio Overview" if view == "Overview" else view)
     import os
@@ -2397,17 +2398,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 )
 
                 def open_related_campaign(campaign_id, symbol):
-                    remember_return(st)
-                    st.session_state["campaigniq_campaign_month"] = "All months"
-                    st.session_state["campaigniq_campaign_symbol"] = symbol
-                    st.session_state["campaigniq_campaign_result"] = "All results"
-                    st.session_state["campaigniq_campaign_detail"] = campaign_id
-                    reporting_month = campaign_id.split("/", 1)[0]
-                    if not ((st.session_state.get("campaigniq_range_start") or reporting_month) <= reporting_month <= (st.session_state.get("campaigniq_range_end") or reporting_month)):
-                        st.session_state["campaigniq_range_start"] = reporting_month
-                        st.session_state["campaigniq_range_end"] = reporting_month
-                    st.session_state["campaigniq_primary_view"] = "Campaigns"
-                    publish_route(st)
+                    from campaigniq.ui.campaign_interactions import open_position_campaign
+                    open_position_campaign(st, campaign_id, symbol)
 
                 st.button(
                     "View campaign detail",

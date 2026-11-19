@@ -19,6 +19,35 @@ from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 from campaigniq.ui.analytics_navigation import publish_route, remember_return
 
 
+def open_position_campaign(ui, campaign_id, symbol):
+    """Save the exact return route and widen only enough to show this month."""
+    month = campaign_id.split('/', 1)[0]
+    try:
+        if date.fromisoformat(month + '-01').strftime('%Y-%m') != month:
+            return
+    except ValueError:
+        return
+    state = ui.session_state
+    remember_return(ui)
+    start, end = state.get('campaigniq_range_start'), state.get('campaigniq_range_end')
+    try:
+        valid = all(isinstance(value, str) and date.fromisoformat(value + '-01').strftime('%Y-%m') == value
+                    for value in (start, end))
+    except ValueError:
+        valid = False
+    if valid:
+        state['campaigniq_range_start'] = min(start, end, month)
+        state['campaigniq_range_end'] = max(start, end, month)
+    else:
+        state['campaigniq_range_start'] = state['campaigniq_range_end'] = month
+    state['campaigniq_campaign_month'] = 'All months'
+    state['campaigniq_campaign_symbol'] = symbol
+    state['campaigniq_campaign_result'] = 'All results'
+    state['campaigniq_campaign_detail'] = campaign_id
+    state['campaigniq_primary_view'] = 'Campaigns'
+    publish_route(ui)
+
+
 def open_chart_month(state, event, months):
     points = event.get("selection", {}).get("campaign_month", [])
     if not points:
