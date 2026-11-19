@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from campaigniq.ui.table_layout import render_dataframe
+from campaigniq.ui.financial_format import display_money, display_exact_money, display_quantity
 
 
 def render_crypto_report(report: dict, st) -> None:
@@ -20,9 +21,11 @@ def render_crypto_report(report: dict, st) -> None:
     missing_fees = sum(row["fee_usd"] is None for row in fills)
     a, b, c = st.columns(3)
     a.metric("Crypto fills", len(fills))
-    b.metric("Recorded fees", f"${known_fees:,.2f}" if not missing_fees else "Incomplete")
+    b.metric("Recorded fees", display_money(known_fees) if not missing_fees else "Incomplete")
     cash = report.get("last_reported_cash_usd")
-    c.metric("Last reported cash", f"${Decimal(cash):,.2f}" if cash is not None else "Unavailable")
+    c.metric("Export-reported cash", display_money(Decimal(cash)) if cash is not None else "Unavailable")
+    if not report['cash_control_reconciled']:
+        st.caption('Export-reported cash is not a verified closing balance; the running-balance control needs review.')
     if report["cash_control_reconciled"]:
         st.success("Cash running balances reconcile within the supplied export, including fees and funding.")
     else:
@@ -44,10 +47,10 @@ def render_crypto_report(report: dict, st) -> None:
             cost = sum((Decimal(lot["cost_usd"]) for lot in lots), Decimal(0)) if known else None
             positions.append({"Pair": pair, "Computed quantity": report["ending_quantities"].get(pair, "0"),
                               "Export snapshot quantity": snapshot.get("quantity", "Unavailable"),
-                              "Remaining FIFO cost incl. fees": f"${cost:,.2f}" if cost is not None else "Unknown opening cost"})
+                              "Remaining acquisition cost incl. fees": display_money(cost) if cost is not None else "Unknown opening cost"})
         if positions:
             render_dataframe(st, positions, use_container_width=True, hide_index=True)
-        st.caption("FIFO costs and realized results are calculated from available crypto cash evidence; they are not a broker tax report.")
+        st.caption("Acquisition cost is not current market value. FIFO costs and realized results use available crypto cash evidence; they are not a broker tax report.")
         if report["realized_sales"]:
             st.markdown("#### Realized crypto sales (FIFO)")
             render_dataframe(st, report["realized_sales"], use_container_width=True, hide_index=True)
@@ -57,12 +60,22 @@ def render_crypto_report(report: dict, st) -> None:
     st.markdown("#### Individual fills")
     if fills:
         render_dataframe(st, [{"Source execution time": row["executed_at"], "Pair": row["pair"],
-                       "Side": row["side"], "Quantity": format(Decimal(row["quantity"]), "f"), "Price (USD)": row["price_usd"],
-                       "Principal (USD)": row["principal_usd"], "Fee (USD)": row["fee_usd"],
+                       "Side": row["side"], "Quantity": display_quantity(row["quantity"]), "Price (USD)": display_exact_money(row["price_usd"]),
+                       "Principal (USD)": display_money(Decimal(row["principal_usd"])) if row["principal_usd"] is not None else 'Unavailable',
+                       "Fee (USD)": display_money(Decimal(row["fee_usd"])) if row["fee_usd"] is not None else 'Unavailable',
                        "Reference": row["reference"]} for row in fills],
                      use_container_width=True, hide_index=True)
     else:
         st.info("No crypto execution fills in the selected month.")
     with st.expander("Crypto cash ledger"):
         st.caption(f"Net funding: ${Decimal(report['net_funding_usd']):,.2f}. Funding transfers are not trading profit.")
-        render_dataframe(st, report["cash_ledger"], use_container_width=True, hide_index=True)
+        labels = {'amount_usd': 'Cash change (USD)', 'balance_usd': 'Reported balance (USD)',
+                  'description': 'Description', 'executed_at': 'Source date & time',
+                  'fee_cash_change_usd': 'Fee cash change (USD)'}
+        cash_columns = {'amount_usd', 'balance_usd', 'fee_cash_change_usd'}
+        ledger = [{labels.get(key, key):
+                   (display_money(Decimal(value)) if value is not None else 'Unavailable')
+                   if key in cash_columns else value
+                   for key, value in row.items()} for row in report['cash_ledger']]
+        st.caption('Timestamps retain the source representation; no timezone conversion is applied here.')
+        render_dataframe(st, ledger, use_container_width=True, hide_index=True)

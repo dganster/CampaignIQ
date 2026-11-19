@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from campaigniq.ui.financial_format import render_numeric_table
 
 from campaigniq.access import AccessContext
 from campaigniq.ui.access_history_view import local_access_rows, resolve_viewer_timezone
@@ -267,7 +268,7 @@ def money(value: Decimal) -> str:
 def _display_decimal(value) -> str:
     """Format a domain Decimal without unnecessary fractional zeros."""
 
-    text = format(value, "f")
+    text = format(value, ",f")
 
     if "." in text:
         text = text.rstrip("0").rstrip(".")
@@ -2263,20 +2264,21 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                         "Quantity": float(sum((abs(lot.quantity) for lot in lots), Decimal("0"))),
                         "Lots": len(lots),
                     } for (instrument, side), lots in groups.items()]
-                    render_dataframe(st, 
+                    render_numeric_table(st,
                         pd.DataFrame(position_rows).sort_values(["Instrument", "Side"]),
+                        quantities=("Quantity", "Lots"),
                         use_container_width=True, hide_index=True,
                     )
                     with st.expander("Open lot details"):
-                        render_dataframe(st, pd.DataFrame([{
+                        render_numeric_table(st, pd.DataFrame([{
                             "Instrument": _display_instrument(lot.instrument),
                             "Side": lot.side,
                             "Quantity": float(lot.absolute_quantity),
                             "Lot ID": lot.lot_id,
                             "Opened": lot.opened_at.date(),
-                            "Stored Basis": float(lot.basis_total) if lot.basis_total is not None else None,
+                            "Recorded basis (USD)": float(lot.basis_total) if lot.basis_total is not None else None,
                             "Campaign": lot.campaign_id or "Unassigned",
-                        } for lot in open_lots]), use_container_width=True, hide_index=True)
+                        } for lot in open_lots]), quantities=("Quantity",), money=("Recorded basis (USD)",), use_container_width=True, hide_index=True)
                 else:
                     st.info("No open lots are present in the selected published state.")
 
@@ -2310,13 +2312,13 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                                 key=lambda key: (_display_instrument(key[0]), key[1]),
                             )
                             if changed:
-                                render_dataframe(st, pd.DataFrame([{
+                                render_numeric_table(st, pd.DataFrame([{
                                     "Instrument": _display_instrument(instrument),
                                     "Side": side,
                                     "Prior Quantity": float(before.get((instrument, side), Decimal("0"))),
                                     "Selected Quantity": float(after.get((instrument, side), Decimal("0"))),
                                     "Change": float(after.get((instrument, side), Decimal("0")) - before.get((instrument, side), Decimal("0"))),
-                                } for instrument, side in changed]), use_container_width=True, hide_index=True)
+                                } for instrument, side in changed]), quantities=("Prior Quantity", "Selected Quantity", "Change"), use_container_width=True, hide_index=True)
                             else:
                                 st.info("No open-quantity differences between these published snapshots.")
                             st.caption("These are differences between saved month-end quantities. They do not identify trades, splits, or other causes.")
