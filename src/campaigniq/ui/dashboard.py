@@ -1656,12 +1656,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
     apply_performance_typography(st)
     st.session_state["campaigniq_table_render_number"] = 0
-    st.title("CampaignIQ")
-
-    # Display the source revision deployed by Render.
-    import os
-    build_id = os.environ.get("RENDER_GIT_COMMIT", "local")
-    st.caption(f"Build: {build_id[:7]}")
 
     if authentication_mode() == AUTH_MODE_OIDC:
         if selected_view is None:
@@ -1688,6 +1682,12 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             raise ValueError("Account report view is unsupported")
         view = selected_view
         st.session_state["campaigniq_primary_view"] = view
+    if view != "Crypto":
+        st.title("Portfolio Overview" if view == "Overview" else view)
+    import os
+    with st.sidebar.expander("Report details"):
+        st.caption("CampaignIQ · Build: " + os.environ.get("RENDER_GIT_COMMIT", "local")[:7])
+
     if preferences_renderer is None:
         render_preferences(st, ARTIFACT_STORAGE, ACCESS)
     else:
@@ -1697,7 +1697,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         if not is_access_admin(ACCESS):
             st.error("Administrator access is required.")
             st.stop()
-        st.subheader("Access History")
         st.caption("Authorized browser sessions recorded since access logging was enabled.")
         viewer_zone, timezone_fallback = preferred_timezone(
             st.session_state, getattr(getattr(st, "context", None), "timezone", None)
@@ -1746,7 +1745,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         st.stop()
 
     if view == "Data":
-        st.subheader("Data")
         st.caption("Published periods and monthly import")
         try:
             realized_keys = _published_artifact_keys(suffix="-realized-attributions.json")
@@ -1803,9 +1801,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         render_monthly_import_wizard()
         st.stop()
 
-    if view == "Performance":
-        st.caption("Realized campaign analytics")
-
     try:
         summaries, monthly_attributions, monthly_forex_attributions = load_summaries()
         lifecycle_history = load_lifecycle_history_from_storage(ARTIFACT_STORAGE)
@@ -1830,7 +1825,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             st.info("No published months are available in this reporting period.")
             st.stop()
         st.caption(
-            f"Selected reporting period: {summaries[0].period_start:%B %Y} – {summaries[-1].period_end:%B %Y}"
+            f"Reporting period: {summaries[0].period_start:%B %Y} – {summaries[-1].period_end:%B %Y} · Published analytics through {latest_available_analytics_period:%B %Y}"
         )
 
     multi_month_performance = summarize_multi_month_performance(summaries)
@@ -1911,10 +1906,10 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
     last_period = summaries[-1].period_end.strftime("%B %Y")
 
     if view == "Performance":
-        st.subheader(f"{first_period} – {last_period}")
-        _render_analytics_data_status(
-            analytics_period_end=latest_available_analytics_period,
-        )
+        with st.expander("Published data status"):
+            _render_analytics_data_status(
+                analytics_period_end=latest_available_analytics_period,
+            )
 
     forex_settled_pnl = sum(
         (
@@ -1936,8 +1931,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
 
     if view == "Overview":
-        st.subheader("Portfolio Overview")
-        st.caption(f"{first_period} – {last_period} · Published analytics through {latest_available_analytics_period:%B %Y}")
         o1, o2, o3, o4 = st.columns(4)
         o1.metric("Trading realized P&L", money(combined_realized_pnl))
         o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
@@ -1966,15 +1959,13 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             st.metric("Worst Campaign", money(campaign_outcomes.worst_campaign_pnl) if campaign_outcomes.worst_campaign_pnl is not None else "—")
             st.metric("Data Through", f"{summaries[-1].period_end:%B %Y}")
 
-        st.caption("Realized P&L combines equity/options realized results and settled FOREX; financing and interest are excluded. Campaign counts, win rate, and economics follow the existing campaign performance summary.")
+        st.caption("Trading realized P&L includes equity/options, settled Forex, and applicable futures/options results. Statement income, financing, unrealized changes, and crypto are excluded. Campaign counts and win rates retain their existing campaign scope.")
         from campaigniq.ui.income_performance import show_summary
         with st.expander('Dividends, interest and income-inclusive performance',expanded=True):
             show_summary(st,summaries)
         st.stop()
 
     if view == "Campaigns":
-        st.subheader("Campaigns")
-        st.caption(f"Realized campaigns · {first_period} – {last_period}")
         forex_campaigns, forex_campaign_records = forex_drilldowns(monthly_forex_attributions)
         campaign_drilldowns = (*campaign_drilldowns, *forex_campaigns)
         if not campaign_drilldowns:
@@ -2222,7 +2213,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         st.stop()
 
     if view == "Positions":
-        st.subheader("Positions")
         st.caption("Published month-end positions and the retained trade history for each underlying")
         st.subheader("Published Month-End Positions")
         try:

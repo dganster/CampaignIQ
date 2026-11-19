@@ -562,7 +562,7 @@ def test_analytics_data_status_uses_actual_analytics_period_end() -> None:
     text = source()
 
     heading = text.index(
-        'st.subheader(f"{first_period} – {last_period}")'
+        'with st.expander("Published data status"):'
     )
     status = text.index(
         "_render_analytics_data_status(",

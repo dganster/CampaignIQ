@@ -126,4 +126,4 @@ def test_normal_streamlit_file_entry_still_starts_the_main_dashboard(tmp_path,mo
     app=AppTest.from_file(str(DASHBOARD)).run(timeout=20)
     assert not app.exception and len(calls)==1
     assert any(r.label=='Navigate' for r in app.sidebar.radio)
-    assert any(t.value=='CampaignIQ' for t in app.title)
+    assert any(t.value=='Portfolio Overview' for t in app.title)

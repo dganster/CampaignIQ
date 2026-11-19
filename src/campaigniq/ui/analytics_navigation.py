@@ -139,7 +139,6 @@ def render_date_range(ui, months):
     years = sorted({month[:4] for month in months}, reverse=True)
     if ui.session_state.get("campaigniq_range_year") not in years:
         ui.session_state["campaigniq_range_year"] = ui.session_state["campaigniq_range_end"][:4]
-    ui.sidebar.selectbox("Shortcut year", years, key="campaigniq_range_year")
 
     def changed(field):
         if ui.session_state["campaigniq_range_start"] > ui.session_state["campaigniq_range_end"]:
@@ -161,6 +160,8 @@ def render_date_range(ui, months):
     ui.sidebar.selectbox("Through month", months, key="campaigniq_range_end",
                          format_func=lambda m: date.fromisoformat(m + "-01").strftime("%b %Y"),
                          on_change=changed, args=("campaigniq_range_end",))
+    ui.sidebar.selectbox("Shortcut year", years, key="campaigniq_range_year",
+                         help="Used by YTD and quarter buttons only. Choosing a year does not change the From/Through months.")
     columns = ui.sidebar.columns(2)
     for index, preset in enumerate(("YTD", "All available data", "Q1", "Q2", "Q3", "Q4")):
         selected = preset_range(months, preset, ui.session_state["campaigniq_range_year"])

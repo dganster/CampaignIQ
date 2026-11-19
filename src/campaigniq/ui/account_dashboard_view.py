@@ -128,14 +128,17 @@ def render(st, service, *, administration, deployment=False):
             st.title('CampaignIQ · '+account.name)
             st.info('No published reports for this account yet. Open Data to prepare its first month.')
             return
-        st.caption(account.name+' • Published account records.')
         history=snapshot.history
-        if history is not None:
-            st.caption(f'Trade-history originals verified for {len(history.originals)} of {len(history.published_months)} published months.')
-            if history.gaps:
-                with ui.expander('Trade-history evidence coverage'):
-                    ui.caption('Published journals and financial records remain available. Supplementary source details require their matching retained originals.')
-                    for gap in history.gaps:ui.caption(gap)
+        with ui.sidebar.expander('Account source details'):
+            ui.caption(account.name+' • Published account records.')
+            if history is not None:
+                ui.caption(f'Trade-history originals verified for {len(history.originals)} of {len(history.published_months)} published months.')
+                ui.caption('This count covers trade-history originals only, not every source document.')
+        if history is not None and history.gaps:
+            ui.warning('Some supplementary trade-history source details are unavailable. Published journals and financial records remain available.')
+            with ui.expander('Trade-history evidence coverage'):
+                ui.caption('Supplementary source details require their matching retained originals.')
+                for gap in history.gaps:ui.caption(gap)
         preferences_renderer = None
         if hasattr(service,'preferences'):
             from campaigniq.ui.account_preferences_view import render as personal_preferences
