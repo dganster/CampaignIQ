@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from campaigniq.ui.financial_format import render_numeric_table
+from campaigniq.ui.campaign_scope_view import render_metric_scope, render_list_scope
 
 from campaigniq.access import AccessContext
 from campaigniq.ui.access_history_view import local_access_rows, resolve_viewer_timezone
@@ -1933,9 +1934,10 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
     if view == "Overview":
         o1, o2, o3, o4 = st.columns(4)
         o1.metric("Trading realized P&L", money(combined_realized_pnl))
-        o2.metric("Campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
+        o2.metric("Equity/options campaigns", f"{multi_month_campaign_performance.campaign_count:,}")
         win_rate = multi_month_campaign_performance.win_rate
-        o3.metric("Campaign Win Rate", f"{float(win_rate):.1%}" if win_rate is not None else "—")
+        o3.metric("Equity/options win rate", f"{float(win_rate):.1%}" if win_rate is not None else "—")
+        render_metric_scope(st, multi_month_campaign_performance)
         o4.metric(
             "Profitable Months",
             f"{multi_month_performance.profitable_month_count:,} / {multi_month_performance.month_count:,}",
@@ -1967,6 +1969,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
     if view == "Campaigns":
         forex_campaigns, forex_campaign_records = forex_drilldowns(monthly_forex_attributions)
+        render_list_scope(st, equity_rows=len(campaign_drilldowns), forex_rows=len(forex_campaigns))
         campaign_drilldowns = (*campaign_drilldowns, *forex_campaigns)
         if not campaign_drilldowns:
             st.info("No realized campaigns are available for these periods.")
@@ -2038,8 +2041,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             "Realized P&L": float(item.realized_pnl),
             "First Close": item.first_closed_date,
             "Last Close": item.last_closed_date,
-            "Reconciled": "Yes" if item.fully_reconciled else "No",
-        } for item in visible], columns=["Campaign", "Symbols", "Realized P&L", "First Close", "Last Close", "Reconciled"])
+            "Recorded close checks": ("Settlement attribution" if item.campaign_id in forex_campaign_records else ("Passed" if item.fully_reconciled else "Needs review")),
+        } for item in visible], columns=["Campaign", "Symbols", "Realized P&L", "First Close", "Last Close", "Recorded close checks"])
         render_campaign_table(
             st, campaign_table, tuple(item.campaign_id for item in visible),
             column_config={
@@ -2063,7 +2066,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             d2.metric("First close", selected.first_closed_date.strftime("%b %d, %Y"))
             d3.metric("Last close", selected.last_closed_date.strftime("%b %d, %Y"))
             st.write(f"**Realized close dates:** {selected.first_closed_date:%b %d, %Y} – {selected.last_closed_date:%b %d, %Y}")
-            st.write(f"**Reconciliation:** {'Fully reconciled' if selected.fully_reconciled else 'Needs review'}")
+            close_status = "Saved Forex settlement attribution" if selected_id in forex_campaign_records else ("Recorded basis and realized-result checks passed" if selected.fully_reconciled else "Recorded close checks need review")
+            st.write("**Recorded close checks:** " + close_status)
+            st.caption("This status does not establish complete campaign history or independently verified source coverage.")
             evidence, history_gaps = _position_evidence(history_monthly_attributions, lifecycle_history)
             realized_records = ()
             if selected_id in forex_campaign_records:
@@ -2433,11 +2438,11 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 money(combined_realized_pnl),
             )
             metric2.metric(
-                "Campaigns",
+                "Equity/options campaigns",
                 f"{multi_month_campaign_performance.campaign_count:,}",
             )
             metric3.metric(
-                "Campaign Win Rate",
+                "Equity/options win rate",
                 f"{float(multi_month_campaign_performance.win_rate):.1%}" if multi_month_campaign_performance.win_rate is not None else "—",
             )
             metric4.metric(
@@ -2445,6 +2450,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 f"{total_records:,}",
             )
 
+            render_metric_scope(st, multi_month_campaign_performance)
             pnl_columns = st.columns(4 if futures_applicable else 3)
             pnl1,pnl2,pnl3 = pnl_columns[0],pnl_columns[1],pnl_columns[-1]
             if futures_applicable:pnl_columns[2].metric("Futures/options Net P&L",money(futures_realized_pnl))
@@ -2611,6 +2617,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 "Broker Records",
             ]
 
+            st.caption("Campaigns, wins, losses, breakeven and win rate in this table cover equity/options campaign-month results only. Forex and applicable futures/options remain included in the monetary totals.")
             st.caption("Click a month’s row to inspect its campaigns.")
             render_performance_months(
                 st, display_df, tuple(value.strftime("%Y-%m") for value in df["period_start"]),
@@ -2645,6 +2652,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
     if selected_performance_tab == 'Campaign Analysis':
         with campaigns_tab, stage('performance_campaign_render'):
+            render_metric_scope(st, multi_month_campaign_performance)
             underlying_performance = summarize_underlying_performance(monthly_attributions)
             st.subheader("Campaign Economics")
 
@@ -2683,6 +2691,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             )
 
             st.subheader("Campaign Outcome Distribution")
+            st.caption("Distribution and best/worst results use included equity/options and Forex campaign-month results with recorded close checks passed. This differs from the equity/options-only campaign economics and headline win rate above. Futures and crypto are excluded.")
 
             dist1, dist2, dist3, dist4 = st.columns(4)
 
@@ -2752,6 +2761,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             )
 
             st.subheader("Underlying Performance")
+            st.caption("Underlying counts and win rates cover included equity/options realized campaign-month results. Breakevens remain in the denominator; these are not counts of fully closed campaigns.")
 
             underlying_rows = [
                 {
