@@ -24,12 +24,16 @@ class DeploymentAccountDashboard:
 
     def snapshot(self,user,account_id,*,include_history=False):
         if type(include_history) is not bool:raise ValueError('Explicit history selection required')
-        with stage('snapshot_account_selection'):
-            choices=self.choices(user)
-        selected=next((a for a in choices.accounts if a.id==account_id),None)
-        if selected is None:raise PermissionError('Selected account is unavailable')
+        selected=None
+        # Continuation routes already authorize the account in the guarded
+        # financial snapshot below. Do not open an extra directory connection.
+        if not self.gateway._continue_existing:
+            with stage('snapshot_account_selection'):
+                choices=self.choices(user)
+            selected=next((a for a in choices.accounts if a.id==account_id),None)
+            if selected is None:raise PermissionError('Selected account is unavailable')
         # Each route reauthorizes in its own guarded read-only financial snapshot.
-        if selected.legacy and not self.gateway._continue_existing:
+        if selected is not None and selected.legacy and not self.gateway._continue_existing:
             with self.gateway.legacy_transaction(user,account_id) as (conn,session,_):
                 rows=conn.execute('SELECT artifact_key,content FROM public.artifact_storage_dev WHERE namespace=%s ORDER BY artifact_key',(session.account.storage_scope,)).fetchall()
                 adapter=[(k,session.artifacts.read_text(k)) for k in session.artifacts.list_keys()]
@@ -47,6 +51,14 @@ class DeploymentAccountDashboard:
                     result.history=bind_history(result,retained_history_rows(conn,session.account.storage_scope,legacy=True),known_bindings=bindings(directory,account_id))
                 session._check();return result
         with self.gateway.transaction(user,account_id) as session:
+            if self.gateway._continue_existing:
+                with stage('snapshot_account_selection'):
+                    session._check()
+                    if not session._read_snapshot_reusable():raise ValueError('Read-only repeatable dashboard snapshot required')
+                    directory=session._known_directory_snapshot
+                    if session.account.account_id!=account_id:raise PermissionError('Selected account is unavailable')
+                    selected=next((a for a in directory.accounts if a.id==account_id),None)
+                    if selected is None:raise PermissionError('Selected account is unavailable')
             visible=[];income=[]
             with stage('snapshot_draft_listing'):
                 drafts=session.drafts.list_drafts()

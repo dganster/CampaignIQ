@@ -66,6 +66,41 @@ def verify_application(c,passed):
         assert opened==closed==[0,1,2] and not active
     assert c.snapshot()==before
     passed('sequential_startup_checks_three_actual_restricted_sessions_and_closes_all_after_role_failure_without_row_changes')
+    # Synthetic published account: compare full ordinary route with continuation
+    # enabled. Only the duplicate account-choice connection may disappear.
+    from campaigniq.account_deployment_dashboard import DeploymentAccountDashboard
+    optimized=DeploymentAccountDashboard(c.reader,continue_existing=True)
+    def snapshot_values(value):
+        return value.namespace,tuple((k,value.read_text(k)) for k in value.list_keys()),value.income,value.history
+    count=[];original_connection=c.reader._connection
+    @contextmanager
+    def counted(*,readonly):
+        count.append(readonly)
+        with original_connection(readonly=readonly) as conn:yield conn
+    with patch.object(c.reader,'_connection',new=counted):
+        reference=app.snapshot(c.user,c.accounts[0],include_history=True)
+        assert count==[True,False,True]
+        count.clear()
+        actual=optimized.snapshot(c.user,c.accounts[0],include_history=True)
+        assert count==[False,True]
+    assert snapshot_values(actual)==snapshot_values(reference) and c.snapshot()==before
+    try:optimized.snapshot(c.foreign,c.accounts[0])
+    except PermissionError:pass
+    else:raise AssertionError('Foreign snapshot selection accepted')
+    from campaigniq import account_deployment_dashboard as dashboard_module
+    from psycopg.errors import ReadOnlySqlTransaction
+    original_results=dashboard_module._deployment_results_session;blocked=[]
+    def caught_write(service,session,draft,account_id,revision):
+        try:session._connection.execute('UPDATE campaigniq_accounts.import_drafts SET revision=revision WHERE id=%s',(draft.id,))
+        except ReadOnlySqlTransaction:blocked.append(True)
+        return original_results(service,session,draft,account_id,revision)
+    with patch.object(dashboard_module,'_deployment_results_session',new=caught_write):
+        try:optimized.snapshot(c.user,c.accounts[0])
+        except Exception:pass
+        else:raise AssertionError('Failed readonly snapshot returned a report')
+    assert blocked==[True] and c.snapshot()==before
+    passed('continuation_dashboard_selects_account_inside_guarded_snapshot_with_exact_report_parity_and_one_fewer_connection_without_row_changes')
+
 
 
     def command(action,**values):return app.administration.execute(c.user,app.administration.snapshot(c.user).revision,action,**values)
