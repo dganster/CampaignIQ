@@ -11,7 +11,7 @@ def test_normal_startup_records_fifteen_fixed_stages_on_parent_thread(harness):
     trace=timing.Trace(False,True,'Overview');token=timing._current.set(trace)
     try:startup.verify_startup(harness.app)
     finally:timing._current.reset(token)
-    assert set(trace.stages)==NAMES
+    assert set(trace.stages)==NAMES|{'startup_concurrent_checks'}
     assert trace.active==[]
     assert all(v['calls']==1 and v['seconds']>=0 for v in trace.stages.values())
     assert trace.authorized is True and trace.view=='Overview'
@@ -25,7 +25,7 @@ def test_failed_startup_keeps_connection_cleanup_and_does_not_merge_partial_succ
     try:
         with pytest.raises((ValueError,PermissionError)):startup.verify_startup(harness.app)
     finally:timing._current.reset(token)
-    assert trace.stages=={} and trace.active==[]
+    assert set(trace.stages)=={'startup_concurrent_checks'} and trace.active==[]
     assert sum(name=='close' for name,i in harness.events)==3
 
 def test_worker_capture_uses_new_trace_and_restores_context_even_on_failure():

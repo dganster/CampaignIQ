@@ -16,6 +16,15 @@ _STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','pub
 _SCHEMA_PHASES=('schema_proof', 'schema_search_path', 'schema_tables', 'schema_migrations', 'catalog_namespace', 'catalog_relations', 'catalog_columns', 'catalog_constraints', 'catalog_indexes', 'catalog_triggers', 'catalog_functions', 'catalog_policies', 'catalog_fingerprint', 'grant_schemas', 'grant_relations', 'grant_fingerprint')
 _STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in _SCHEMA_PHASES)
 _connection_prefix=ContextVar('campaigniq_connection_timing_prefix',default=None)
+STARTUP_MODE_KEY='campaigniq_startup_execution_mode'
+_STAGES=_STAGES | frozenset(('startup_concurrent_checks','startup_sequential_checks'))
+
+def startup_execution_mode(state):
+    mode=state.get(STARTUP_MODE_KEY,'concurrent')
+    if type(mode) is not str or mode not in ('concurrent','sequential'):
+        raise ValueError('Explicit startup execution mode required')
+    return mode
+
 @dataclass
 class Trace:
     enabled:bool
@@ -79,6 +88,9 @@ def authorize_panel(st,*,administrator):
         show=False
         with st.sidebar.expander('Navigation diagnostics'):
             st.checkbox('Measure page loading',value=False,key=KEY)
+            if hasattr(st,'selectbox'):
+                st.selectbox('Startup checks comparison',('concurrent','sequential'),key=STARTUP_MODE_KEY,format_func=lambda mode:mode.capitalize())
+                st.caption('Comparison changes only scheduling. All startup checks still run; concurrent is the default.')
             st.caption('Automatic lightweight timings are always collected. Enable detailed profiling only when investigating a slow page; profiling adds overhead.')
             if hasattr(st,'button'):
                 show=st.button('Show performance statistics',key='performance-statistics')

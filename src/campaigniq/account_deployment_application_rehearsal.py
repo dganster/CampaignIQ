@@ -53,6 +53,20 @@ def verify_application(c,passed):
         assert sorted(opened)==[0,1,2] and sorted(closed)==[0,1,2] and not active
     assert c.snapshot()==before
     passed('concurrent_startup_rechecks_three_actual_restricted_sessions_and_joins_all_connections_after_role_failure_without_row_changes')
+    opened.clear();closed.clear()
+    with ExitStack() as stack:
+        for index,store in enumerate(stores):stack.enter_context(patch.object(store,'_connection',new=tracked(index,store._connection)))
+        verify_startup(app,execution='sequential')
+        assert opened==closed==[0,1,2] and not active
+        opened.clear();closed.clear()
+        with patch.object(startup,'validate_publication_role',new=fail_publication):
+            try:verify_startup(app,execution='sequential')
+            except PermissionError:pass
+            else:raise AssertionError('Sequential startup accepted failed role')
+        assert opened==closed==[0,1,2] and not active
+    assert c.snapshot()==before
+    passed('sequential_startup_checks_three_actual_restricted_sessions_and_closes_all_after_role_failure_without_row_changes')
+
 
     def command(action,**values):return app.administration.execute(c.user,app.administration.snapshot(c.user).revision,action,**values)
     directory=app.administration.snapshot(c.user);owner=directory.user(c.user.identity).id

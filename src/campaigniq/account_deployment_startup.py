@@ -62,25 +62,35 @@ def _verify_startup_role(store,validate):
             return DirectoryTransaction(conn,store.settings)._load()
 
 
-def verify_startup(application):
+def verify_startup(application,*,execution='concurrent'):
     """Fresh read-only checks of all three roles before rendering or commands."""
     if type(application) is not DeploymentApplication:raise ValueError('Explicit deployment application required')
     from concurrent.futures import ThreadPoolExecutor
-    from campaigniq.navigation_timing import capture_stages,merge_stages
+    from campaigniq.navigation_timing import capture_stages,merge_stages,stage
+    if type(execution) is not str or execution not in ('concurrent','sequential'):
+        raise ValueError('Explicit startup execution mode required')
     stores=(application.store,application.inputs._publisher.writer,application.preferences.store)
     validators=(_verify_complete,validate_publication_role,validate_preference_role)
-    # Shutdown joins all submitted tasks on success AND failure. Never cache
-    # role/directory results or share a connection between worker threads.
-    with ThreadPoolExecutor(max_workers=3,thread_name_prefix='campaigniq-startup') as pool:
-        pending=[pool.submit(capture_stages,_verify_startup_role,store,validate) for store,validate in zip(stores,validators)]
-        results=[future.result() for future in pending]
-    directories=[directory for directory,measurements in results]
-    if directories[1:]!=directories[:-1]:raise ValueError('Account directory changed during startup; retry')
-    for directory,measurements in results:merge_stages(measurements)
+    with stage('startup_'+execution+'_checks'):
+        # Shutdown joins every submitted task even on failure. The sequential
+        # control also checks all three roles and closes each before the next.
+        if execution=='concurrent':
+            with ThreadPoolExecutor(max_workers=3,thread_name_prefix='campaigniq-startup') as pool:
+                pending=[pool.submit(capture_stages,_verify_startup_role,store,validate) for store,validate in zip(stores,validators)]
+                results=[future.result() for future in pending]
+        else:
+            results=[];errors=[]
+            for store,validate in zip(stores,validators):
+                try:results.append(capture_stages(_verify_startup_role,store,validate))
+                except Exception as error:errors.append(error)
+            if errors:raise errors[0]
+        directories=[directory for directory,measurements in results]
+        if directories[1:]!=directories[:-1]:raise ValueError('Account directory changed during startup; retry')
+        for directory,measurements in results:merge_stages(measurements)
 
 
 def run(st,*,repo):
-    from campaigniq.navigation_timing import stage
+    from campaigniq.navigation_timing import stage,startup_execution_mode
     try:
         path=os.environ.get('CAMPAIGNIQ_ACCOUNT_RELEASE_FILE')
         reviewed=os.environ.get('CAMPAIGNIQ_ACCOUNT_RELEASE_SHA256')
@@ -89,7 +99,7 @@ def run(st,*,repo):
             config=read_release(path,reviewed_sha256=reviewed)
             application=compose_release(config,os.environ,st.secrets['auth'],repo=repo)
         with stage('startup_role_and_schema_checks'):
-            verify_startup(application)
+            verify_startup(application,execution=startup_execution_mode(st.session_state))
     except Exception:
         # Do not expose identities, credentials, DSNs or database exception text.
         st.error('CampaignIQ account startup checks failed. Contact the administrator.')
