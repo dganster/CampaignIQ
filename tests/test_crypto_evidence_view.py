@@ -68,7 +68,7 @@ def test_export_only_zero_cash_is_not_labeled_statement_cash():
     ui = UI()
     render_crypto_report(report(), ui)
     assert ('metric', ('Export-reported cash', '$0.00')) in ui.messages
-    assert 'not a verified closing balance' in str(ui.messages)
+    assert 'Unverified closing balance' in str(ui.messages)
     assert 'No owner-approved statement financial record' in str(ui.messages)
 
 

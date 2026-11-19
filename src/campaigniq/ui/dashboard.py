@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from campaigniq.ui.financial_format import render_numeric_table
+from campaigniq.ui.financial_format import render_numeric_table, display_money
 from campaigniq.ui.campaign_scope_view import render_metric_scope, render_list_scope
 
 from campaigniq.access import AccessContext
@@ -425,15 +425,22 @@ def _render_position_history(entries, *, include_campaign=False, realized_record
     if selected_entries is not None:
         frame["Selected campaign"] = frame.get("Selected campaign", False).fillna(False) if "Selected campaign" in frame else False
         display_frame = frame.style.apply(lambda row: ["background-color: #dbeafe; color: #172554" if row["Selected campaign"] else "" for _ in row], axis=1)
+    if "Realized P&L" in frame:
+        frame["Realized P&L"] = frame["Realized P&L"].map(display_money)
+    if selected_entries is not None:
+        if not frame["Selected campaign"].any():
+            st.caption("No retained trade rows are linked to this campaign; underlying context is shown.")
+        st.caption("Position after is specific to each campaign and instrument; rows from different campaigns do not form one running balance.")
     render_dataframe(st, display_frame, hide_index=True, width="stretch", column_config={
         "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
         "Time": st.column_config.TimeColumn("Source time", format="HH:mm:ss"),
-        "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
+        "Realized P&L": st.column_config.TextColumn("Realized P&L"),
         "Quantity change": st.column_config.NumberColumn("Quantity change", format=quantity_format),
         "Position after": st.column_config.NumberColumn("Campaign position after", format=quantity_format),
         "Price": st.column_config.NumberColumn("Price (leg average)", format="$%0,.4f"),
     })
-    st.caption("Quantities are signed: negative positions are short. Each row summarizes an attributed trade leg; Price is its weighted average fill price and Fills is its execution count. Position after is the campaign's quantity in that instrument, not an account total. Missing balances mean the retained evidence cannot establish them.")
+    with st.expander("History column definitions"):
+        st.caption("Quantities are signed: negative positions are short. Each row summarizes an attributed trade leg; Price is its weighted average fill price and Fills is its execution count. Position after is the campaign's quantity in that instrument, not an account total. Missing balances mean the retained evidence cannot establish them.")
     if any(row["Action"] == "Carried position" for row in rows):
         st.caption("Carried position marks a verified starting balance. Its original opening trade is not available in this history.")
 
@@ -449,7 +456,8 @@ def _choose_history_scope(entries, lifecycle_rows, *, key, history_monthly_attri
         start, end = (months[0], months[-1]) if months else ("0001-01", "9999-12")
     entries, lifecycle_rows = scope_history(entries, lifecycle_rows, start, end, all_history=scope == "All history")
     if scope == "Selected period":
-        st.caption(f"Selected reporting period: {start} through {end}. Position balances retain their saved meaning; they are not reset at the range boundary.")
+        period_label = date.fromisoformat(start + "-01").strftime("%B %Y") if start == end else f"{date.fromisoformat(start + '-01'):%B %Y} – {date.fromisoformat(end + '-01'):%B %Y}"
+        st.caption(f"Selected reporting period: {period_label}. Position balances retain their saved meaning; they are not reset at the range boundary.")
     st.caption(history_coverage(entries, lifecycle_rows))
     return entries, lifecycle_rows
 
@@ -1962,9 +1970,10 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             st.metric("Payoff Ratio", f"{ratio:.2f}×" if ratio is not None else "—")
         with right:
             st.subheader("Attention")
-            st.metric("Unattributed Broker Records", f"{total_unattributed:,}")
-            if total_unattributed == 0:
-                st.caption("No unattributed broker records in this reporting period.")
+            if total_unattributed:
+                st.metric("Unattributed Broker Records", f"{total_unattributed:,}")
+            else:
+                st.caption("No attribution issues in this reporting period.")
 
         st.caption("Trading realized P&L includes equity/options, settled Forex, and applicable futures/options results. Statement income, financing, unrealized changes, and crypto are excluded. Campaign counts and win rates retain their existing campaign scope.")
         from campaigniq.ui.income_performance import show_summary
@@ -2051,7 +2060,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
         render_campaign_table(
             st, campaign_table, tuple(item.campaign_id for item in visible),
             column_config={
-                "Realized P&L": st.column_config.NumberColumn("Realized P&L", format="$%0,.2f"),
                 "First Close": st.column_config.DateColumn("First Close", format="MMM D, YYYY"),
                 "Last Close": st.column_config.DateColumn("Last Close", format="MMM D, YYYY"),
             },
@@ -2071,7 +2079,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             d1.metric("Realized P&L", money(selected.realized_pnl))
             d2.metric("Realized close date" if selected.first_closed_date == selected.last_closed_date else "Realized close dates",
                       selected.first_closed_date.strftime("%b %d, %Y") if selected.first_closed_date == selected.last_closed_date else _display_date_range(selected.first_closed_date, selected.last_closed_date))
-            close_status = "Saved Forex settlement attribution" if selected_id in forex_campaign_records else ("Recorded close checks passed" if selected.fully_reconciled else "Recorded close checks need review")
+            close_status = "Saved Forex settlement attribution" if selected_id in forex_campaign_records else ("Passed" if selected.fully_reconciled else "Needs review")
             st.write("**Recorded close checks:** " + close_status)
             st.caption("This status does not establish complete campaign history or independently verified source coverage.")
             evidence, history_gaps = _position_evidence(history_monthly_attributions, lifecycle_history)
@@ -2181,11 +2189,11 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                         } for number, attribution in enumerate(realized_records, 1)]),
                             use_container_width=True, hide_index=True,
                             key=f"campaigniq_broker_records_compact_{selected_id}",
-                            column_order=["Close Date", "Instrument", "Quantity closed", "Realized P&L", "Status", "Long/Short", "Units", "Record"],
+                            column_order=["Close Date", "Instrument", "Quantity closed", "Units", "Realized P&L", "Status", "Long/Short", "Record"],
                             column_config={
                                 "Record": st.column_config.NumberColumn("Record", width=60),
                                 "Close Date": st.column_config.DateColumn("Close Date", format="MMM D, YYYY", width=115),
-                                "Instrument": st.column_config.TextColumn("Instrument", width=240),
+                                "Instrument": st.column_config.TextColumn("Instrument", width=150),
                                 "Quantity closed": st.column_config.NumberColumn("Quantity closed", width=130),
                                 "Units": st.column_config.TextColumn("Units", width=85),
                                 "Long/Short": st.column_config.TextColumn("Long/Short", width=105),
@@ -2280,10 +2288,10 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                             "Side": lot.side,
                             "Quantity": float(lot.absolute_quantity),
                             "Opened / snapshot date": lot.opened_at.date(),
-                            "Recorded basis (USD)": float(lot.basis_total) if lot.basis_total is not None else None,
+                            "Recorded basis (USD)": display_money(lot.basis_total),
                             "Lot ID": lot.lot_id,
                             "Campaign": lot.campaign_id or "Unassigned",
-                        } for lot in open_lots]), quantities=("Quantity",), money=("Recorded basis (USD)",), use_container_width=True, hide_index=True)
+                        } for lot in open_lots]), quantities=("Quantity",), use_container_width=True, hide_index=True)
                 else:
                     st.info("No open lots are present in the selected published state.")
 
@@ -2452,9 +2460,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             )
 
             render_metric_scope(st, multi_month_campaign_performance)
-            st.caption("Asset breakdown · Equity/options: " + money(equity_options_realized_pnl)
+            st.caption(("Asset breakdown · Equity/options: " + money(equity_options_realized_pnl)
                        + " · Forex settlements: " + money(forex_settled_pnl)
-                       + (" · Futures/options net: " + money(futures_realized_pnl) if futures_applicable else ""))
+                       + (" · Futures/options net: " + money(futures_realized_pnl) if futures_applicable else "")).replace("$", r"\$"))
             from campaigniq.ui.income_performance import show_summary
             with st.expander('Dividends, interest and income-inclusive performance',expanded=True):
                 show_summary(st,summaries)
@@ -2530,9 +2538,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
             st.divider()
 
-            left, right = st.columns(2)
+            chart_columns = st.columns(2) if len(summaries) > 1 else (st.container(),)
 
-            with left:
+            with chart_columns[0]:
                 st.subheader("Monthly Realized P&L")
 
                 monthly_chart, chart_months = build_month_chart(df)
@@ -2540,7 +2548,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 render_month_chart(st, monthly_chart, chart_months)
 
             if len(summaries) > 1:
-                with right:
+                with chart_columns[1]:
                     st.subheader("Cumulative Realized P&L")
     
                     cumulative = df[["period_start", "realized_pnl"]].copy()
@@ -2617,6 +2625,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 "Broker Records",
             ]
 
+            core_columns = ["Month", "Combined Realized P&L", "Campaigns", "Win Rate"]
+            display_df = display_df[core_columns + [name for name in display_df if name not in core_columns]]
             st.caption("Campaigns, wins, losses, breakeven and win rate in this table cover equity/options campaign-month results only. Forex and applicable futures/options remain included in the monetary totals.")
             st.caption("Click a month’s row to inspect its campaigns.")
             render_performance_months(
@@ -2742,12 +2752,12 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             )
 
             tail3.metric(
-                "Top 3 Winners",
+                f"Top {min(3, sum(result.fully_reconciled and result.gain_loss > 0 for result in campaign_results))} " + ("Winner" if sum(result.fully_reconciled and result.gain_loss > 0 for result in campaign_results) == 1 else "Winners"),
                 money(campaign_outcomes.top_3_winner_pnl),
             )
 
             tail4.metric(
-                "Bottom 3 Losers",
+                f"Bottom {min(3, sum(result.fully_reconciled and result.gain_loss < 0 for result in campaign_results))} " + ("Loser" if sum(result.fully_reconciled and result.gain_loss < 0 for result in campaign_results) == 1 else "Losers"),
                 money(campaign_outcomes.bottom_3_loser_pnl),
             )
 
@@ -3016,7 +3026,8 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                         width="stretch",
                     )
 
-            st.subheader("Maximum Drawdown Contribution")
+            if maximum_drawdown_contributions.maximum_drawdown < Decimal("0"):
+                st.subheader("Maximum Drawdown Contribution")
 
             contribution_rows = [
                 {
@@ -3092,11 +3103,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                     "contribution offset losses elsewhere. Unassigned, ambiguous, and "
                     "unreconciled campaign provenance remains included. FOREX is excluded."
                 )
-            else:
-                st.caption(
-                    "No maximum-drawdown contribution interval is present in the "
-                    "available equity/options history."
-                )
+
 
 
 if __name__ == "__main__" and get_script_run_ctx(suppress_warning=True) is not None:

@@ -135,12 +135,13 @@ def test_campaign_table_numeric_values_show_grouping_commas():
     from pathlib import Path
     import pandas as pd
     value=pd.DataFrame([{'Realized P&L':-6638.05}])
-    styled=value.style.format({'Realized P&L':'{:,.2f}'})
-    assert '-6,638.05' in styled.to_html()
+    from campaigniq.ui.financial_format import display_money
+    styled=value.style.format({'Realized P&L':display_money})
+    assert '-$6,638.05' in styled.to_html()
     assert value['Realized P&L'].dtype.kind=='f'
     source=Path('src/campaigniq/ui/dashboard.py').read_text()
     interactions=Path("src/campaigniq/ui/campaign_interactions.py").read_text()
-    assert 'style.format({"Realized P&L": "{:,.2f}"})' in interactions
+    assert 'style.format({"Realized P&L": display_money})' in interactions
     assert "render_campaign_table(" in source
 
 def test_stock_and_options_for_same_underlying_stay_one_campaign():

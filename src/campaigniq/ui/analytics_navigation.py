@@ -163,12 +163,18 @@ def render_date_range(ui, months, *, sidebar=None):
                          on_change=changed, args=("campaigniq_range_end",))
     controls.selectbox("Shortcut year", years, key="campaigniq_range_year",
                          help="Used by YTD and quarter buttons only. Choosing a year does not change the From/Through months.")
-    columns = controls.columns(2)
-    for index, preset in enumerate(("YTD", "All available data", "Q1", "Q2", "Q3", "Q4")):
+    # Full-width shortcuts first, then quarters in reading order. Keep widget keys.
+    for preset, index in (("All available data", 1), ("YTD", 0)):
         selected = preset_range(months, preset, ui.session_state["campaigniq_range_year"])
-        target = controls if preset == "All available data" else columns[index % 2]
-        target.button(preset, key=f"campaigniq_range_{index}",
-                                  on_click=shortcut, args=(preset,), disabled=selected is None)
+        controls.button(preset, key=f"campaigniq_range_{index}", on_click=shortcut,
+                        args=(preset,), disabled=selected is None)
+    for row in (("Q1", "Q2"), ("Q3", "Q4")):
+        columns = controls.columns(2)
+        for column, preset in zip(columns, row):
+            index = int(preset[1]) + 1
+            selected = preset_range(months, preset, ui.session_state["campaigniq_range_year"])
+            column.button(preset, key=f"campaigniq_range_{index}", on_click=shortcut,
+                          args=(preset,), disabled=selected is None)
     publish_route(ui)
     return ui.session_state["campaigniq_range_start"], ui.session_state["campaigniq_range_end"]
 

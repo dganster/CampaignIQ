@@ -1,5 +1,6 @@
 """Exercise underlying history rendering with the lifecycle row contract."""
 import ast
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,12 +21,12 @@ def renderer(monkeypatch):
             self.rows = rows
         def __getitem__(self, column):
             return Values(row[column] for row in self.rows)
-    columns = SimpleNamespace(DateColumn=lambda *a, **k: None, TimeColumn=lambda *a, **k: None, NumberColumn=lambda *a, **k: None)
+    columns = SimpleNamespace(TextColumn=lambda *a, **k: None, DateColumn=lambda *a, **k: None, TimeColumn=lambda *a, **k: None, NumberColumn=lambda *a, **k: None)
     scope = {"SymbolLifecycleSummary": object,
              "_lifecycle_transition_details": lambda t: ("Verified position evidence", None),
              "history_rows": lambda *a, **k: [], "_display_instrument": str,
              "pd": pd,
-             "st": SimpleNamespace(info=lambda text: None, caption=lambda text: None, column_config=columns),
+             "st": SimpleNamespace(expander=lambda label: nullcontext(), info=lambda text: None, caption=lambda text: None, column_config=columns),
              "render_dataframe": lambda st, frame, **kwargs: shown.extend(frame.to_dict("records"))}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "history_renderer", "exec"), scope)
     return scope, shown

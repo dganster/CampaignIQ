@@ -196,7 +196,8 @@ def render_campaign_table(ui, table, campaign_ids, column_config):
         if hasattr(ui, "query_params"):
             publish_route(ui)
 
-    render_dataframe(ui, table.style.format({"Realized P&L": "{:,.2f}"}),
+    from campaigniq.ui.financial_format import display_money
+    render_dataframe(ui, table.style.format({"Realized P&L": display_money}),
                  use_container_width=True, hide_index=True,
                  column_config=column_config, key=key,
                  on_select=selected, selection_mode="single-row")

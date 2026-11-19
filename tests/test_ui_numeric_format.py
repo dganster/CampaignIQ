@@ -102,4 +102,4 @@ def test_crypto_display_preserves_evidence_and_qualifies_cash():
     assert ledger[0]['Reported balance (USD)'] == 'Unavailable'
     assert ledger[0]['Source date & time'] == fill['executed_at']
     assert ('Export-reported cash', '$0.00') in ui.messages
-    assert any('not a verified closing balance' in str(message) for message in ui.messages)
+    assert any('Unverified closing balance' in str(message) for message in ui.messages)

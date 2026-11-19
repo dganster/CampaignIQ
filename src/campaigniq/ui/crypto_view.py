@@ -20,7 +20,7 @@ def render_crypto_report(report: dict, st) -> None:
     cash = report.get("last_reported_cash_usd")
     c.metric("Statement closing cash" if approved else "Export-reported cash", display_money(Decimal(cash)) if cash is not None else "Unavailable")
     if not approved and not report['cash_control_reconciled']:
-        c.caption('Unverified closing balance · not a verified closing balance; running-balance control needs review.')
+        c.caption('Unverified closing balance; running-balance control needs review.')
     if "ending_quantities" in report:
         st.markdown("#### Crypto holdings")
         st.caption(f"Opening quantities: {report['opening_source']}. Exact quantities are retained; snapshot quantities may be rounded.")
