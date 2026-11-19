@@ -13,6 +13,8 @@ _STAGES=frozenset(('income_text_cache_write','income_text_cache_read','income_te
 # Fixed labels only; no identities or connection information enter the trace.
 _STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in ('connection','validator','migrations','directory','close'))
 _STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in ('connect','transaction_setup','runtime_role','schema'))
+_SCHEMA_PHASES=('schema_proof', 'schema_search_path', 'schema_tables', 'schema_migrations', 'catalog_namespace', 'catalog_relations', 'catalog_columns', 'catalog_constraints', 'catalog_indexes', 'catalog_triggers', 'catalog_functions', 'catalog_policies', 'catalog_fingerprint', 'grant_schemas', 'grant_relations', 'grant_fingerprint')
+_STAGES=_STAGES | frozenset('startup_'+role+'_'+phase for role in ('reader','publisher','preferences') for phase in _SCHEMA_PHASES)
 _connection_prefix=ContextVar('campaigniq_connection_timing_prefix',default=None)
 @dataclass
 class Trace:
@@ -65,7 +67,7 @@ def connection_timing_scope(prefix):
 @contextmanager
 def connection_phase(name):
     prefix=_connection_prefix.get()
-    if prefix is None or name not in ('connect','transaction_setup','runtime_role','schema'):
+    if prefix is None or name not in ('connect','transaction_setup','runtime_role','schema')+_SCHEMA_PHASES:
         yield;return
     with stage(prefix+name):yield
 

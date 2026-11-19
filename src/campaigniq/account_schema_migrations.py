@@ -73,7 +73,12 @@ def catalog_digest(conn):
       "SELECT p.proname,pg_get_function_identity_arguments(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=%s ORDER BY 1,2",
       "SELECT tablename,policyname,roles,cmd,qual,with_check FROM pg_policies WHERE schemaname=%s ORDER BY tablename,policyname",
     )
-    return digest([conn.execute(sql,(SCHEMA,)).fetchall() for sql in statements])
+    from campaigniq.navigation_timing import connection_phase
+    labels=('catalog_namespace','catalog_relations','catalog_columns','catalog_constraints','catalog_indexes','catalog_triggers','catalog_functions','catalog_policies')
+    rows=[]
+    for label,sql in zip(labels,statements):
+        with connection_phase(label):rows.append(conn.execute(sql,(SCHEMA,)).fetchall())
+    with connection_phase('catalog_fingerprint'):return digest(rows)
 
 
 def apply_migrations(conn):
@@ -103,15 +108,20 @@ def apply_migrations(conn):
 
 def verify_schema(conn,*,reuse_catalog=False):
     """Read-only compatibility check. Never initializes or migrates a schema."""
+    from campaigniq.navigation_timing import connection_phase
     if type(reuse_catalog) is not bool:raise ValueError('Explicit catalog snapshot mode required')
     if reuse_catalog:
-        proof=conn.execute("SELECT current_setting('transaction_read_only'),current_setting('transaction_isolation')").fetchone()
+        with connection_phase('schema_proof'):
+            proof=conn.execute("SELECT current_setting('transaction_read_only'),current_setting('transaction_isolation')").fetchone()
         if proof!=('on','repeatable read'):raise ValueError('Read-only repeatable catalog snapshot required')
-    conn.execute("SET LOCAL search_path=pg_catalog")
-    tables={row[0] for row in conn.execute(
-      "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
+    with connection_phase('schema_search_path'):
+        conn.execute("SET LOCAL search_path=pg_catalog")
+    with connection_phase('schema_tables'):
+        tables={row[0] for row in conn.execute(
+          "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relkind IN ('r','p')",(SCHEMA,)).fetchall()}
     if tables != TABLES:raise ValueError('Untracked or incomplete account schema; no adoption')
-    rows=conn.execute('SELECT version,source_sha256,catalog_sha256 FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
+    with connection_phase('schema_migrations'):
+        rows=conn.execute('SELECT version,source_sha256,catalog_sha256 FROM campaigniq_accounts.schema_migrations ORDER BY version').fetchall()
     current=catalog_digest(conn)
     if rows == [(VERSION,SOURCE_SHA256,current)]:return
     # Version 1 SQL/checksum is immutable. A reviewed grant transition records a

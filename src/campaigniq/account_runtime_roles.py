@@ -44,8 +44,11 @@ def _role_state(conn,role,policy=POLICY):
 def role_catalog_digest(conn,*,base_catalog=None):
     # Preserve the version 1 catalog algorithm. Version 2 also pins column ACLs
     # and retained-table grants, which table-only checks cannot fully cover.
-    schemas=conn.execute("SELECT nspname,nspacl::text FROM pg_namespace WHERE nspname IN ('public','campaigniq_accounts') ORDER BY 1").fetchall()
-    relations=conn.execute("""SELECT n.nspname,c.relname,c.relacl::text,a.attname,a.attacl::text
+    from campaigniq.navigation_timing import connection_phase
+    with connection_phase('grant_schemas'):
+        schemas=conn.execute("SELECT nspname,nspacl::text FROM pg_namespace WHERE nspname IN ('public','campaigniq_accounts') ORDER BY 1").fetchall()
+    with connection_phase('grant_relations'):
+        relations=conn.execute("""SELECT n.nspname,c.relname,c.relacl::text,a.attname,a.attacl::text
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
         WHERE n.nspname='campaigniq_accounts' OR (n.nspname='public'
@@ -53,7 +56,7 @@ def role_catalog_digest(conn,*,base_catalog=None):
         ORDER BY 1,2,a.attnum""").fetchall()
     if base_catalog is None:base_catalog=migration.catalog_digest(conn)
     elif not isinstance(base_catalog,str) or re.fullmatch('[0-9a-f]{64}',base_catalog) is None:raise ValueError('Exact base catalog digest required')
-    return migration.digest((base_catalog,schemas,relations))
+    with connection_phase('grant_fingerprint'):return migration.digest((base_catalog,schemas,relations))
 
 
 def review_runtime_grants(conn,role):
