@@ -150,5 +150,5 @@ def test_economics_is_on_the_shared_campaign_detail_route_before_history():
     source=Path('src/campaigniq/ui/dashboard.py').read_text()
     section=source[source.index('    if selected is not None:'):]
     assert section.index('render_campaign_economics(st,') < section.index('st.markdown("#### Position history")')
-    assert 'campaign_record_scope(history_monthly_attributions, selected_id)' in section
+    assert 'scope_status = campaign_economics_scope(' in section
     assert 'if selected_id not in forex_campaign_records:' in section

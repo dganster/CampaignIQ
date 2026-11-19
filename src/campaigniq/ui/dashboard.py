@@ -2084,21 +2084,14 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 realized_records = campaign_realized_attributions(history_monthly_attributions, selected_id)
                 selected_history = campaign_entries(evidence, realized_records)
             if selected_id not in forex_campaign_records:
-                from campaigniq.analytics.campaign_economics import campaign_record_scope
-                from campaigniq.ui.campaign_economics_view import render_campaign_economics
-                economics_records, lifetime_scope = campaign_record_scope(history_monthly_attributions, selected_id)
-                economics_history = campaign_entries(evidence, economics_records)
-                from campaigniq.analytics.linked_campaign_history import load_linked_history
-                try:
-                    linked_reader = load_linked_history(ARTIFACT_STORAGE)
-                    linked_selection = linked_reader.selection(selected_id) if linked_reader else None
-                    if linked_selection is not None:
-                        economics_records = linked_selection['records']
-                        economics_history = linked_reader.entries(evidence, linked_selection)
-                        lifetime_scope = True
-                        st.caption('This history follows verified month-boundary links while retaining the original campaign identities.')
-                except (ValueError, KeyError, TypeError, IndexError, OSError):
-                    st.warning('Linked campaign history could not be verified. Showing the existing campaign scope.')
+                from campaigniq.ui.campaign_economics_view import render_campaign_economics, campaign_economics_scope
+                economics_records, economics_history, lifetime_scope, scope_status = campaign_economics_scope(
+                    ARTIFACT_STORAGE, history_monthly_attributions, selected_id, evidence,
+                    realized_records, selected_history)
+                if scope_status == 'linked':
+                    st.caption('This history follows verified month-boundary links while retaining the original campaign identities.')
+                elif scope_status == 'unavailable':
+                    st.warning('Linked campaign history could not be verified. Only selected-month broker realized results are shown; wider economics and cash-flow evidence are withheld.')
                 render_campaign_economics(st, selected_records=realized_records,
                     campaign_records=economics_records, campaign_entries=economics_history,
                     lifetime_scope=lifetime_scope, reporting_month=campaign_month(selected))
@@ -2380,12 +2373,12 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
             if selected_lifecycle is not None:
                 with st.expander("Published Lifecycle Events"):
-                    render_dataframe(st, pd.DataFrame(lifecycle_timeline_rows(selected_lifecycle)),
+                    render_dataframe(st, pd.DataFrame(scoped_lifecycle_rows),
                         hide_index=True, width="stretch", column_config={
                             "Date": st.column_config.DateColumn("Date", format="MMM D, YYYY"),
                             "Time": st.column_config.TimeColumn("Time", format="HH:mm:ss"),
                         })
-                    st.caption("Observed corporate actions, assignments, covered positions, option rolls, and exits from published evidence.")
+                    st.caption("Published lifecycle events within the history range selected above. An empty table means no events in this range, not no prior history.")
 
             related_campaigns = sorted(
                 (item for item in campaign_drilldowns if lifecycle_symbol in item.symbols),
@@ -2594,8 +2587,6 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
 
             st.divider()
 
-            st.divider()
-
             st.subheader("Monthly Performance")
 
             display_df = df[
@@ -2603,6 +2594,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                     "month",
                     "equity_options_realized_pnl",
                     "forex_settled_pnl",
+                    *(["futures_realized_pnl"] if futures_applicable else []),
                     "realized_pnl",
                     "campaigns",
                     "wins",
@@ -2617,6 +2609,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                 "Month",
                 "Equity/Options P&L",
                 "FOREX Settled P&L",
+                *(["Futures/options Net P&L"] if futures_applicable else []),
                 "Combined Realized P&L",
                 "Campaigns",
                 "Wins",
@@ -2642,6 +2635,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                         "Combined Realized P&L",
                         format="$%,.2f",
                     ),
+                    "Futures/options Net P&L": st.column_config.NumberColumn(
+                        "Futures/options Net P&L", format="$%,.2f",
+                    ),
                     "Win Rate": st.column_config.NumberColumn(
                         "Win Rate",
                         format="percent",
@@ -2650,8 +2646,9 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
             )
 
             st.caption(
-                "Monthly realized P&L combines equity/options realized P&L and FOREX "
-                "settled P&L. FOREX financing/interest is excluded."
+                "Monthly realized P&L combines equity/options realized P&L, FOREX "
+                "settled P&L, and futures/options net P&L where applicable. "
+                "Statement income, FOREX financing/interest, and crypto are excluded."
             )
 
     if selected_performance_tab == 'Campaign Analysis':

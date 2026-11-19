@@ -3,6 +3,30 @@ from campaigniq.analytics.campaign_economics import summarize_campaign_economics
 from campaigniq.ui.financial_format import display_money, render_money_table
 
 
+def campaign_economics_scope(storage, monthly_attributions, selected_id, evidence,
+                             selected_records, selected_entries):
+    """Commit a wider display scope only after its records and entries verify.
+
+    A failed linked-history read must never leak a partially selected scope.
+    Selected-period broker facts remain available without claiming wider links.
+    """
+    from campaigniq.analytics.campaign_economics import campaign_record_scope
+    from campaigniq.analytics.linked_campaign_history import load_linked_history
+    from campaigniq.ui.position_history_view import campaign_entries
+    try:
+        records, lifetime = campaign_record_scope(monthly_attributions, selected_id)
+        entries = campaign_entries(evidence, records)
+        reader = load_linked_history(storage)
+        selection = reader.selection(selected_id) if reader is not None else None
+        if selection is not None:
+            linked_records = selection['records']
+            linked_entries = reader.entries(evidence, selection)
+            return linked_records, linked_entries, True, 'linked'
+        return records, entries, lifetime, 'identity'
+    except (ValueError, KeyError, TypeError, IndexError, OSError):
+        return selected_records, (), False, 'unavailable'
+
+
 def render_campaign_economics(ui, *, selected_records, campaign_records, campaign_entries, lifetime_scope, reporting_month):
     selected = summarize_campaign_economics(selected_records)
     campaign = summarize_campaign_economics(campaign_records, campaign_entries)
@@ -10,7 +34,7 @@ def render_campaign_economics(ui, *, selected_records, campaign_records, campaig
     if lifetime_scope:
         ui.caption('All published realized closes linked to this campaign, including closes outside the selected reporting range. Dividends, financing, and unrealized changes are not included.')
     else:
-        ui.caption(f'Realized closes for {reporting_month}. This older campaign ID cannot safely link broker results across months.')
+        ui.caption(f'Selected-period broker realized closes for {reporting_month}. Wider campaign history is not established in this view.')
     a, b, c = ui.columns(3)
     a.metric('Campaign realized P&L' if lifetime_scope else 'Reported realized P&L', display_money(campaign.total_realized))
     b.metric('Stock realized P&L', display_money(campaign.stock_realized))
