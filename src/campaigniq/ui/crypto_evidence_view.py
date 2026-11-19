@@ -15,13 +15,15 @@ def render_crypto_limitations(ui, *, status='', warnings=(), report=None):
     """Summaries lack full controls: never infer reconciliation from approval."""
     ui.markdown('#### Crypto source limitations')
     approved = report is not None and has_statement_choices(report)
-    if approved:
-        ui.caption('Published holdings, acquisition costs, FIFO sales results, and closing cash use owner-approved statement financial choices. Individual fills, recorded fees, execution prices, the cash ledger, and export snapshot quantities below retain original export observations.')
-        ui.caption('Opening units use the preceding statement; opening acquisition costs require separate documented acquisition rows. Unknown cost remains unknown.')
-    elif report is not None:
-        ui.caption('The displayed figures use retained crypto evidence. No owner-approved statement financial record is identified in this view. A retained statement alone does not establish reconciliation.')
-    else:
-        ui.caption('This published summary does not include per-field source controls. Open Crypto for the detailed statement/export distinction.')
+    ui.caption('Crypto is separate from brokerage and Forex totals. Owner approval does not establish independent reconciliation.')
+    with ui.expander('How crypto sources are used'):
+        if approved:
+            ui.caption('Published holdings, acquisition costs, FIFO sales results, and closing cash use owner-approved statement financial choices. Individual fills, recorded fees, execution prices, the cash ledger, and export snapshot quantities below retain original export observations.')
+            ui.caption('Opening units use the preceding statement; opening acquisition costs require separate documented acquisition rows. Unknown cost remains unknown.')
+        elif report is not None:
+            ui.caption('The displayed figures use retained crypto evidence. No owner-approved statement financial record is identified in this view. A retained statement alone does not establish reconciliation.')
+        else:
+            ui.caption('This published summary does not include per-field source controls. Open Crypto for the detailed statement/export distinction.')
     if status:
         ui.caption('Saved evidence status: ' + status)
     items = []
@@ -45,16 +47,17 @@ def render_crypto_limitations(ui, *, status='', warnings=(), report=None):
         ui.warning('\n\n'.join('- ' + item for item in items))
     elif report is None:
         ui.caption('No source warnings were included in this summary; this is not an independent verification result.')
-    ui.caption('Owner approval is separate from independent source reconciliation. Crypto remains separate from brokerage and Forex totals.')
-    if report is not None:
-        passed = []
-        if report.get('cash_control_reconciled') is True:
-            passed.append('cash running balances within the export')
-        if report.get('fill_control_reconciled') is True:
-            passed.append('execution fills against export cash-ledger fills')
-        if passed:
-            ui.caption('Matching export controls: ' + '; '.join(passed) + '. These checks do not by themselves verify month-end holdings or resolve statement/export differences.')
-        if report.get('crypto_statement'):
-            ui.caption('A dated crypto statement is retained with this report.')
-        if report.get('statement_fills_reconciled') is True and report.get('statement_ending_balances_reconciled') is True:
-            ui.caption('Saved statement controls report matching fills, ending quantities, and ending cash.')
+    with ui.expander('Crypto control details'):
+        ui.caption('Owner approval is separate from independent source reconciliation. Crypto remains separate from brokerage and Forex totals.')
+        if report is not None:
+            passed = []
+            if report.get('cash_control_reconciled') is True:
+                passed.append('cash running balances within the export')
+            if report.get('fill_control_reconciled') is True:
+                passed.append('execution fills against export cash-ledger fills')
+            if passed:
+                ui.caption('Matching export controls: ' + '; '.join(passed) + '. These checks do not by themselves verify month-end holdings or resolve statement/export differences.')
+            if report.get('crypto_statement'):
+                ui.caption('A dated crypto statement is retained with this report.')
+            if report.get('statement_fills_reconciled') is True and report.get('statement_ending_balances_reconciled') is True:
+                ui.caption('Saved statement controls report matching fills, ending quantities, and ending cash.')

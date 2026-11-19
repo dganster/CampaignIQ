@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -11,6 +12,8 @@ from tests.test_account_dashboard_view import app_code
 class UI:
     def __init__(self):
         self.text = []
+    def expander(self, label):
+        return nullcontext()
     def caption(self, value):
         self.text.append(value)
 
@@ -24,7 +27,7 @@ def test_denominator_is_reported_without_recalculating_or_mutating(wins, losses,
     ui = UI()
     render_metric_scope(ui, summary)
     assert summary.__dict__ == before
-    text = ui.text[0]
+    text = " ".join(ui.text)
     assert f'{wins} winning / {count} included campaign-month results' in text
     assert 'Breakevens remain in the denominator' in text
     assert 'not a count of fully closed campaigns' in text
@@ -35,9 +38,9 @@ def test_denominator_is_reported_without_recalculating_or_mutating(wins, losses,
 def test_list_scope_distinguishes_equity_and_forex_counts():
     ui = UI()
     render_list_scope(ui, equity_rows=27, forex_rows=3)
-    assert '27 equity/options and 3 Forex' in ui.text[0]
-    assert 'before table filters' in ui.text[0]
-    assert 'independent source verification' in ui.text[1]
+    assert '27 equity/options and 3 Forex' in ' '.join(ui.text)
+    assert 'before table filters' in ' '.join(ui.text)
+    assert 'independent source verification' in ' '.join(ui.text)
 
 
 def test_overview_labels_and_rate_value_remain_consistent():

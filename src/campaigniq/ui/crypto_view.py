@@ -20,7 +20,7 @@ def render_crypto_report(report: dict, st) -> None:
     cash = report.get("last_reported_cash_usd")
     c.metric("Statement closing cash" if approved else "Export-reported cash", display_money(Decimal(cash)) if cash is not None else "Unavailable")
     if not approved and not report['cash_control_reconciled']:
-        st.caption('Export-reported cash is not a verified closing balance; the running-balance control needs review.')
+        c.caption('Unverified closing balance · not a verified closing balance; running-balance control needs review.')
     if "ending_quantities" in report:
         st.markdown("#### Crypto holdings")
         st.caption(f"Opening quantities: {report['opening_source']}. Exact quantities are retained; snapshot quantities may be rounded.")
@@ -52,7 +52,7 @@ def render_crypto_report(report: dict, st) -> None:
                        "Reference": row["reference"]} for row in fills],
                      use_container_width=True, hide_index=True)
     else:
-        st.info("No crypto execution fills in the selected month.")
+        st.caption("No crypto execution fills in the selected month.")
     with st.expander("Crypto cash ledger"):
         st.caption("Original export cash observations; unresolved running-balance differences remain retained.")
         st.caption(f"Net funding: ${Decimal(report['net_funding_usd']):,.2f}. Funding transfers are not trading profit.")
@@ -65,4 +65,7 @@ def render_crypto_report(report: dict, st) -> None:
                    if key in cash_columns else value
                    for key, value in row.items()} for row in report['cash_ledger']]
         st.caption('Timestamps retain the source representation; no timezone conversion is applied here.')
-        render_dataframe(st, ledger, use_container_width=True, hide_index=True)
+        if ledger:
+            render_dataframe(st, ledger, use_container_width=True, hide_index=True)
+        else:
+            st.caption("No ledger rows available.")

@@ -124,7 +124,8 @@ def preset_range(months, preset, year):
     return (candidates[0], candidates[-1]) if candidates else None
 
 
-def render_date_range(ui, months):
+def render_date_range(ui, months, *, sidebar=None):
+    controls = sidebar if sidebar is not None else ui.sidebar
     start, end = default_range(months)
     preferred = preset_range(months, ui.session_state.get(PERIOD_KEY, "YTD"), months[-1][:4])
     if preferred:
@@ -134,8 +135,8 @@ def render_date_range(ui, months):
             ui.session_state[key] = fallback
     if ui.session_state["campaigniq_range_start"] > ui.session_state["campaigniq_range_end"]:
         ui.session_state["campaigniq_range_end"] = ui.session_state["campaigniq_range_start"]
-    ui.sidebar.markdown("#### Reporting period")
-    ui.sidebar.caption("Only published months are included.")
+    controls.markdown("#### Reporting period")
+    controls.caption("Only published months are included.")
     years = sorted({month[:4] for month in months}, reverse=True)
     if ui.session_state.get("campaigniq_range_year") not in years:
         ui.session_state["campaigniq_range_year"] = ui.session_state["campaigniq_range_end"][:4]
@@ -154,18 +155,19 @@ def render_date_range(ui, months):
             ui.session_state["campaigniq_range_start"], ui.session_state["campaigniq_range_end"] = selected
             changed("campaigniq_range_start")
 
-    ui.sidebar.selectbox("From month", months, key="campaigniq_range_start",
+    controls.selectbox("From month", months, key="campaigniq_range_start",
                          format_func=lambda m: date.fromisoformat(m + "-01").strftime("%b %Y"),
                          on_change=changed, args=("campaigniq_range_start",))
-    ui.sidebar.selectbox("Through month", months, key="campaigniq_range_end",
+    controls.selectbox("Through month", months, key="campaigniq_range_end",
                          format_func=lambda m: date.fromisoformat(m + "-01").strftime("%b %Y"),
                          on_change=changed, args=("campaigniq_range_end",))
-    ui.sidebar.selectbox("Shortcut year", years, key="campaigniq_range_year",
+    controls.selectbox("Shortcut year", years, key="campaigniq_range_year",
                          help="Used by YTD and quarter buttons only. Choosing a year does not change the From/Through months.")
-    columns = ui.sidebar.columns(2)
+    columns = controls.columns(2)
     for index, preset in enumerate(("YTD", "All available data", "Q1", "Q2", "Q3", "Q4")):
         selected = preset_range(months, preset, ui.session_state["campaigniq_range_year"])
-        columns[index % 2].button(preset, key=f"campaigniq_range_{index}",
+        target = controls if preset == "All available data" else columns[index % 2]
+        target.button(preset, key=f"campaigniq_range_{index}",
                                   on_click=shortcut, args=(preset,), disabled=selected is None)
     publish_route(ui)
     return ui.session_state["campaigniq_range_start"], ui.session_state["campaigniq_range_end"]

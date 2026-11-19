@@ -48,7 +48,7 @@ def render_strategy_comparison(ui,scope,entries,status,period_end, *, observed_e
            'Realized P&L':float(r['campaign'].realized_pnl),'Position status':'Open' if r['open'] is True else 'Closed' if r['open'] is False else 'Unavailable',
            'Classification basis':r['basis'], 'Observation date':r['observed_at'].date() if r['observed_at'] else None,
            'Classification evidence':r['evidence']} for r in details]
-    table=pd.DataFrame(rows).style.format({'Realized P&L':display_money})
+    table=pd.DataFrame(rows).style.format({'Realized P&L':display_money},na_rep='Unavailable')
     fingerprint=hashlib.sha256(json.dumps([(r['campaign'].drilldown_id,r['strategy'],str(r['campaign'].realized_pnl)) for r in details]).encode()).hexdigest()[:16]
     key=selection_table_key(ui,f'campaigniq_strategy_rows_{period_end}_{observed_mode}_{fingerprint}')
     def selected():
@@ -59,7 +59,7 @@ def render_strategy_comparison(ui,scope,entries,status,period_end, *, observed_e
         ui.session_state.update(campaigniq_primary_view='Campaigns',campaigniq_campaign_month='All months',
                                 campaigniq_campaign_symbol=campaign.underlying,campaigniq_campaign_result='All results',campaigniq_campaign_detail=campaign.drilldown_id)
         if hasattr(ui,'query_params'):publish_route(ui)
-    render_dataframe(ui,table,hide_index=True,use_container_width=True,height=420,key=key,on_select=selected,selection_mode='single-row')
+    render_dataframe(ui,table,hide_index=True,use_container_width=True,height=min(420, 38 + 35 * len(rows)),key=key,on_select=selected,selection_mode='single-row')
     ui.caption('Click a campaign row to inspect its details. A multi-month campaign opens its latest included reporting-month detail; this table reports its combined selected-range result. The underlying records use the same reconciliation and attribution exclusions as Profit Concentration.')
     if scope.excluded_records:
         ui.warning(f'{scope.excluded_records} broker record(s), net {display_money(scope.excluded_pnl)}, are excluded from this comparison.')

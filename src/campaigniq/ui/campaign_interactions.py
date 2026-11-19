@@ -143,7 +143,7 @@ def build_month_chart_spec(frame):
             "tooltip": [{"field": "month_label", "type": "nominal", "title": "Month"},
                         {"field": "realized_pnl", "type": "quantitative", "title": "Realized P&L", "format": "$,.2f"}],
         },
-        "height": 320,
+        "height": 200 if len(frame) == 1 else 320,
         "params": [{"name": "campaign_month", "select": {"type": "point", "fields": ["month_key"], "toggle": False}}],
         "$schema": "https://vega.github.io/schema/vega-lite/v6.4.1.json",
     }, tuple(r["month_key"] for r in rows)
@@ -166,7 +166,7 @@ def build_month_chart(frame):
                         range=["#287d59", "#c44949"]), legend=None),
         tooltip=[alt.Tooltip("month_label:N", title="Month"),
                  alt.Tooltip("realized_pnl:Q", title="Realized P&L", format="$,.2f")],
-    ).properties(height=320).add_params(selection))
+    ).properties(height=200 if len(frame) == 1 else 320).add_params(selection))
     return chart, tuple(data["month_key"])
 
 

@@ -48,9 +48,14 @@ def render_profit_concentration(ui, summary):
         b.metric('Gross losing campaign P&L',display_money(-summary.gross_losses))
         c.metric('Included net realized P&L',display_money(summary.net_realized))
         rows=[]
+        seen_counts=set()
         for count in (1,5,10):
             actual,pnl,share,remainder=summary.top(count)
-            rows.append({'Winning campaigns':f'Top {count}', 'Available winners included':actual,
+            if actual in seen_counts:
+                continue
+            seen_counts.add(actual)
+            label = f'Top {count}' if actual == count and actual < len(summary.winners) else f'{actual} available winner' + ('s' if actual != 1 else '')
+            rows.append({'Winning campaigns':label, 'Available winners included':actual,
                          'Realized P&L':float(pnl),'Share of gross profits':float(share*100) if share is not None else None,
                          'Net without these winners':float(remainder) if actual else None})
         frame=pd.DataFrame(rows)

@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
+import pandas as pd
 
 
 def renderer(monkeypatch):
@@ -23,9 +24,9 @@ def renderer(monkeypatch):
     scope = {"SymbolLifecycleSummary": object,
              "_lifecycle_transition_details": lambda t: ("Verified position evidence", None),
              "history_rows": lambda *a, **k: [], "_display_instrument": str,
-             "pd": SimpleNamespace(DataFrame=Frame),
+             "pd": pd,
              "st": SimpleNamespace(info=lambda text: None, caption=lambda text: None, column_config=columns),
-             "render_dataframe": lambda st, frame, **kwargs: shown.extend(frame.rows)}
+             "render_dataframe": lambda st, frame, **kwargs: shown.extend(frame.to_dict("records"))}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), "history_renderer", "exec"), scope)
     return scope, shown
 
