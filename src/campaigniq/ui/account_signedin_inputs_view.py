@@ -372,7 +372,6 @@ def show_published_results(st,service,server_user,account_id,draft,*,deployment)
         st.write('Futures/options net realized P/L: ' + money(Decimal(result.futures_realized_usd)))
         st.caption(result.futures_evidence_status)
     if result.crypto_applicable:
-        st.write('Crypto evidence status: ' + result.crypto_status)
+        from campaigniq.ui.crypto_evidence_view import render_crypto_limitations
+        render_crypto_limitations(st, status=result.crypto_status, warnings=result.crypto_warnings)
         st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
-        for warning in result.crypto_warnings:
-            st.warning(warning)
