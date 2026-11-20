@@ -16,7 +16,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
         service=TimedService(service)
     try:
         overview = page_data['overview'] if deployment and page_data is not None else service.gateway.overview(server_user)
-        with st.expander('Monthly inputs' if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 'Monthly inputs for new brokerage accounts'):
+        with st.expander('Monthly workspace' if deployment else 'Monthly inputs for new brokerage accounts'):
             st.caption('Save source documents, check closing inventory, and publish a reconciled month for the selected account.' if deployment else
                 'Local development only. Existing workspace records are untouched. Publish locally stores a reconciled month only in the local development database.')
             if not overview.accounts:
@@ -47,7 +47,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     st.info('An administrator must enable local monthly input storage.')
                 return
             if account.suffixes:
-                st.success('Broker account bound: ' + '; '.join(kind.capitalize() + ' ending ' + suffix
+                (st.caption if deployment else st.success)('Broker account bound: ' + '; '.join(kind.capitalize() + ' ending ' + suffix
                            for kind, suffix in account.suffixes))
             else:
                 st.info('Bind the full broker account identifier before saving documents.')
@@ -72,12 +72,13 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.session_state[key + ':binding-epoch'] = st.session_state.get(key + ':binding-epoch', 0) + 1
                         st.rerun()
             if account.writable:
-                with st.form(key + ':create'):
-                    year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2026 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 2025, key=key + ':year'))
-                    month = int(st.number_input('Month', min_value=1, max_value=12, value=10 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 1, key=key + ':month'))
-                    if st.form_submit_button('Create or resume draft'):
-                        service.create(server_user, account_id, year, month)
-                        st.rerun()
+                with st.expander('Start or resume a month'):
+                    with st.form(key + ':create'):
+                        year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2026 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 2025, key=key + ':year'))
+                        month = int(st.number_input('Month', min_value=1, max_value=12, value=10 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 1, key=key + ':month'))
+                        if st.form_submit_button('Create or resume draft'):
+                            service.create(server_user, account_id, year, month)
+                            st.rerun()
             else:
                 st.info('View access only. Saved documents remain readable; uploads are disabled.')
             screen_data=page_data if deployment else None
@@ -93,20 +94,25 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     return
             drafts = {str(d.id):d for d in (screen_data['drafts'] if screen_data is not None else service.drafts(server_user, account_id))}
             if not drafts:
-                st.info('No saved monthly drafts.')
+                st.info('No saved monthly drafts. Open Start or resume a month to choose a reporting month.' if account.writable else 'No saved monthly drafts are available to view.')
                 return
             selected = st.selectbox('Saved month', list(drafts),
-                format_func=lambda value: f'{drafts[value].year:04d}-{drafts[value].month:02d}', key=key + ':draft')
+                format_func=lambda value: date(drafts[value].year, drafts[value].month, 1).strftime('%B %Y'), key=key + ':draft')
             if screen_data is not None and selected!=screen_data['selected']:
                 st.rerun()
             draft = drafts[selected]
             stable_key=key+':'+selected
             key=stable_key+':'+str(draft.revision)
-            st.caption('Saved document revision ' + str(draft.revision))
             display=screen_data['display'] if screen_data is not None else (service.draft_display(server_user,account_id,draft.id,draft.revision) if combined_display else None)
             published = display['published'] if display is not None else service.published(server_user, account_id, draft.id, draft.revision)
+            month_label = date(draft.year, draft.month, 1).strftime('%B %Y')
+            with st.expander('Month details'):
+                st.caption('Saved document revision ' + str(draft.revision))
+                st.caption('Reporting month: ' + f'{draft.year:04d}-{draft.month:02d}')
             if published:
-                st.success('This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
+                st.success('Published · ' + month_label + '. This month is published. Saved originals are preserved.' if deployment else 'This month is published locally. Saved originals are preserved.')
+            else:
+                st.caption('Draft · ' + month_label + '. Published history is preserved.')
             guided=deployment and callable(getattr(service,'saved_documents',None))
             no_trading_path=False
             markets=('Equities and options','Forex','Futures','Crypto')
@@ -372,7 +378,6 @@ def show_published_results(st,service,server_user,account_id,draft,*,deployment)
         st.write('Futures/options net realized P/L: ' + money(Decimal(result.futures_realized_usd)))
         st.caption(result.futures_evidence_status)
     if result.crypto_applicable:
-        st.write('Crypto evidence status: ' + result.crypto_status)
+        from campaigniq.ui.crypto_evidence_view import render_crypto_limitations
+        render_crypto_limitations(st, status=result.crypto_status, warnings=result.crypto_warnings)
         st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
-        for warning in result.crypto_warnings:
-            st.warning(warning)

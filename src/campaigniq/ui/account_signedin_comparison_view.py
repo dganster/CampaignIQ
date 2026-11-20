@@ -73,9 +73,9 @@ def render(st,service,server_user,*,deployment=False):
                             show_statement(st,getattr(row,'income_evidence',None),realized=trading,
                                 known_forex_financing=row.forex_financing_usd if row.forex_policy_approved else None)
                     if row.crypto_applicable:
-                        st.caption('Crypto evidence status: '+row.crypto_status)
+                        from campaigniq.ui.crypto_evidence_view import render_crypto_limitations
+                        render_crypto_limitations(st, status=row.crypto_status, warnings=row.crypto_warnings)
                         st.dataframe([dict(Crypto=name,Quantity=quantity) for name,quantity in row.crypto_positions],hide_index=True)
-                        for warning in row.crypto_warnings:st.warning(warning)
                 if result.includes_combined_positions:
                     st.write('Combined position quantities')
                     st.caption('Published lot-state quantities only. Crypto remains separate by account; quantities are not market values.')

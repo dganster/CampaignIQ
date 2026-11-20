@@ -139,7 +139,7 @@ def test_economics_view_keeps_broker_profit_separate_from_cash_flows():
     render_campaign_economics(ui,selected_records=current,campaign_records=full,
         campaign_entries=[trade('Open / add','-1','10')],lifetime_scope=True,reporting_month='2026-06')
     assert ui.metrics[0]==('Campaign realized P&L','$80.00')
-    assert ui.tables[0].data.iloc[-1]['Realized P&L']==80
+    assert ui.tables[0].data['Realized P&L'].sum()==80
     assert ui.tables[-1].data.iloc[-1]['Amount']==1000
     assert any('Separate trading fees: unavailable' in message for message in ui.messages)
     assert any('2026-06: -$20.00' in message for message in ui.messages)
@@ -150,5 +150,5 @@ def test_economics_is_on_the_shared_campaign_detail_route_before_history():
     source=Path('src/campaigniq/ui/dashboard.py').read_text()
     section=source[source.index('    if selected is not None:'):]
     assert section.index('render_campaign_economics(st,') < section.index('st.markdown("#### Position history")')
-    assert 'campaign_record_scope(history_monthly_attributions, selected_id)' in section
+    assert 'scope_status = campaign_economics_scope(' in section
     assert 'if selected_id not in forex_campaign_records:' in section

@@ -52,7 +52,7 @@ def test_dashboard_exposes_equity_and_drawdown_charts() -> None:
     assert '"cumulative_pnl:Q"' in text
     assert '"running_peak_pnl:Q"' in text
     assert '"drawdown:Q"' in text
-    assert "Realized equity curve and high-water mark" in text
+    assert "Cumulative realized P&L and high-water mark" in text
     assert "Realized drawdown from high-water mark" in text
 
 

@@ -34,6 +34,7 @@ def test_campaign_detail_uses_unified_history_and_removes_extra_route():
 
 def test_highlighted_history_renders_as_styled_table():
  import ast
+ from contextlib import nullcontext
  from pathlib import Path
  from types import SimpleNamespace
  import pandas as pd
@@ -41,9 +42,9 @@ def test_highlighted_history_renders_as_styled_table():
  source=ast.parse(Path('src/campaigniq/ui/dashboard.py').read_text())
  node=next(n for n in source.body if isinstance(n,ast.FunctionDef) and n.name=='_render_position_history')
  shown=[]
- column=SimpleNamespace(DateColumn=lambda *a,**k:None,TimeColumn=lambda *a,**k:None,NumberColumn=lambda *a,**k:None)
+ column=SimpleNamespace(TextColumn=lambda *a,**k:None,DateColumn=lambda *a,**k:None,TimeColumn=lambda *a,**k:None,NumberColumn=lambda *a,**k:None)
  scope={'pd':pd,'history_rows':history_rows,'_display_instrument':lambda i:i.symbol,
-        'st':SimpleNamespace(column_config=column,caption=lambda *a:None,info=lambda *a:None),
+        'st':SimpleNamespace(expander=lambda label:nullcontext(),column_config=column,caption=lambda *a:None,info=lambda *a:None),
         'render_dataframe':lambda st,frame,**k:shown.append(frame)}
  exec(compile(ast.Module(body=[node],type_ignores=[]),'renderer','exec'),scope)
  first=dict(instrument={'type':'instrument','symbol':'SPOT'},occurred_at='2026-01-02T00:00:00',action='Open / add',quantity_change='100',position_after='100',price='420',fills=1,source='Trade history',campaign_id='C1')

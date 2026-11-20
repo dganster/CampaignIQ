@@ -61,6 +61,10 @@ def fitted_column_config(table, config):
 
 def render_dataframe(ui, table, **kwargs):
     state = _state(ui)
+    frame = table.data if hasattr(table, "data") and isinstance(table.data, pd.DataFrame) else table
+    # Avoid large blank grids for small result sets, preserving explicit smaller sizes.
+    if isinstance(frame, (pd.DataFrame, list, tuple)) and len(frame) and isinstance(kwargs.get("height"), int):
+        kwargs["height"] = min(kwargs["height"], 38 + 35 * len(frame))
     if state.get(FIT_KEY, False):
         kwargs["column_config"] = fitted_column_config(table, kwargs.get("column_config"))
         kwargs.pop("use_container_width", None)

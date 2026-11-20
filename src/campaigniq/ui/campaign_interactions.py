@@ -19,6 +19,35 @@ from campaigniq.sources.thinkorswim.source_reader import ThinkorswimSourceReader
 from campaigniq.ui.analytics_navigation import publish_route, remember_return
 
 
+def open_position_campaign(ui, campaign_id, symbol):
+    """Save the exact return route and widen only enough to show this month."""
+    month = campaign_id.split('/', 1)[0]
+    try:
+        if date.fromisoformat(month + '-01').strftime('%Y-%m') != month:
+            return
+    except ValueError:
+        return
+    state = ui.session_state
+    remember_return(ui)
+    start, end = state.get('campaigniq_range_start'), state.get('campaigniq_range_end')
+    try:
+        valid = all(isinstance(value, str) and date.fromisoformat(value + '-01').strftime('%Y-%m') == value
+                    for value in (start, end))
+    except ValueError:
+        valid = False
+    if valid:
+        state['campaigniq_range_start'] = min(start, end, month)
+        state['campaigniq_range_end'] = max(start, end, month)
+    else:
+        state['campaigniq_range_start'] = state['campaigniq_range_end'] = month
+    state['campaigniq_campaign_month'] = 'All months'
+    state['campaigniq_campaign_symbol'] = symbol
+    state['campaigniq_campaign_result'] = 'All results'
+    state['campaigniq_campaign_detail'] = campaign_id
+    state['campaigniq_primary_view'] = 'Campaigns'
+    publish_route(ui)
+
+
 def open_chart_month(state, event, months):
     points = event.get("selection", {}).get("campaign_month", [])
     if not points:
@@ -114,7 +143,7 @@ def build_month_chart_spec(frame):
             "tooltip": [{"field": "month_label", "type": "nominal", "title": "Month"},
                         {"field": "realized_pnl", "type": "quantitative", "title": "Realized P&L", "format": "$,.2f"}],
         },
-        "height": 320,
+        "height": 200 if len(frame) == 1 else 320,
         "params": [{"name": "campaign_month", "select": {"type": "point", "fields": ["month_key"], "toggle": False}}],
         "$schema": "https://vega.github.io/schema/vega-lite/v6.4.1.json",
     }, tuple(r["month_key"] for r in rows)
@@ -137,7 +166,7 @@ def build_month_chart(frame):
                         range=["#287d59", "#c44949"]), legend=None),
         tooltip=[alt.Tooltip("month_label:N", title="Month"),
                  alt.Tooltip("realized_pnl:Q", title="Realized P&L", format="$,.2f")],
-    ).properties(height=320).add_params(selection))
+    ).properties(height=200 if len(frame) == 1 else 320).add_params(selection))
     return chart, tuple(data["month_key"])
 
 
@@ -167,7 +196,8 @@ def render_campaign_table(ui, table, campaign_ids, column_config):
         if hasattr(ui, "query_params"):
             publish_route(ui)
 
-    render_dataframe(ui, table.style.format({"Realized P&L": "{:,.2f}"}),
+    from campaigniq.ui.financial_format import display_money
+    render_dataframe(ui, table.style.format({"Realized P&L": display_money}),
                  use_container_width=True, hide_index=True,
                  column_config=column_config, key=key,
                  on_select=selected, selection_mode="single-row")

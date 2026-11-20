@@ -22,7 +22,7 @@ def test_wizard_exposes_real_world_monthly_documents() -> None:
     assert '"Thinkorswim Forex Transaction Report"' in text
     assert '"FOREX Settled P&L"' in text
     assert '"Combined Realized P&L"' in text
-    assert '"Equity/Options Realized P&L"' in text
+    assert '"Asset breakdown · Equity/options: "' in text
     assert "FOREX financing/interest is excluded" in text
     assert '"Schwab closing position snapshot"' not in text
     assert '"Schwab assignment/exercise evidence (optional)"' not in text
@@ -562,7 +562,7 @@ def test_analytics_data_status_uses_actual_analytics_period_end() -> None:
     text = source()
 
     heading = text.index(
-        'st.subheader(f"{first_period} – {last_period}")'
+        'with st.expander("Published data status"):'
     )
     status = text.index(
         "_render_analytics_data_status(",

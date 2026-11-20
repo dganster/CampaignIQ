@@ -69,7 +69,7 @@ def test_table_callback_selects_campaign_and_filter_changes_reset_row_state():
     table = pd.DataFrame({"Realized P&L": [-6638.05, 1200.0]})
     render_campaign_table(ui, table, ["A", "B"], {})
     styled, kwargs = ui.calls[-1]
-    assert "-6,638.05" in styled.to_html()
+    assert "-$6,638.05" in styled.to_html()
     assert kwargs["selection_mode"] == "single-row"
     ui.session_state[kwargs["key"]] = {"selection": {"rows": [1]}}
     kwargs["on_select"]()

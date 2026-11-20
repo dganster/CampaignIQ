@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal as D
@@ -87,6 +88,7 @@ def test_assignment_covering_short_stock_or_creating_short_stock_needs_review(ki
 def test_view_preserves_integer_counts_and_unavailable_results():
     from campaigniq.ui.assignment_outcomes_view import render_assignment_outcomes
     class UI:
+        def expander(self, label):return nullcontext()
         def markdown(self,*args):pass
         def caption(self,*args):pass
         def dataframe(self,frame,**kwargs):self.frame=frame.data
@@ -130,6 +132,7 @@ def test_assignment_reachable_from_delivered_stock_campaign():
 def test_remaining_share_labels(kind,shares,linked,expected):
     from campaigniq.ui.assignment_outcomes_view import render_assignment_outcomes
     class UI:
+        def expander(self, label):return nullcontext()
         def markdown(self,*a):pass
         def caption(self,*a):pass
         def dataframe(self,frame,**k):self.frame=frame.data
