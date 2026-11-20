@@ -60,11 +60,11 @@ def button(at,label):return next(b for b in at.button if b.label==label)
 def test_empty_equities_draft_has_one_review_and_cannot_publish():
     at=screen();at.radio[0].set_value('I traded').run()
     assert not at.exception and not at.error
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
     assert not any('including futures' in e.label for e in at.expander)
     assert not any(b.label.startswith('Preview ') for b in at.button)
     button(at,'Review month').click().run()
-    assert not at.exception and not at.error and button(at,'Publish month').disabled
+    assert not at.exception and not at.error and not any(b.label=='Publish month' for b in at.button)
     assert at.session_state['calls']==['unified-review']
 
 
@@ -74,11 +74,11 @@ def test_successful_review_survives_confirmation_rerun_but_market_and_revision_c
     authorize=next(c for c in at.checkbox if c.label.startswith('I authorize'))
     authorize.check().run();assert not button(at,'Publish month').disabled
     at.multiselect[0].set_value(['Equities and options','Forex']).run()
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
     at.multiselect[0].set_value(['Equities and options']).run();button(at,'Review month').click().run()
     assert not button(at,'Publish month').disabled
     at.session_state['source_revision']=1;at.run()
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
 
 
 def test_published_month_shows_documents_and_results_without_edit_or_review_workflow():

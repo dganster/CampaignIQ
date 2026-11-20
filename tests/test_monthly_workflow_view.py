@@ -81,7 +81,7 @@ render(st,Service(),'user',selected_account_id='account',deployment=True)
     assert not at.exception
     assert not any('Forex' in c.label or 'Crypto' in c.label for c in at.checkbox)
     assert not any('Futures' in e.label or 'Forex' in e.label or 'Crypto' in e.label for e in at.expander)
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
     assert not any(s.label=='Document role' for s in at.selectbox)
     assert any('Document: Brokerage statement' in c.value for c in at.caption)
     assert not any('replacement' in c.label.lower() for c in at.checkbox)

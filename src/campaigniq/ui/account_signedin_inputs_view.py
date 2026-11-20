@@ -336,9 +336,12 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
             publication_enabled=getattr(service,'publication_enabled',True)
             if account.writable and not published and not publication_enabled:
                 st.caption('Publication is not enabled for this application.')
-            if account.writable and not published and publication_enabled:
+            if guided and not review_ready:
+                # Never retain an authorization after a failed or invalidated review.
+                st.session_state.pop(key+':authorize:'+authorization_context,None)
+            if account.writable and not published and publication_enabled and (not guided or review_ready):
                 with st.form(key+':publication:'+authorization_context):
-                    confirm = st.checkbox((f'I authorize publication for {account.name} · {draft.year:04d}-{draft.month:02d}' if deployment else 'I authorize publication to the local development database'),
+                    confirm = st.checkbox((f'I authorize publication for {account.name} · {month_label}' if deployment else 'I authorize publication to the local development database'),
                         key=key+':authorize:'+authorization_context)
                     st.caption('Rechecks sign-in, account, documents and closing inventory before committing. '
                                'Existing published months cannot be replaced.')
