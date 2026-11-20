@@ -69,8 +69,9 @@ def render(st, service, *, administration, deployment=False):
             return
         selector = root+'account'
         if st.session_state.get(selector) not in choices: st.session_state[selector] = next(iter(choices))
+        labels=account_labels(choices.values())
         selected = st.sidebar.selectbox('Brokerage account', list(choices),
-            format_func=lambda key: choices[key].name + (' [archived]' if choices[key].archived else '')+' · '+key[:8], key=selector)
+            format_func=labels.__getitem__, key=selector)
         account = choices[selected]
         ui = ScopedUI(st, st.session_state, root+selected+':')
         views = ('Overview','Campaigns','Performance','Positions','Data','Crypto','Compare accounts')
@@ -147,3 +148,22 @@ def render(st, service, *, administration, deployment=False):
         render_reports(ui, snapshot, view, identity=st.user.to_dict()['sub'],preferences_renderer=preferences_renderer)
     except (ValueError, PermissionError, KeyError):
         st.error('Account access or saved report sources could not be verified. Reload after checking the account directory.')
+
+
+def account_labels(accounts):
+    """Readable labels only; selections continue to use authorized account IDs."""
+    accounts=tuple(accounts)
+    names={a.id:a.name+(' [archived]' if a.archived else '') for a in accounts}
+    counts={}
+    for name in names.values():counts[name.casefold()]=counts.get(name.casefold(),0)+1
+    used={name.casefold() for name in names.values()}
+    labels={}
+    for identifier,name in sorted(names.items()):
+        if counts[name.casefold()]==1:
+            labels[identifier]=name
+            continue
+        number=1
+        while (name+' · Account '+str(number)).casefold() in used:number+=1
+        labels[identifier]=name+' · Account '+str(number)
+        used.add(labels[identifier].casefold())
+    return labels
