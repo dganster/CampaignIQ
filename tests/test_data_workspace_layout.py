@@ -16,7 +16,7 @@ def test_empty_draft_hides_empty_history_and_recovery_without_selecting_activity
     assert any(e.label == 'Start or resume a month' and not e.proto.expanded for e in app.expander)
     assert any(e.label == 'Month details' and not e.proto.expanded for e in app.expander)
     selected = next(s for s in app.selectbox if s.label == 'Saved month')
-    assert selected.options == ['January 2025']
+    assert selected.options == ['January 2025 · Draft']
     assert any('Draft · January 2025' in c.value for c in app.caption)
 
 

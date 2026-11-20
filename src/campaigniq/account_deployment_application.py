@@ -126,15 +126,21 @@ class DeploymentMonthlyApplication:
         choices={str(d.id):d for d in drafts}
         if preferred_draft_id is not None and preferred_draft_id not in choices:
             raise DraftSelectionUnavailable('Selected draft is unavailable for this account; reload saved months')
-        selected=preferred_draft_id if preferred_draft_id is not None else next(iter(choices),None)
+        selected=preferred_draft_id if preferred_draft_id is not None else (str(max(drafts,key=lambda d:(d.year,d.month)).id) if drafts else None)
         if selected is None:
             session._check()
-            return dict(drafts=drafts,selected=None,display=None)
+            return dict(drafts=drafts,selected=None,display=None,publication_statuses={})
         listed=choices[selected]
         draft=self._inputs._lock(session,listed.id)
         if draft.revision!=listed.revision:raise ValueError('Draft listing changed; reload before viewing inputs')
         display=self._draft_display_session(session,account_id,draft)
-        return dict(drafts=drafts,selected=selected,display=display)
+        # Labels reuse the selected result and verify other receipts within
+        # this same fresh read-only account snapshot, without result replay.
+        statuses={str(d.id):(display['published'] if str(d.id)==selected else
+            _published_session(self._inputs,session,account_id,d,d.revision,
+                receipt_format='campaigniq.deployment_account_publication')) for d in drafts}
+        session._check()
+        return dict(drafts=drafts,selected=selected,display=display,publication_statuses=statuses)
 
     def data_page(self,user,account_id,*,preferred_draft_id=None):
         """Detached Data presentation from one fresh guarded read-only snapshot."""
