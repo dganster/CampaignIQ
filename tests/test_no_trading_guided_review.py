@@ -44,13 +44,13 @@ def test_one_review_button_missing_statement_stays_blocked():
     assert not any(b.label=='Review statement without trading' for b in at.button)
     button(at,'Review month').click().run()
     assert not at.exception and any('brokerage statement first' in e.value for e in at.error)
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
 
 
 def test_review_owner_confirm_and_publish_has_no_second_review_click():
     at=no_trading(screen());button(at,'Review month').click().run()
     assert not at.exception and not at.error
-    assert button(at,'Confirm reviewed month').disabled and button(at,'Publish month').disabled
+    assert button(at,'Confirm reviewed month').disabled and not any(b.label=='Publish month' for b in at.button)
     confirm(at)
     assert not at.exception and not at.error
     assert not button(at,'Publish month').disabled
@@ -73,7 +73,7 @@ def test_changed_revision_or_permission_context_discards_unconfirmed_statement_r
         at.session_state[key]=1;at.run()
         assert not at.exception
         assert not any(b.label=='Confirm reviewed month' for b in at.button)
-        assert button(at,'Publish month').disabled
+        assert not any(b.label=='Publish month' for b in at.button)
 
 
 def test_confirmed_receipt_is_revalidated_and_failed_review_cannot_enable_publication():
@@ -81,7 +81,7 @@ def test_confirmed_receipt_is_revalidated_and_failed_review_cannot_enable_public
     assert not button(at,'Publish month').disabled
     at.session_state['reject_review']=True;at.run()
     assert not at.exception and any('Statement changed' in e.value for e in at.error)
-    assert button(at,'Publish month').disabled
+    assert not any(b.label=='Publish month' for b in at.button)
 
 
 def test_failed_publication_requires_review_again_without_repeating_owner_confirmation():
@@ -91,7 +91,7 @@ def test_failed_publication_requires_review_again_without_repeating_owner_confir
     button(at,'Publish month').click().run()
     assert any('Publication failed' in e.value for e in at.error)
     assert 'publish' not in at.session_state['calls']
-    at.run();assert button(at,'Publish month').disabled
+    at.run();assert not any(b.label=='Publish month' for b in at.button)
     button(at,'Review month').click().run()
     assert not button(at,'Publish month').disabled
     assert at.session_state['calls'].count('owner-confirmation')==1

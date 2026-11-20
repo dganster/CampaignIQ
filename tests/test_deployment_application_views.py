@@ -20,7 +20,7 @@ def test_deployment_month_confirmation_uses_specific_account_period_and_publicat
     assert not app.exception
     assert not any('local' in b.label.lower() for b in app.button)
     confirm=next(c for c in app.checkbox if c.label.startswith('I authorize publication for'))
-    assert 'Second brokerage' in confirm.label and '2025-01' in confirm.label
+    assert 'Second brokerage' in confirm.label and 'January 2025' in confirm.label
     next(b for b in app.button if b.label=='Publish month').click().run(timeout=20)
     assert app.error and app.session_state['calls']==[]
     next(c for c in app.checkbox if c.label.startswith('I authorize publication for')).check()
