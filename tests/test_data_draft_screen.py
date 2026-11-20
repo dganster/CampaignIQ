@@ -25,15 +25,15 @@ def test_one_transaction_lists_and_checks_only_the_selected_account_draft(displa
     listing(c,[c.draft,other])
     with patches(c):
         result=c.app.draft_screen(c.actor,'account',preferred_draft_id=preferred)
-    assert result['selected']==(preferred or 'draft')
-    assert result['display']['inventory']['revision']==(5 if preferred else 3)
-    assert c.locked==[preferred or 'draft'] and len(c.sessions)==1
+    assert result['selected']==(preferred or 'other')
+    assert result['display']['inventory']['revision']==5
+    assert c.locked==[preferred or 'other'] and len(c.sessions)==1
     assert not c.sessions[0].active and len(result['drafts'])==2
 
 def test_empty_account_returns_no_display_and_closes_session(display):
     c=display;listing(c,[])
     with patches(c):
-        assert c.app.draft_screen(c.actor,'account')==dict(drafts=(),selected=None,display=None)
+        assert c.app.draft_screen(c.actor,'account')==dict(drafts=(),selected=None,display=None,publication_statuses={})
         c.metadata.assert_not_called()
     assert not c.sessions[0].active and not c.locked
 
@@ -72,7 +72,7 @@ class Combined(Service):
         selected=preferred_draft_id or str(values[0].id)
         assert selected in [str(d.id) for d in values]
         st.session_state.calls.append('screen:'+selected)
-        return dict(drafts=values,selected=selected,display=dict(published=PUBLISHED,inventory=dict(protected=PUBLISHED,documents=[dict(id='doc',role='schwab_brokerage_statement',purpose='Brokerage statement',filename='Statement.pdf',superseded=False)]),no_trading=False))
+        return dict(drafts=values,selected=selected,publication_statuses={str(d.id):PUBLISHED for d in values},display=dict(published=PUBLISHED,inventory=dict(protected=PUBLISHED,documents=[dict(id='doc',role='schwab_brokerage_statement',purpose='Brokerage statement',filename='Statement.pdf',superseded=False)]),no_trading=False))
     def drafts(self,*a):raise AssertionError('Separate listing')
     def draft_display(self,*a):raise AssertionError('Separate display')
     def saved_documents(self,*a):raise AssertionError('Separate inventory')

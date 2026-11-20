@@ -71,16 +71,6 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     if st.button('Reload broker binding', key=key + ':reload-binding'):
                         st.session_state[key + ':binding-epoch'] = st.session_state.get(key + ':binding-epoch', 0) + 1
                         st.rerun()
-            if account.writable:
-                with st.expander('Start or resume a month'):
-                    with st.form(key + ':create'):
-                        year = int(st.number_input('Year', min_value=1900, max_value=2200, value=2026 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 2025, key=key + ':year'))
-                        month = int(st.number_input('Month', min_value=1, max_value=12, value=10 if deployment and getattr(getattr(service.gateway,'_backend',None),'_continue_existing',False) else 1, key=key + ':month'))
-                        if st.form_submit_button('Create or resume draft'):
-                            service.create(server_user, account_id, year, month)
-                            st.rerun()
-            else:
-                st.info('View access only. Saved documents remain readable; uploads are disabled.')
             screen_data=page_data if deployment else None
             if combined_screen and screen_data is None:
                 from campaigniq.account_deployment_application import DraftSelectionUnavailable
@@ -93,17 +83,51 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                         st.rerun()
                     return
             drafts = {str(d.id):d for d in (screen_data['drafts'] if screen_data is not None else service.drafts(server_user, account_id))}
+            from campaigniq.ui.account_month_selection import next_month, month_option
+            from calendar import month_name
+            displays={}
+            statuses=dict(screen_data.get('publication_statuses',{})) if screen_data is not None else {}
+            for identifier,item in drafts.items():
+                if identifier not in statuses:
+                    if screen_data is None and combined_display:
+                        displays[identifier]=service.draft_display(server_user,account_id,item.id,item.revision)
+                        statuses[identifier]=displays[identifier]['published']
+                        continue
+                    statuses[identifier]=(screen_data['display']['published'] if screen_data is not None and identifier==screen_data['selected'] else
+                        service.published(server_user,account_id,item.id,item.revision))
+            published_periods=set(page_data.get('retained_months',())) if page_data is not None else set()
+            published_periods.update(f'{d.year:04d}-{d.month:02d}' for identifier,d in drafts.items() if statuses[identifier])
+            if account.writable:
+                suggested_year,suggested_month=next_month(published_periods)
+                with st.expander('Start or resume a month'):
+                    st.caption('Choose a month to create a draft or resume an existing one. Published months remain read-only.')
+                    with st.form(key + ':create'):
+                        year = int(st.number_input('Year', min_value=1900, max_value=2200, value=suggested_year, key=key + ':year'))
+                        month = st.selectbox('Month',tuple(range(1,13)),index=suggested_month-1,
+                            format_func=lambda value:month_name[value],key=key + ':month-name')
+                        if st.form_submit_button('Create or resume draft'):
+                            # Keep the created/resumed period selected on the next
+                            # fresh read; do not alter the published-history view.
+                            created=service.create(server_user, account_id, year, month)
+                            if created is not None and getattr(created,'id',None) is not None:
+                                st.session_state[key+':draft']=str(created.id)
+                            st.rerun()
+            else:
+                st.info('View access only. Saved documents remain readable; uploads are disabled.')
             if not drafts:
                 st.info('No saved monthly drafts. Open Start or resume a month to choose a reporting month.' if account.writable else 'No saved monthly drafts are available to view.')
                 return
-            selected = st.selectbox('Saved month', list(drafts),
-                format_func=lambda value: date(drafts[value].year, drafts[value].month, 1).strftime('%B %Y'), key=key + ':draft')
+            ordered=sorted(drafts,key=lambda identifier:(drafts[identifier].year,drafts[identifier].month),reverse=True)
+            if key+':draft' not in st.session_state and screen_data is not None and screen_data['selected'] is not None:
+                st.session_state[key+':draft']=screen_data['selected']
+            selected = st.selectbox('Saved month', ordered,
+                format_func=lambda value: month_option(drafts[value],statuses[value]), key=key + ':draft')
             if screen_data is not None and selected!=screen_data['selected']:
                 st.rerun()
             draft = drafts[selected]
             stable_key=key+':'+selected
             key=stable_key+':'+str(draft.revision)
-            display=screen_data['display'] if screen_data is not None else (service.draft_display(server_user,account_id,draft.id,draft.revision) if combined_display else None)
+            display=screen_data['display'] if screen_data is not None else displays.get(selected)
             published = display['published'] if display is not None else service.published(server_user, account_id, draft.id, draft.revision)
             month_label = date(draft.year, draft.month, 1).strftime('%B %Y')
             with st.expander('Month details'):
