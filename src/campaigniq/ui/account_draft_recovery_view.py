@@ -9,7 +9,7 @@ def render(st,service,user,account_id,draft,*,key,writable,published,inventory=N
     st.subheader('Saved documents')
     sources=[r for r in active if r['role'] not in CONFIRMATIONS]
     if sources:st.table([dict(Document=r['purpose'],Filename=r['filename'],Status='Saved') for r in sources])
-    else:st.info('No source documents saved for this month.')
+    else:st.caption('No source documents saved for this month.')
     if rows:
         with st.expander('Upload and recovery history'):
             st.table([dict(Document=r['purpose'],Filename=r['filename'],Status='Superseded' if r['superseded'] else 'Current') for r in rows])
