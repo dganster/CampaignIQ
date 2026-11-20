@@ -156,7 +156,7 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 from campaigniq.ui.account_draft_recovery_view import render as render_saved_documents
                 saved_roles=render_saved_documents(st,service,server_user,account_id,draft,key=key,writable=account.writable,published=published,**({'inventory':display['inventory']} if display is not None else {}))
                 if mode is None:
-                    st.info('Choose whether you traded this month to see the documents you need. You can correct saved uploads above.')
+                    st.info('Choose whether you traded in '+month_label+' to see the documents you need.')
                     return
                 if not no_trading_path:
                     defaults=['Equities and options']
@@ -166,7 +166,9 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                 if not no_trading_path and not markets:
                     st.info('Select at least one market to continue.');return
                 st.subheader('2. Documents')
-                if no_trading_path:st.caption('Save the monthly Brokerage Statement. Empty trading reports are not required. Remove mistaken uploads using the saved-document controls above.')
+                if no_trading_path:
+                    st.caption('Save the monthly Brokerage Statement. Empty trading reports are not required.')
+                    if saved_roles:st.caption('Use Correct this draft or start over above to remove mistaken saved uploads.')
             upload_locked=guided and 'no_trading_owner_confirmation_v1' in saved_roles
             if upload_locked:st.info('A no-trading confirmation is saved. To change the inputs, remove that confirmation using Correct this draft above; then save the updated documents and review again.')
             if account.writable and not published and not upload_locked:

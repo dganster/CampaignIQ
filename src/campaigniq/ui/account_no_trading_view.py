@@ -55,7 +55,7 @@ def render_guided(st,service,user,account_id,draft,*,key,writable,published,cont
             st.session_state[state_key]=(signature,reviewed)
             st.session_state[attempt_key]=False
         except (ValueError,PermissionError,FileNotFoundError) as error:
-            st.error(str(error))
+            st.error(str(error));return False
     cached=st.session_state.get(state_key)
     if cached is None:
         st.info('Save the Brokerage Statement, then review this month.');return False
