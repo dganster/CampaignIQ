@@ -138,8 +138,8 @@ def test_view_only_account_has_preview_without_save_controls():
 def test_empty_upload_does_not_call_save():
     at=screen()
     next(s for s in at.selectbox if s.label == 'Document role').select('schwab_brokerage_statement').run(timeout=15)
-    button(at,'Save document').click().run(timeout=15)
-    assert not at.exception and at.error and not at.session_state['calls']
+    assert button(at,'Save document').disabled
+    assert not at.exception and not at.error and not at.session_state['calls']
 
 
 def test_closing_preview_displays_quantity_without_publication_control():
@@ -195,9 +195,8 @@ def test_upload_requires_explicit_type_and_keeps_type_after_error():
     role=next(s for s in at.selectbox if s.label=='Document role')
     assert role.value is None and button(at,'Save document').disabled
     role.select('thinkorswim_trade_history').run(timeout=15)
-    assert not button(at,'Save document').disabled
-    button(at,'Save document').click().run(timeout=15)
-    assert at.error and not at.session_state['calls']
+    assert button(at,'Save document').disabled
+    assert not at.error and not at.session_state['calls']
     assert next(s for s in at.selectbox if s.label=='Document role').value=='thinkorswim_trade_history'
 
 

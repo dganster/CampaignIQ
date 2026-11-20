@@ -183,11 +183,15 @@ def render(st, service, server_user, *, selected_account_id=None, deployment=Fal
                     start = date(draft.year, draft.month, 1) - timedelta(days=1)
                     end = date(draft.year, draft.month, monthrange(draft.year, draft.month)[1])
                     st.info(f'Forex Transaction Report: export {start:%B %d, %Y} through {end:%B %d, %Y}.')
-                with st.form(key + ':upload', clear_on_submit=False):
-                    upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file')
+                if role is not None:
+                    st.caption(document_guidance(role,draft.year,draft.month))
+                # Upload widgets must rerun immediately so Save reflects file presence.
+                # Role-specific keys prevent a pending file moving to a different document type.
+                with st.container():
+                    upload = st.file_uploader('Broker document', type=['pdf', 'txt', 'csv'], key=key + ':file:'+str(role),disabled=role is None)
                     replace = st.checkbox('Replace the saved document; preserve its original in history', key=key+':replace:'+str(role)) if guided and role in saved_roles else (False if guided else st.checkbox('Confirm replacement of this role; preserve the previous original',key=key+':replace'))
                     associated = st.checkbox('I confirm this Gain/Loss report belongs to the selected account and month', key=key + ':associate') if deployment and role == 'schwab_realized_gain_loss' else False
-                    if st.form_submit_button('Save document', disabled=role is None):
+                    if st.button('Save document',key=key+':save-document',disabled=role is None or upload is None):
                         if role is None:
                             st.error('Select a document type first.')
                         elif upload is None:
@@ -405,3 +409,22 @@ def show_published_results(st,service,server_user,account_id,draft,*,deployment)
         from campaigniq.ui.crypto_evidence_view import render_crypto_limitations
         render_crypto_limitations(st, status=result.crypto_status, warnings=result.crypto_warnings)
         st.dataframe([dict(Instrument=name, Quantity=quantity) for name, quantity in result.crypto_positions], hide_index=True)
+
+
+def document_guidance(role,year,month):
+    """Explain existing document roles without changing source requirements."""
+    period=date(year,month,1)
+    name=period.strftime('%B %Y')
+    prior=(period-timedelta(days=1)).strftime('%B %Y')
+    following=(date(year,month,monthrange(year,month)[1])+timedelta(days=1)).strftime('%B %Y')
+    guidance={
+        'schwab_brokerage_statement':f'Use the selected account’s {name} Brokerage Statement. It supplies month-end positions and statement activity for review.',
+        'thinkorswim_trade_history':f'Use the selected account’s Trade History containing activity for {name}. Save it before reviewing a trading month.',
+        'schwab_realized_gain_loss':f'Use the selected account’s Realized Gain/Loss report for {name}. It supplies broker-reported realized results; it is separate from Trade History.',
+        'schwab_opening_position_snapshot':f'Use the selected account’s {prior} month-end position snapshot only when no authoritative preceding state is available. It establishes opening positions for {name}; it is not a routine extra upload for every month.',
+        'schwab_next_month_assignment_evidence':f'Use the selected account’s {following} evidence only when needed to resolve an assignment or exercise at the {name} month boundary. It supplements this month’s sources; it does not publish the next month.',
+        'schwab_forex_transaction_report':f'Use the selected account’s Forex transaction export for the date range shown above. This is separate from the monthly Forex statement.',
+        'schwab_forex_monthly_statement':f'Use the selected account’s Forex monthly statement for {name}, separate from the securities Brokerage Statement.',
+        'schwab_crypto_statement':f'Use the selected account’s crypto statement for {name}. Crypto sources are reviewed separately from brokerage and Forex results.',
+    }
+    return guidance.get(role,f'Use a document for the selected account and {name}; confirm its purpose before saving.')
