@@ -20,6 +20,7 @@ from campaigniq.persistence.account_directory_codec import (
 
 SCHEMA = 'campaigniq_admin_dev'
 ALLOWED_COMMANDS = {
+    'invite_google_user': {'email', 'name'},
     'add_user': {'identity', 'name'},
     'configure_user': {'user_id', 'name', 'enabled', 'admin'},
     'add_account': {'owner_id', 'name', 'broker'},

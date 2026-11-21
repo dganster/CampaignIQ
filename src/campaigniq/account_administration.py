@@ -217,6 +217,16 @@ class Directory:
         user = User(identifier, identity, name, "workspace-" + UUID(identifier).hex)
         return self._changed(acting, "add_user", identifier, details=(("name", user.name),), users=self.users + (user,))
 
+    def invite_google_user(self, actor: Identity, email: str, name: str, *, expected_revision: int) -> Directory:
+        from campaigniq.account_google_registration import gmail_address, open_invitations
+        acting = self._admin(actor, expected_revision)
+        email = gmail_address(email)
+        _text(name, 'user name')
+        if any(dict(e.details)['email'] == email for e in open_invitations(self)):
+            raise ValueError('An invitation already exists for this Gmail address')
+        return self._changed(acting, 'invite_google_user', str(uuid4()),
+            details=(('email', email), ('name', name)))
+
     def add_account(self, actor: Identity, owner_id: str, name: str, broker: str, *, expected_revision: int) -> Directory:
         acting = self._admin(actor, expected_revision)
         owner = next((u for u in self.users if u.id == owner_id and u.enabled), None)

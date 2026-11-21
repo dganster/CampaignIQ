@@ -48,8 +48,13 @@ def render(st, service, *, administration, deployment=False):
         if st.button('Sign in'): st.login()
         return
     try:
-        with stage('account_choices_and_authorization'):
-            overview = service.choices(st.user)
+        try:
+            with stage('account_choices_and_authorization'):
+                overview = service.choices(st.user)
+        except PermissionError:
+            st.info('This sign-in does not have enabled CampaignIQ access.')
+            if deployment:registration_screen(st,administration)
+            return
         if deployment:authorize_panel(st,administrator=overview.administrator)
         root = 'account-dashboard:' + service.store.registry_id + ':' + overview.user_id + ':'
         st.sidebar.caption(('Account workspace' if getattr(service,'continue_existing',False) else 'Account workspace • Existing accounts are read-only') if deployment else 'LOCAL DEVELOPMENT • Existing data is read-only')
@@ -150,6 +155,7 @@ def render(st, service, *, administration, deployment=False):
         st.error('Account access or saved report sources could not be verified. Reload after checking the account directory.')
 
 
+
 def account_labels(accounts):
     """Readable labels only; selections continue to use authorized account IDs."""
     accounts=tuple(accounts)
@@ -167,3 +173,18 @@ def account_labels(accounts):
         labels[identifier]=name+' · Account '+str(number)
         used.add(labels[identifier].casefold())
     return labels
+
+
+def registration_screen(st,administration):
+    if hasattr(administration,'request_registration'):
+        st.caption('If an administrator invited your Gmail address, request registration after signing in with that Google account. Approval is required before access is enabled.')
+        if st.button('Request registration'):
+            try:
+                message=administration.request_registration(st.user)
+            except (PermissionError,ValueError):
+                st.error('Registration requires an invitation for your verified Gmail address. Contact your administrator.')
+            except Exception:
+                st.error('Registration could not be verified. Reload before retrying.')
+            else:
+                st.info(message)
+        if st.button('Sign out',key='registration-logout'):st.logout()
