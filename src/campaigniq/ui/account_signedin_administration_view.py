@@ -146,23 +146,31 @@ def render(st, service, server_user, *, deployment=False):
                 if st.form_submit_button('Add account'):
                     apply(expected, 'add_account', owner_id=owner, name=name, broker=broker)
         with grants_tab:
-            st.caption('Owners have edit permission. View permits reading; Edit permits preparing new-account months. Existing accounts remain read-only.' if deployment else
+            st.caption('View grants read access. Edit also grants permission to prepare unpublished reporting months. Published months remain read-only.' if deployment else
                 'Owners have implicit edit permission. This preview still provides only financial reads, even when an Edit grant is recorded.')
             if directory.accounts and len(directory.users) > 1:
                 target = st.selectbox('Account for sharing', list(account_labels), format_func=account_labels.get,
                                       key=key + 'grant-account')
                 account = next(a for a in directory.accounts if a.id == target)
+                st.caption('Account owner: ' + labels[account.owner_id] + '. Owners do not need shared access.')
+                if account.archived:
+                    st.caption('Archived accounts are read-only.')
                 others = {u.id: labels[u.id] for u in directory.users if u.id != account.owner_id}
                 recipient = st.selectbox('User receiving access', list(others), format_func=others.get,
                                         key=key + 'grant-user:' + target)
                 existing = next((g.permission for g in directory.grants if g.user_id == recipient
                                  and g.account_id == target), None)
                 choices = {'No shared access': None, 'View': Permission.VIEW, 'Edit': Permission.EDIT}
+                saved_choice = next(label for label, permission in choices.items() if permission == existing)
+                st.write('Saved access: ' + saved_choice)
+                if not next(u for u in directory.users if u.id == recipient).enabled:
+                    st.caption('This user is disabled and cannot access the account while disabled.')
                 form_key = key + 'grant:' + target + ':' + recipient
                 expected = revision(form_key)
                 with st.form(form_key):
                     choice = st.selectbox('Permission', list(choices), index=list(choices.values()).index(existing),
                                           key=form_key + ':permission')
+                    st.caption('Changes take effect only after you select Save access.')
                     if st.form_submit_button('Save access'):
                         apply(expected, 'set_grant', user_id=recipient, account_id=target, permission=choices[choice])
             else:
