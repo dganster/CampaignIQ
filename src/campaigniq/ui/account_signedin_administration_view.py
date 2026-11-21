@@ -68,6 +68,28 @@ def activity_rows(directory):
     return rows
 
 
+def audit_detail_fields(directory,event):
+    """Readable saved fields; unknown fields retain their exact values."""
+    users,_=directory_labels(directory)
+    labels={'broker':'Broker','kind':'Account type','suffix':'Account ending',
+        'digest':'Broker account fingerprint','name':'Saved name','enabled':'User status',
+        'admin':'User role','archived':'Account status','user_id':'User receiving access',
+        'owner_id':'Account owner','permission':'Permission','email':'Gmail address',
+        'invitation_id':'Invitation reference'}
+    fields=[]
+    for key,value in event.details:
+        shown=value
+        if key in ('user_id','owner_id'):shown=users.get(value,'Unavailable user')
+        elif key=='broker':shown={'schwab':'Schwab'}.get(value,value)
+        elif key=='kind':shown={'securities':'Equities and options','forex':'Forex'}.get(value,value)
+        elif key=='permission':shown={'view':'View','edit':'Edit','none':'No shared access'}.get(value,value)
+        elif key=='enabled':shown={'True':'Enabled','False':'Disabled'}.get(value,value)
+        elif key=='admin':shown={'True':'Administrator','False':'Member'}.get(value,value)
+        elif key=='archived':shown={'True':'Archived','False':'Active'}.get(value,value)
+        fields.append((labels.get(key,key.replace('_',' ').capitalize()),shown))
+    return fields
+
+
 def render(st, service, server_user, *, deployment=False):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
@@ -237,7 +259,8 @@ def render(st, service, server_user, *, deployment=False):
                 st.info('No administration activity has been recorded.')
             else:
                 st.caption('User and account labels reflect the current directory. Summaries describe the settings recorded at the time of each event.')
-                st.dataframe(rows,hide_index=True,width='stretch')
+                # Static table wraps long cells rather than clipping a scrollable grid.
+                st.table(rows,hide_index=True)
                 st.subheader('Activity details')
                 events={e.sequence:e for e in directory.events}
                 summaries={row['Event']:row for row in rows}
@@ -249,5 +272,15 @@ def render(st, service, server_user, *, deployment=False):
                 st.write('Summary: '+row['Summary'])
                 with st.expander('Technical audit details'):
                     event=events[selected]
-                    st.json(dict(sequence=event.sequence,actor_id=event.actor_id,action=event.action,
-                        target_id=event.target_id,details=dict(event.details)))
+                    st.caption('Saved fields for this event. Names linked to users reflect the current directory.')
+                    for label,value in audit_detail_fields(directory,event):
+                        if label in ('Broker account fingerprint','Invitation reference'):
+                            st.write(label+':')
+                            st.code(value,language=None,wrap_lines=True)
+                        else:
+                            st.text(label+': '+value)
+                    if not event.details:st.caption('No additional fields were recorded.')
+                    with st.expander('Raw audit record (troubleshooting)'):
+                        st.caption('Exact original identifiers, action code and saved values.')
+                        st.json(dict(sequence=event.sequence,actor_id=event.actor_id,action=event.action,
+                            target_id=event.target_id,details=dict(event.details)))

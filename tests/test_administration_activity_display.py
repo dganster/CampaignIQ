@@ -76,7 +76,7 @@ def test_activity_view_preserves_events_and_exposes_exact_raw_details_separately
     at.session_state['directory']=directory;at.run(timeout=15)
     assert not at.exception and not at.session_state['calls']
     assert at.session_state['directory']==before
-    table=next(t for t in at.dataframe if 'Changed by' in t.value.columns)
+    table=next(t for t in at.table if 'Changed by' in t.value.columns)
     assert list(table.value.columns)==['Event','Changed by','Action','User or account','Summary']
     assert table.value.to_dict('records')==activity_rows(directory)
     technical=next(e for e in at.expander if e.label=='Technical audit details')
