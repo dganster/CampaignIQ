@@ -59,7 +59,7 @@ class DeploymentAccountDashboard:
                     if session.account.account_id!=account_id:raise PermissionError('Selected account is unavailable')
                     selected=next((a for a in directory.accounts if a.id==account_id),None)
                     if selected is None:raise PermissionError('Selected account is unavailable')
-            visible=[];income=[]
+            visible=[];income=[];verified_no_trading=[]
             with stage('snapshot_draft_listing'):
                 drafts=session.drafts.list_drafts()
             for draft in drafts:
@@ -69,6 +69,8 @@ class DeploymentAccountDashboard:
                 if published:
                     with stage('snapshot_current_result_verification'):
                         loaded=_deployment_results_session(self.inputs,session,draft,account_id,draft.revision)
+                    if loaded.no_trading_month:
+                        verified_no_trading.append(f'{draft.year:04d}-{draft.month:02d}')
                     income.append(loaded.income_evidence)
                     visible.append(f'{draft.year:04d}-{draft.month:02d}-')
             with stage('snapshot_artifact_assembly'):
@@ -90,5 +92,6 @@ class DeploymentAccountDashboard:
                         'JOIN campaigniq_accounts.import_drafts p ON p.id=d.draft_id WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(session.account.storage_scope,ROLE)).fetchall()
                     if selected.legacy:originals+=retained_history_rows(conn,session.account.storage_scope,legacy=True)
                 with stage('snapshot_history_verification'):
-                    result.history=bind_history(result,originals,known_bindings=self.inputs._known(session))
+                    result.history=bind_history(result,originals,known_bindings=self.inputs._known(session),
+                        verified_no_trading_months=verified_no_trading)
             session._check();return result
