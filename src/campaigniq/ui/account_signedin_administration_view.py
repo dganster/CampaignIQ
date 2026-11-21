@@ -23,8 +23,11 @@ def _distinct_labels(names, kind):
 def directory_labels(directory):
     users=_distinct_labels({u.id:u.name+(' [disabled]' if not u.enabled else '')
         for u in directory.users},'User')
-    accounts=_distinct_labels({a.id:a.name+' · '+users[a.owner_id]+(' [archived]' if a.archived else '')
-        for a in directory.accounts},'Account')
+    counts={}
+    for account in directory.accounts:
+        counts[account.name.casefold()]=counts.get(account.name.casefold(),0)+1
+    accounts=_distinct_labels({a.id:a.name+(' · '+users[a.owner_id] if counts[a.name.casefold()]>1 else '')
+        +(' [archived]' if a.archived else '') for a in directory.accounts},'Account')
     return users,accounts
 
 
@@ -33,7 +36,8 @@ def activity_rows(directory):
     users,accounts=directory_labels(directory)
     actions={'bind_broker_account_v1':'Broker account linked','grant_access':'Access granted',
         'revoke_access':'Access removed','configure_user':'User settings saved',
-        'configure_account':'Account settings saved','add_user':'User registered','add_account':'Account added'}
+        'configure_account':'Account settings saved','add_user':'User registered','add_account':'Account added',
+        'invite_google_user':'Google invitation saved','google_registration_pending':'Google sign-in awaiting approval'}
     rows=[]
     for event in directory.events:
         details=dict(event.details);parts=[]
@@ -46,6 +50,8 @@ def activity_rows(directory):
             recipient=users.get(details.get('user_id'),'Unavailable user')
             permission={'view':'View access','edit':'Edit access'}.get(details.get('permission'),'Access permission recorded')
             parts=[('Shared access removed' if event.action=='revoke_access' else permission)+' for '+recipient]
+        elif event.action in ('invite_google_user','google_registration_pending'):
+            parts=[details.get('name','Verified Google sign-in'),details.get('email','')]
         elif event.action in ('configure_user','add_user'):
             if 'name' in details:parts.append('Display name: '+details['name'])
             if details.get('enabled') in ('True','False'):parts.append('Enabled' if details['enabled']=='True' else 'Disabled')
@@ -57,7 +63,7 @@ def activity_rows(directory):
             if details.get('archived') in ('True','False'):parts.append('Archived' if details['archived']=='True' else 'Active')
         rows.append({'Event':event.sequence,'Changed by':users.get(event.actor_id,'Unavailable user'),
             'Action':actions.get(event.action,'Other administration activity'),
-            'User or account':users.get(event.target_id,accounts.get(event.target_id,'Unavailable user or account')),
+            'User or account':(details.get('email','Invited user') if event.action=='invite_google_user' else users.get(event.target_id,accounts.get(event.target_id,'Unavailable user or account'))),
             'Summary':'; '.join(parts) if parts else 'See technical audit details for the recorded information.'})
     return rows
 
@@ -138,20 +144,35 @@ def render(st, service, server_user, *, deployment=False):
                 st.caption('Disabling preserves ownership, grants and history. The last enabled administrator is protected.')
                 if st.form_submit_button('Save user'):
                     apply(expected, 'configure_user', user_id=user.id, name=name, enabled=enabled, admin=admin)
-            with st.expander('Register another verified Google identity'):
-                st.caption('Use the exact Google subject verified independently for this person. '
-                           'An email address is not the subject. Registration grants no access to existing accounts.')
-                form_key = key + 'new-user'
+            pending_ids={e.target_id:dict(e.details).get('email','') for e in directory.events
+                         if e.action=='google_registration_pending'}
+            pending=[u for u in directory.users if u.id in pending_ids and not u.enabled
+                     and not any(e.action=='configure_user' and e.target_id==u.id for e in directory.events)]
+            if pending:
+                st.subheader('Pending Google registrations')
+                st.caption('Approve a verified sign-in as a member. Approval grants no brokerage account access.')
+                for candidate in pending:
+                    form_key=key+'approve-registration:'+candidate.id
+                    expected=revision(form_key)
+                    with st.form(form_key):
+                        st.write(candidate.name+' · '+pending_ids[candidate.id])
+                        if st.form_submit_button('Approve '+candidate.name):
+                            apply(expected,'configure_user',user_id=candidate.id,enabled=True,admin=False)
+            with st.expander('Invite someone with Gmail'):
+                st.caption('Ask them to open CampaignIQ, sign in with this Google account, and request registration. '
+                           'Then approve their verified sign-in here. No email is sent automatically.')
+                form_key = key + 'invite-user'
                 expected = revision(form_key)
                 with st.form(form_key, clear_on_submit=True):
                     name = st.text_input('New user display name', key=form_key + ':name')
-                    subject = st.text_input('Verified Google subject', autocomplete='off', key=form_key + ':subject')
-                    confirmed = st.checkbox('I verified this person and their exact Google subject', key=form_key + ':confirm')
-                    if st.form_submit_button('Register user'):
-                        if not confirmed:
-                            st.error('Verify the identity before registering it.')
-                        else:
-                            apply(expected, 'add_user', name=name, subject=subject)
+                    email = st.text_input('Gmail address', key=form_key + ':email')
+                    if st.form_submit_button('Save invitation'):
+                        apply(expected, 'invite_google_user', name=name, email=email)
+                from campaigniq.account_google_registration import open_invitations
+                invitations=open_invitations(directory)
+                if invitations:
+                    st.dataframe([{'Name':dict(e.details)['name'],'Gmail address':dict(e.details)['email'],
+                        'Status':'Awaiting Google sign-in'} for e in invitations],hide_index=True)
         with accounts_tab:
             st.dataframe([dict(Account=a.name, Owner=labels[a.owner_id], Broker=a.broker,
                 Status='Archived' if a.archived else 'Active',

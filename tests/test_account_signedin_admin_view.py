@@ -96,14 +96,15 @@ def test_new_account_is_metadata_only_and_does_not_replace_existing(deployment):
 
 
 @pytest.mark.parametrize('deployment',[False,True])
-def test_registration_requires_explicit_verified_subject_confirmation(deployment):
+def test_registration_uses_gmail_invitation_without_subject_fields(deployment):
     at = screen(deployment=deployment)
-    text(at, 'New user display name').set_value('New verified person')
-    text(at, 'Verified Google subject').set_value('new-subject')
-    button(at, 'Register user').click().run(timeout=15)
-    assert not at.exception and at.error
+    assert 'Verified Google subject' not in [t.label for t in at.text_input]
+    text(at, 'New user display name').set_value('Matthew')
+    text(at, 'Gmail address').set_value('matthew@gmail.com')
+    button(at, 'Save invitation').click().run(timeout=15)
+    assert not at.exception and not at.error
     assert len(at.session_state['directory'].users) == 2
-    assert not at.session_state['calls']
+    assert at.session_state['calls'] == [('invite_google_user',dict(name='Matthew',email='matthew@gmail.com'))]
 
 
 @pytest.mark.parametrize('deployment',[False,True])

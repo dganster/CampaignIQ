@@ -28,6 +28,7 @@ class DeploymentAdministration:
     @property
     def registry_id(self):return self._store.registry_id
     def snapshot(self,user):return self._store.snapshot(user)
+    def request_registration(self,user):return self._store.request_registration(user)
     def execute(self,user,revision,command,/,**arguments):return self._store.execute(user,revision,command,**arguments)
     def add_user(self,user,revision,*,name,subject):
         return self.execute(user,revision,'add_user',name=name,identity=Identity(self._issuer,subject))

@@ -97,6 +97,14 @@ class DirectoryTransaction:
         updated=getattr(directory,command)(actor.identity,expected_revision=expected_revision,**arguments)
         return self._persist_transition(directory,updated)
 
+    def request_registration(self, user):
+        from campaigniq.account_google_registration import request_registration
+        current = self._load(lock=True)
+        updated = request_registration(current, user, trusted_issuer=self.settings.trusted_issuer)
+        if updated != current:
+            self._persist_transition(current, updated)
+        return 'Registration is pending administrator approval.'
+
     def _persist_transition(self,current,updated):
         if updated.revision!=current.revision+1 or updated.events[:-1]!=current.events:
             raise ValueError('Invalid directory transition')
@@ -159,6 +167,11 @@ class PostgresAccountDirectory:
     def session(self,user):return self._read('session',user)
     def snapshot(self,user):return self._read('snapshot',user)
     def authorize(self,user,account_id,*,write=False):return self._read('authorize',user,account_id,write=write)
+    def request_registration(self,user):
+        with self._connection(readonly=False) as conn:
+            return DirectoryTransaction(conn,self.settings).request_registration(user)
+
     def execute(self,user,expected_revision,command,/,**arguments):
         with self._connection(readonly=False) as conn:
             return DirectoryTransaction(conn,self.settings).execute(user,expected_revision,command,**arguments)
+

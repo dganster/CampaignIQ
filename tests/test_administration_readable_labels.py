@@ -42,8 +42,8 @@ def test_selectors_show_names_and_preserve_id_values_without_render_mutations(de
     assert not at.exception and not at.session_state['calls']
     assert select(at,'User to manage').options==['Owner A','Owner B']
     assert select(at,'New account owner').options==['Owner A','Owner B']
-    assert select(at,'Account to manage').options==['Account A · Owner A','Account B · Owner B']
-    assert select(at,'Account for sharing').options==['Account A · Owner A','Account B · Owner B']
+    assert select(at,'Account to manage').options==['Account A','Account B']
+    assert select(at,'Account for sharing').options==['Account A','Account B']
     assert select(at,'User receiving access').options==['Owner B']
     assert select(at,'User to manage').value==directory.users[0].id
     assert select(at,'Account to manage').value==directory.accounts[0].id
