@@ -2159,13 +2159,12 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                     st.caption("Broker settled FOREX P&L included in the monthly result; financing and interest are excluded.")
                 else:
                     realized_records = campaign_realized_attributions(monthly_attributions, selected_id)
-                    from campaigniq.ui.roll_evidence import closed_side_from_journal
-                    closing_trades, direction_incomplete = read_closing_trades(
-                        HISTORICAL_SOURCE_ROOT, [a.record.closed_date for a in realized_records]
-                    )
+                    from campaigniq.ui.campaign_interactions import accounting_close_sides
+                    closing_sides, direction_incomplete = accounting_close_sides(
+                        HISTORICAL_SOURCE_ROOT, realized_records, selected_history)
                     st.caption("Quantity closed is a positive count of shares or contracts closed, not a signed open position. Long/Short identifies the position that was closed.")
                     if direction_incomplete:
-                        st.caption("Some archived exports could not be read. Long/Short uses exact saved journal evidence where available; otherwise it remains unavailable.")
+                        st.caption("Long/Short is unavailable for one or more closes: exact saved journal evidence was insufficient and the fallback archived trade exports were missing or unreadable.")
                     if len(realized_records) != selected.record_count:
                         st.warning("Campaign summary and underlying record counts differ; review the published data.")
                     else:
@@ -2176,9 +2175,7 @@ def render_dashboard(*, selected_view=None, preferences_renderer=None):
                             "Instrument": _display_instrument(attribution.record.instrument),
                             "Quantity closed": float(attribution.record.quantity),
                             "Units": closed_quantity_units(attribution.record.instrument),
-                            "Long/Short": (closed_side_from_journal(attribution, selected_history)
-                                           if closed_side_from_journal(attribution, selected_history) != "Unavailable"
-                                           else closed_position_side(attribution.record, closing_trades)),
+                            "Long/Short": closing_sides[number - 1],
                             "Realized P&L": float(attribution.record.gain_loss),
                             "Status": (
                                 "OK" if attribution.basis_reconciled and attribution.gain_loss_reconciled
