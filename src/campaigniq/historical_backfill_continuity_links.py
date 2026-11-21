@@ -17,13 +17,42 @@ from campaigniq.persistence.monthly_publication import PROTOCOL_FILE
 
 
 def instrument(raw):
-    return instrument_key(_deserialize_instrument(raw))
+    # Graph identities describe the persisted source representation. Validate
+    # the instrument, but do not promote legacy fiat symbols while hashing it.
+    from campaigniq.historical_backfill_downstream_audit import number
+    _deserialize_instrument(raw)
+    original=dict(raw)
+    if original['type']=='option':original['strike']=number(original['strike'])
+    return canonical(original).decode()
 
 
 def campaign_node(month,campaign_id):
     # A null/unassigned campaign is not a common identity shared by all lots.
     if not campaign_id:return None
     return (month,campaign_id)
+
+
+def source_boundary_audit(prior_text,journal_text,*,previous_end,start,end):
+    """Rebuild historical graph groups using exact source instrument encoding.
+
+    Legacy fiat Instrument values now deserialize as ForexPair. This preserves
+    their original graph representation without changing domain classification,
+    persisted artifacts, lot identities or any financial result.
+    """
+    from campaigniq.historical_backfill_downstream_audit import instrument_key,number
+    prior=deserialize_lot_book(prior_text)
+    entries=deserialize_position_journal(journal_text,period_start=start,period_end=end)
+    source_keys={}
+    raw_instruments=[row['instrument'] for row in json.loads(prior_text)['lots']]
+    raw_instruments += [row['instrument'] for row in entries if row['action']=='Carried position']
+    for raw in raw_instruments:
+        current=instrument_key(_deserialize_instrument(raw))
+        original=instrument(raw)
+        if current in source_keys and source_keys[current]!=original:
+            raise ValueError('Historical boundary has ambiguous source instrument encodings.')
+        source_keys[current]=original
+    return audit_boundary(prior.lot_book,entries,previous_end=previous_end,
+        source_instrument_keys=source_keys)
 
 
 def build_links(boundary_plan,artifacts):
@@ -44,9 +73,8 @@ def build_links(boundary_plan,artifacts):
         for month in range(2,13):
             previous=date(2025,month-1,calendar.monthrange(2025,month-1)[1])
             start=date(2025,month,1);end=date(2025,month,calendar.monthrange(2025,month)[1])
-            prior=deserialize_lot_book(artifacts[f'{previous:%Y-%m}-lot-book.json'])
-            entries=deserialize_position_journal(artifacts[f'2025-{month:02}-position-journal.json'],period_start=start,period_end=end)
-            audit=audit_boundary(prior.lot_book,entries,previous_end=previous)
+            audit=source_boundary_audit(artifacts[f'{previous:%Y-%m}-lot-book.json'],
+                artifacts[f'2025-{month:02}-position-journal.json'],previous_end=previous,start=start,end=end)
             if not audit['complete_candidate_inventory_match']:raise ValueError('Historical candidate boundary differs.')
             prior_edges.append(dict(month=f'2025-{month:02}',review_groups=audit['candidates']))
         boundaries=prior_edges+boundaries

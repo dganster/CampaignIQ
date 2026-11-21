@@ -111,7 +111,8 @@ def _snapshot_basis(text, provenance_text, published, previous_end):
                 limitation='Retained broker input facts only; this does not establish prior replay basis equality or approve campaign mapping.')
 
 
-def audit_boundary(prior_book, entries, *, previous_end, opening_snapshot_text=None, provenance_text=None):
+def audit_boundary(prior_book, entries, *, previous_end, opening_snapshot_text=None, provenance_text=None,
+                   source_instrument_keys=None):
     """Explain complete opening inventory matches, including exact lot splits.
 
     Candidates are scoped to one boundary. Aggregate agreement never approves a
@@ -123,6 +124,12 @@ def audit_boundary(prior_book, entries, *, previous_end, opening_snapshot_text=N
     if (previous_end + timedelta(days=1)).day != 1:
         raise ValueError('A month-end boundary is required.')
     prior = _book_rows(prior_book); published = _journal_rows(entries)
+    if source_instrument_keys is not None:
+        # Historical graph hashes describe original persisted encodings. New
+        # domain subtype recovery must not silently change those identifiers.
+        for row in prior + published:
+            row['instrument'] = source_instrument_keys[row['instrument']]
+
     if any(datetime.fromisoformat(row['opened_at']).date() > previous_end for row in prior + published):
         raise ValueError('Opening lot origin is after the boundary.')
     snapshot_boundary = previous_end.isoformat() == '2025-12-31'
