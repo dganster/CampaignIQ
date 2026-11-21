@@ -3,6 +3,31 @@ from contextlib import nullcontext
 from campaigniq.account_administration import Permission
 
 
+def _distinct_labels(names, kind):
+    """Keep ID-keyed selections distinct without displaying internal codes."""
+    counts={}
+    for name in names.values():counts[name.casefold()]=counts.get(name.casefold(),0)+1
+    used={name.casefold() for name in names.values()}
+    labels={}
+    for identifier,name in sorted(names.items()):
+        if counts[name.casefold()]==1:
+            labels[identifier]=name
+            continue
+        number=1
+        while (name+' · '+kind+' '+str(number)).casefold() in used:number+=1
+        labels[identifier]=name+' · '+kind+' '+str(number)
+        used.add(labels[identifier].casefold())
+    return {identifier:labels[identifier] for identifier in names}
+
+
+def directory_labels(directory):
+    users=_distinct_labels({u.id:u.name+(' [disabled]' if not u.enabled else '')
+        for u in directory.users},'User')
+    accounts=_distinct_labels({a.id:a.name+' · '+users[a.owner_id]+(' [archived]' if a.archived else '')
+        for a in directory.accounts},'Account')
+    return users,accounts
+
+
 def render(st, service, server_user, *, deployment=False):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
@@ -62,10 +87,7 @@ def render(st, service, server_user, *, deployment=False):
         else:
             reload_directory()
             st.caption('Directory revision ' + str(directory.revision))
-        labels = {u.id: u.name + ' · ' + u.id[:8] + (' [disabled]' if not u.enabled else '')
-                  for u in directory.users}
-        account_labels = {a.id: a.name + ' · ' + labels[a.owner_id] + ' · ' + a.id[:8]
-                          for a in directory.accounts}
+        labels,account_labels = directory_labels(directory)
         users_tab, accounts_tab, grants_tab, audit_tab = st.tabs(
             ['Users', 'Brokerage accounts', 'Account access', 'Activity'])
         with users_tab:
