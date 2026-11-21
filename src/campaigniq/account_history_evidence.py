@@ -38,7 +38,10 @@ def retained_history_rows(conn, scope, *, legacy):
         'WHERE p.workspace=%s AND d.role=%s ORDER BY d.id',(scope,ROLE)).fetchall()
 
 
-def bind_history(storage, rows, *, known_bindings=None):
+def bind_history(storage, rows, *, known_bindings=None, verified_no_trading_months=()):
+    # Only the authorized publication reader may supply these months after its
+    # full source replay. A marker file or receipt by itself is not verification.
+    no_trading=frozenset(verified_no_trading_months)
     months=tuple(key[:7] for key in published_artifact_keys(storage,suffix='-realized-attributions.json'))
     originals=[];gaps=[]
     for month in months:
@@ -53,6 +56,7 @@ def bind_history(storage, rows, *, known_bindings=None):
                 or type(manifest.get('inputs')) is not list):
                 raise ValueError('Published source fingerprint is invalid')
             matches=[item for item in manifest['inputs'] if type(item) is dict and item.get('role')==ROLE]
+            if not matches and month in no_trading:continue
             if len(matches)!=1:raise ValueError('Published trade-history fingerprint is missing or ambiguous')
             match=matches[0];digest=match.get('sha256');size=match.get('byte_size')
             if (not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest)
