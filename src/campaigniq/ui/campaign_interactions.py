@@ -295,3 +295,18 @@ def closed_position_side(record, trades):
 
 def closed_quantity_units(instrument):
     return "Contracts" if isinstance(instrument, OptionContract) else "Shares"
+
+
+def accounting_close_sides(root, attributions, entries):
+    """Use exact journal evidence before consulting optional archived CSVs."""
+    from campaigniq.ui.roll_evidence import closed_side_from_journal
+    attributions = tuple(attributions)
+    sides = [closed_side_from_journal(a, entries) for a in attributions]
+    unresolved = [i for i, side in enumerate(sides) if side == "Unavailable"]
+    if not unresolved:
+        return tuple(sides), False
+    trades, incomplete = read_closing_trades(
+        root, [attributions[i].record.closed_date for i in unresolved])
+    for i in unresolved:
+        sides[i] = closed_position_side(attributions[i].record, trades)
+    return tuple(sides), incomplete and any(side == "Unavailable" for side in sides)
