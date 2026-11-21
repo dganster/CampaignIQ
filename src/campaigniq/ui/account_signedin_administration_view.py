@@ -1,4 +1,5 @@
 """Local real-sign-in administration; no actor selector or financial actions."""
+from contextlib import nullcontext
 from campaigniq.account_administration import Permission
 
 
@@ -41,16 +42,26 @@ def render(st, service, server_user, *, deployment=False):
             st.session_state[root + 'flash'] = 'Directory change saved and audited.' if deployment else 'Local directory change saved and audited. Production unchanged.'
             st.rerun()
 
-    with st.expander('Account administration' if deployment else 'Local account administration'):
-        st.caption(('Manage users, brokerage accounts, and sharing. ' if deployment else 'Changes affect only this local account directory. Financial data remains read-only. ')+
-                   'Administrator status alone grants no access to another owner’s financial records.')
+    def reload_directory():
         if st.button('Reload directory', key=root + 'reload'):
             st.session_state[epoch_key] = epoch + 1
             st.rerun()
+
+    if deployment:
+        st.header('Administration')
+    with nullcontext() if deployment else st.expander('Local account administration'):
+        st.caption(('Manage users, brokerage accounts, and sharing. ' if deployment else 'Changes affect only this local account directory. Financial data remains read-only. ')+
+                   'Administrator status alone grants no access to another owner’s financial records.')
         flash = st.session_state.pop(root + 'flash', None)
         if flash:
             st.success(flash)
-        st.caption('Directory revision ' + str(directory.revision))
+        if deployment:
+            with st.expander('Directory details'):
+                st.caption('Directory revision ' + str(directory.revision))
+                reload_directory()
+        else:
+            reload_directory()
+            st.caption('Directory revision ' + str(directory.revision))
         labels = {u.id: u.name + ' · ' + u.id[:8] + (' [disabled]' if not u.enabled else '')
                   for u in directory.users}
         account_labels = {a.id: a.name + ' · ' + labels[a.owner_id] + ' · ' + a.id[:8]
