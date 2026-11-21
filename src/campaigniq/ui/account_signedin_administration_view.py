@@ -28,6 +28,40 @@ def directory_labels(directory):
     return users,accounts
 
 
+def activity_rows(directory):
+    """Present immutable audit events without exposing technical identifiers."""
+    users,accounts=directory_labels(directory)
+    actions={'bind_broker_account_v1':'Broker account linked','grant_access':'Access granted',
+        'revoke_access':'Access removed','configure_user':'User settings saved',
+        'configure_account':'Account settings saved','add_user':'User registered','add_account':'Account added'}
+    rows=[]
+    for event in directory.events:
+        details=dict(event.details);parts=[]
+        if event.action=='bind_broker_account_v1':
+            parts=[{'schwab':'Schwab'}.get(details.get('broker'),'Broker'),
+                {'securities':'Equities and options','forex':'Forex'}.get(details.get('kind'),'Broker account')]
+            suffix=details.get('suffix','')
+            if len(suffix)==4 and suffix.isascii() and suffix.isdigit():parts.append('ending '+suffix)
+        elif event.action in ('grant_access','revoke_access'):
+            recipient=users.get(details.get('user_id'),'Unavailable user')
+            permission={'view':'View access','edit':'Edit access'}.get(details.get('permission'),'Access permission recorded')
+            parts=[('Shared access removed' if event.action=='revoke_access' else permission)+' for '+recipient]
+        elif event.action in ('configure_user','add_user'):
+            if 'name' in details:parts.append('Display name: '+details['name'])
+            if details.get('enabled') in ('True','False'):parts.append('Enabled' if details['enabled']=='True' else 'Disabled')
+            if details.get('admin') in ('True','False'):parts.append('Administrator' if details['admin']=='True' else 'Member')
+        elif event.action in ('configure_account','add_account'):
+            if 'name' in details:parts.append('Name: '+details['name'])
+            if 'owner_id' in details:parts.append('Owner: '+users.get(details['owner_id'],'Unavailable user'))
+            if 'broker' in details:parts.append('Broker: '+{'schwab':'Schwab'}.get(details['broker'],details['broker']))
+            if details.get('archived') in ('True','False'):parts.append('Archived' if details['archived']=='True' else 'Active')
+        rows.append({'Event':event.sequence,'Changed by':users.get(event.actor_id,'Unavailable user'),
+            'Action':actions.get(event.action,'Other administration activity'),
+            'User or account':users.get(event.target_id,accounts.get(event.target_id,'Unavailable user or account')),
+            'Summary':'; '.join(parts) if parts else 'See technical audit details for the recorded information.'})
+    return rows
+
+
 def render(st, service, server_user, *, deployment=False):
     if type(deployment) is not bool:raise ValueError("Explicit application view mode required")
     try:
@@ -176,8 +210,23 @@ def render(st, service, server_user, *, deployment=False):
             else:
                 st.info('Register another verified user before sharing an account.')
         with audit_tab:
-            # Snapshot was just authorized; commands always fetch again. Subject
-            # IDs, credentials and document bytes are omitted from this table.
-            st.dataframe([dict(Sequence=e.sequence, Actor=labels.get(e.actor_id, e.actor_id[:8]),
-                Action=e.action.replace('_', ' '), Target=e.target_id[:8],
-                Details='; '.join(k + ': ' + v for k, v in e.details)) for e in directory.events], hide_index=True)
+            # Read only the already-authorized snapshot; never rewrite events.
+            rows=activity_rows(directory)
+            if not rows:
+                st.info('No administration activity has been recorded.')
+            else:
+                st.caption('User and account labels reflect the current directory. Summaries describe the settings recorded at the time of each event.')
+                st.dataframe(rows,hide_index=True,width='stretch')
+                st.subheader('Activity details')
+                events={e.sequence:e for e in directory.events}
+                summaries={row['Event']:row for row in rows}
+                selected=st.selectbox('Activity event',list(events),key=key+'audit-event',
+                    format_func=lambda number:'Event '+str(number)+' · '+summaries[number]['Action'])
+                row=summaries[selected]
+                st.write('Changed by: '+row['Changed by'])
+                st.write('User or account: '+row['User or account'])
+                st.write('Summary: '+row['Summary'])
+                with st.expander('Technical audit details'):
+                    event=events[selected]
+                    st.json(dict(sequence=event.sequence,actor_id=event.actor_id,action=event.action,
+                        target_id=event.target_id,details=dict(event.details)))
